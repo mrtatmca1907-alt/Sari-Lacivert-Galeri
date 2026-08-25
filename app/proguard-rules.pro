@@ -1,5 +1,1 @@
-# Sarı Lacivert Galeri
-# Şimdilik özel ProGuard kuralı gerekmiyor.
-
--keep class com.bumptech.glide.** { *; }
--dontwarn com.bumptech.glide.**
+# Debug-first project. Keep rules will be tightened when release shrinking is enabled.

@@ -1,24 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
     <color name="navy_900">#081426</color>
-    <color name="navy_800">#0D1B2A</color>
-    <color name="navy_700">#14263A</color>
-
     <color name="yellow_500">#F4C430</color>
-    <color name="yellow_400">#FFD84D</color>
-
-    <color name="white">#FFFFFFFF</color>
-    <color name="black">#FF000000</color>
-
-    <color name="text_primary">#F7F9FC</color>
-    <color name="text_secondary">#AEB8C4</color>
-
-    <color name="surface">#111C2B</color>
-    <color name="surface_alt">#182638</color>
-
-    <color name="divider">#26384D</color>
-
-    <color name="danger">#D94A4A</color>
-
 </resources>
