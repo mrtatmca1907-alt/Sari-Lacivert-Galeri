@@ -2,6 +2,7 @@ package com.sarilacivert.galeri;
 
 import android.content.ContentResolver;
 import android.content.ContentUris;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
@@ -161,16 +162,37 @@ public class AlbumActivity extends AppCompatActivity {
                         this,
                         mediaItems,
                         (item, position) -> {
+                            Intent intent = new Intent(
+                                    AlbumActivity.this,
+                                    ViewerActivity.class
+                            );
 
-                            /*
-                             * Fotoğraf / video görüntüleyici
-                             * sonraki dosyalarda buraya bağlanacak.
-                             */
-                            Toast.makeText(
-                                    this,
-                                    item.getName(),
-                                    Toast.LENGTH_SHORT
-                            ).show();
+                            intent.putExtra(
+                                    ViewerActivity.EXTRA_URI,
+                                    item.getUri().toString()
+                            );
+                            intent.putExtra(
+                                    ViewerActivity.EXTRA_NAME,
+                                    item.getName()
+                            );
+                            intent.putExtra(
+                                    ViewerActivity.EXTRA_MIME,
+                                    item.getMimeType()
+                            );
+                            intent.putExtra(
+                                    ViewerActivity.EXTRA_SIZE,
+                                    item.getSize()
+                            );
+                            intent.putExtra(
+                                    ViewerActivity.EXTRA_DATE,
+                                    item.getDateModified()
+                            );
+                            intent.putExtra(
+                                    ViewerActivity.EXTRA_IS_VIDEO,
+                                    item.isVideo()
+                            );
+
+                            startActivity(intent);
                         }
                 );
 
@@ -748,6 +770,15 @@ public class AlbumActivity extends AppCompatActivity {
             recyclerMedia.setVisibility(
                     View.VISIBLE
             );
+        }
+    }
+
+    @Override
+    protected void onRestart() {
+        super.onRestart();
+
+        if (mediaAdapter != null) {
+            loadAlbumMedia();
         }
     }
 

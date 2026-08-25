@@ -5,12 +5,18 @@
     android:layout_height="match_parent"
     android:background="@color/black">
 
-    <ImageView
+    <com.sarilacivert.galeri.ZoomImageView
         android:id="@+id/imgViewer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="fitCenter"
         android:contentDescription="Fotoğraf görüntüleyici" />
+
+    <VideoView
+        android:id="@+id/videoViewer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:visibility="gone" />
 
     <LinearLayout
         android:id="@+id/topBar"
@@ -21,7 +27,7 @@
         android:gravity="center_vertical"
         android:paddingStart="8dp"
         android:paddingEnd="8dp"
-        android:background="#99081426">
+        android:background="#B0081426">
 
         <TextView
             android:id="@+id/btnViewerBack"
@@ -42,7 +48,7 @@
             android:layout_weight="1"
             android:maxLines="1"
             android:ellipsize="end"
-            android:text="Fotoğraf"
+            android:text="Medya"
             android:textColor="@color/white"
             android:textSize="16sp"
             android:textStyle="bold" />
@@ -80,7 +86,7 @@
         android:layout_gravity="bottom"
         android:orientation="horizontal"
         android:gravity="center"
-        android:background="#99081426">
+        android:background="#B0081426">
 
         <TextView
             android:id="@+id/btnRotate"
