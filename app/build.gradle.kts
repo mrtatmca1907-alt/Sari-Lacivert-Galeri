@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.sarilacivert.galeri"
-    compileSdk = 37
+    compileSdk { version = release(37) }
 
     defaultConfig {
         applicationId = "com.sarilacivert.galeri"
