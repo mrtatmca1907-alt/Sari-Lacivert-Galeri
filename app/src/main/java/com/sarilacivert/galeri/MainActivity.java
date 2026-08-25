@@ -1,8 +1,9 @@
-package com.sarilacivert.galeri;
+       package com.sarilacivert.galeri;
 
 import android.Manifest;
 import android.content.ContentResolver;
 import android.content.ContentUris;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
@@ -16,7 +17,6 @@ import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -102,18 +102,23 @@ public class MainActivity extends AppCompatActivity {
                 shownAlbums,
                 album -> {
 
-                    Toast.makeText(
-                            this,
-                            album.getName()
-                                    + "\n"
-                                    + album.getPath(),
-                            Toast.LENGTH_SHORT
-                    ).show();
+                    Intent intent =
+                            new Intent(
+                                    MainActivity.this,
+                                    AlbumActivity.class
+                            );
 
-                    /*
-                     * Bir sonraki aşamada burada
-                     * AlbumActivity açılacak.
-                     */
+                    intent.putExtra(
+                            AlbumActivity.EXTRA_ALBUM_NAME,
+                            album.getName()
+                    );
+
+                    intent.putExtra(
+                            AlbumActivity.EXTRA_ALBUM_PATH,
+                            album.getPath()
+                    );
+
+                    startActivity(intent);
                 }
         );
 
@@ -127,15 +132,19 @@ public class MainActivity extends AppCompatActivity {
                         new ActivityResultContracts.RequestMultiplePermissions(),
                         result -> {
 
-                            boolean granted = false;
+                            boolean granted;
 
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 
                                 Boolean imagePermission =
-                                        result.get(Manifest.permission.READ_MEDIA_IMAGES);
+                                        result.get(
+                                                Manifest.permission.READ_MEDIA_IMAGES
+                                        );
 
                                 Boolean videoPermission =
-                                        result.get(Manifest.permission.READ_MEDIA_VIDEO);
+                                        result.get(
+                                                Manifest.permission.READ_MEDIA_VIDEO
+                                        );
 
                                 granted =
                                         Boolean.TRUE.equals(imagePermission)
@@ -144,7 +153,9 @@ public class MainActivity extends AppCompatActivity {
                             } else {
 
                                 Boolean storagePermission =
-                                        result.get(Manifest.permission.READ_EXTERNAL_STORAGE);
+                                        result.get(
+                                                Manifest.permission.READ_EXTERNAL_STORAGE
+                                        );
 
                                 granted =
                                         Boolean.TRUE.equals(storagePermission);
@@ -160,7 +171,9 @@ public class MainActivity extends AppCompatActivity {
                                         "Medya izni verilmedi."
                                 );
 
-                                txtEmpty.setVisibility(View.VISIBLE);
+                                txtEmpty.setVisibility(
+                                        View.VISIBLE
+                                );
 
                                 Toast.makeText(
                                         this,
@@ -228,7 +241,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupButtons() {
 
-        findViewById(R.id.btnSearch).setOnClickListener(
+        findViewById(
+                R.id.btnSearch
+        ).setOnClickListener(
                 v -> showSearchDialog()
         );
 
@@ -239,29 +254,22 @@ public class MainActivity extends AppCompatActivity {
 
                     applyFilterAndSort();
 
-                    if (sortByCount) {
-
-                        Toast.makeText(
-                                this,
-                                "Albüm sayısına göre sıralandı",
-                                Toast.LENGTH_SHORT
-                        ).show();
-
-                    } else {
-
-                        Toast.makeText(
-                                this,
-                                "Albüm adına göre sıralandı",
-                                Toast.LENGTH_SHORT
-                        ).show();
-                    }
+                    Toast.makeText(
+                            this,
+                            sortByCount
+                                    ? "Albüm sayısına göre sıralandı"
+                                    : "Albüm adına göre sıralandı",
+                            Toast.LENGTH_SHORT
+                    ).show();
                 }
         );
 
-        findViewById(R.id.btnCamera).setOnClickListener(
+        findViewById(
+                R.id.btnCamera
+        ).setOnClickListener(
                 v -> Toast.makeText(
                         this,
-                        "Kamera bölümü sonraki aşamada bağlanacak.",
+                        "Kamera sonraki aşamada bağlanacak.",
                         Toast.LENGTH_SHORT
                 ).show()
         );
@@ -269,7 +277,7 @@ public class MainActivity extends AppCompatActivity {
         btnSettings.setOnClickListener(
                 v -> Toast.makeText(
                         this,
-                        "Ayarlar bölümü hazırlanıyor.",
+                        "Ayarlar sonraki aşamada bağlanacak.",
                         Toast.LENGTH_SHORT
                 ).show()
         );
@@ -278,6 +286,7 @@ public class MainActivity extends AppCompatActivity {
                 v -> {
 
                     searchText = "";
+
                     applyFilterAndSort();
 
                     navAlbums.setTextColor(
@@ -322,19 +331,23 @@ public class MainActivity extends AppCompatActivity {
 
     private void showSearchDialog() {
 
-        EditText input = new EditText(this);
+        EditText input =
+                new EditText(this);
 
-        input.setHint("Albüm veya klasör ara");
+        input.setHint(
+                "Albüm veya klasör ara"
+        );
 
         input.setSingleLine(true);
-
         input.setText(searchText);
 
-        int padding = (int) (
-                20 * getResources()
-                        .getDisplayMetrics()
-                        .density
-        );
+        int padding =
+                (int) (
+                        20
+                                * getResources()
+                                .getDisplayMetrics()
+                                .density
+                );
 
         input.setPadding(
                 padding,
@@ -390,7 +403,9 @@ public class MainActivity extends AppCompatActivity {
                 "Telefon taranıyor..."
         );
 
-        txtEmpty.setVisibility(View.GONE);
+        txtEmpty.setVisibility(
+                View.GONE
+        );
 
         executor.execute(() -> {
 
@@ -409,23 +424,23 @@ public class MainActivity extends AppCompatActivity {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 
-                projection = new String[]{
-                        MediaStore.Files.FileColumns._ID,
-                        MediaStore.Files.FileColumns.MEDIA_TYPE,
-                        MediaStore.MediaColumns.DISPLAY_NAME,
-                        MediaStore.MediaColumns.RELATIVE_PATH,
-                        MediaStore.MediaColumns.DATE_MODIFIED
-                };
+                projection =
+                        new String[]{
+                                MediaStore.Files.FileColumns._ID,
+                                MediaStore.Files.FileColumns.MEDIA_TYPE,
+                                MediaStore.MediaColumns.RELATIVE_PATH,
+                                MediaStore.MediaColumns.DATE_MODIFIED
+                        };
 
             } else {
 
-                projection = new String[]{
-                        MediaStore.Files.FileColumns._ID,
-                        MediaStore.Files.FileColumns.MEDIA_TYPE,
-                        MediaStore.MediaColumns.DISPLAY_NAME,
-                        MediaStore.MediaColumns.DATA,
-                        MediaStore.MediaColumns.DATE_MODIFIED
-                };
+                projection =
+                        new String[]{
+                                MediaStore.Files.FileColumns._ID,
+                                MediaStore.Files.FileColumns.MEDIA_TYPE,
+                                MediaStore.MediaColumns.DATA,
+                                MediaStore.MediaColumns.DATE_MODIFIED
+                        };
             }
 
             String selection =
@@ -434,15 +449,15 @@ public class MainActivity extends AppCompatActivity {
                             + MediaStore.Files.FileColumns.MEDIA_TYPE
                             + "=?";
 
-            String[] selectionArgs = new String[]{
-                    String.valueOf(
-                            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE
-                    ),
-
-                    String.valueOf(
-                            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO
-                    )
-            };
+            String[] selectionArgs =
+                    new String[]{
+                            String.valueOf(
+                                    MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE
+                            ),
+                            String.valueOf(
+                                    MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO
+                            )
+                    };
 
             String sortOrder =
                     MediaStore.MediaColumns.DATE_MODIFIED
@@ -510,18 +525,17 @@ public class MainActivity extends AppCompatActivity {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 
                             String relativePath =
-                                    cursor.getString(pathColumn);
+                                    cursor.getString(
+                                            pathColumn
+                                    );
 
                             if (
                                     relativePath == null
                                             || relativePath.trim().isEmpty()
                             ) {
 
-                                folderPath =
-                                        "Diğer";
-
-                                folderName =
-                                        "Diğer";
+                                folderPath = "Diğer";
+                                folderName = "Diğer";
 
                             } else {
 
@@ -546,29 +560,29 @@ public class MainActivity extends AppCompatActivity {
                                         relativePath;
 
                                 int slash =
-                                        relativePath.lastIndexOf("/");
+                                        relativePath.lastIndexOf(
+                                                "/"
+                                        );
 
-                                if (slash >= 0) {
-
-                                    folderName =
-                                            relativePath.substring(
-                                                    slash + 1
-                                            );
-
-                                } else {
-
-                                    folderName =
-                                            relativePath;
-                                }
+                                folderName =
+                                        slash >= 0
+                                                ? relativePath.substring(
+                                                        slash + 1
+                                                )
+                                                : relativePath;
                             }
 
                         } else {
 
                             String fullPath =
-                                    cursor.getString(pathColumn);
+                                    cursor.getString(
+                                            pathColumn
+                                    );
 
                             File file =
-                                    new File(fullPath);
+                                    new File(
+                                            fullPath
+                                    );
 
                             File parent =
                                     file.getParentFile();
@@ -583,11 +597,8 @@ public class MainActivity extends AppCompatActivity {
 
                             } else {
 
-                                folderPath =
-                                        "Diğer";
-
-                                folderName =
-                                        "Diğer";
+                                folderPath = "Diğer";
+                                folderName = "Diğer";
                             }
                         }
 
@@ -696,7 +707,6 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
 
                 allAlbums.clear();
-
                 allAlbums.addAll(result);
 
                 scanning = false;
@@ -711,10 +721,9 @@ public class MainActivity extends AppCompatActivity {
         shownAlbums.clear();
 
         String query =
-                searchText
-                        .toLowerCase(
-                                Locale.getDefault()
-                        );
+                searchText.toLowerCase(
+                        Locale.getDefault()
+                );
 
         for (Album album : allAlbums) {
 
@@ -736,7 +745,9 @@ public class MainActivity extends AppCompatActivity {
                             || path.contains(query)
             ) {
 
-                shownAlbums.add(album);
+                shownAlbums.add(
+                        album
+                );
             }
         }
 
@@ -804,21 +815,6 @@ public class MainActivity extends AppCompatActivity {
             recyclerAlbums.setVisibility(
                     View.VISIBLE
             );
-        }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-
-        if (
-                recyclerAlbums != null
-                        && hasMediaPermission()
-                        && !scanning
-                        && !allAlbums.isEmpty()
-        ) {
-
-            scanMedia();
         }
     }
 
