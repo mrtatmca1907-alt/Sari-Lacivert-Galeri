@@ -5,7 +5,7 @@ Bu dal/zip, mevcut sarı-lacivert görünümü koruyup uygulama motorunu modern 
 ## Android uyumluluğu
 - **minSdk 26**: Android 8.0+
 - **targetSdk 36**: Android 16 davranışları hedeflenir
-- **compileSdk 37**: güncel Compose 1.12 gereksinimi; daha eski Android telefonlarda çalışmayı engellemez
+- **compileSdk 36**: güncel Compose 1.12 gereksinimi; daha eski Android telefonlarda çalışmayı engellemez
 - Android 13 için `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` izinleri desteklenir
 - Android 14+ sınırlı fotoğraf seçimi (`READ_MEDIA_VISUAL_USER_SELECTED`) desteklenir
 

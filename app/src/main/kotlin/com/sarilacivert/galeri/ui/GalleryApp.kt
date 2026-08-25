@@ -612,7 +612,7 @@ private fun SettingsScreen(
                 }
             }
 
-            Text("Android 13 uyumlu • minSdk 26 • targetSdk 36 • compileSdk 37", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+            Text("Android 13 uyumlu • minSdk 26 • targetSdk 36 • compileSdk 36", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
