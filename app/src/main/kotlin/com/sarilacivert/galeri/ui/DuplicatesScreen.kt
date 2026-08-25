@@ -25,6 +25,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -175,7 +177,7 @@ fun DuplicatesScreen(
 
 @Composable
 private fun GalleryBottomBarForDuplicates(current: Screen, onNavigate: (Screen) -> Unit) {
-    androidx.compose.material3.NavigationBar(containerColor = Navy800) {
+    NavigationBar(containerColor = Navy800) {
         val entries = listOf(
             Triple(Screen.Albums, androidx.compose.material.icons.Icons.Default.Folder, "Albümler"),
             Triple(Screen.Favorites, androidx.compose.material.icons.Icons.Default.Favorite, "Favori"),
@@ -184,7 +186,7 @@ private fun GalleryBottomBarForDuplicates(current: Screen, onNavigate: (Screen) 
             Triple(Screen.Settings, androidx.compose.material.icons.Icons.Default.Settings, "Ayarlar")
         )
         entries.forEach { (screen, icon, label) ->
-            androidx.compose.material3.NavigationBarItem(
+            NavigationBarItem(
                 selected = current == screen,
                 onClick = { onNavigate(screen) },
                 icon = { Icon(icon, null) },
