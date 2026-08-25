@@ -23,8 +23,8 @@ jobs:
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
-      - name: API 36 kur
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: API 37 kur
+        run: sdkmanager "platforms;android-37" "build-tools;36.0.0"
 
       - name: Gradle 9.5 kur
         uses: gradle/actions/setup-gradle@v4
