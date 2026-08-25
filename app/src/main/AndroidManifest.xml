@@ -1,21 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Android 13+ fotoğraf ve video erişimi -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
-    <!-- Android 12 ve altı -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
-    <!-- Android 9 ve altı dosya yazma -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <!-- Uygulama içinden fotoğraf/video çekmek için -->
     <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-feature
@@ -36,14 +32,16 @@
         android:theme="@style/Theme.SariLacivertGaleri">
 
         <activity
+            android:name=".AlbumActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize"
             android:exported="true"
             android:screenOrientation="unspecified">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
