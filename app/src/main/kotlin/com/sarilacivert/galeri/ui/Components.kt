@@ -2,12 +2,9 @@ package com.sarilacivert.galeri.ui
 
 import android.graphics.Bitmap
 import android.net.Uri
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,16 +28,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -132,7 +124,6 @@ fun AlbumCard(album: Album, loader: BitmapLoader, onClick: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaTile(
     item: MediaItem,
@@ -144,39 +135,13 @@ fun MediaTile(
     selectionMode: Boolean = false,
     selectionEnabled: Boolean = false,
     onToggleSelection: () -> Unit = {},
-    onSelect: () -> Unit = {},
-    onDragSelectionPoint: ((Offset) -> Unit)? = null,
     onBoundsChanged: ((Rect?) -> Unit)? = null
 ) {
     val key = item.uri.toString()
-    var ownBounds by remember(key) { mutableStateOf<Rect?>(null) }
 
     DisposableEffect(key) {
         onDispose { onBoundsChanged?.invoke(null) }
     }
-
-    val gestureModifier = if (selectionEnabled) {
-        Modifier.pointerInput(key, selected) {
-            detectDragGesturesAfterLongPress(
-                onDragStart = { localPoint ->
-                    if (!selected) onSelect()
-                    ownBounds?.let { rect ->
-                        onDragSelectionPoint?.invoke(
-                            Offset(rect.left + localPoint.x, rect.top + localPoint.y)
-                        )
-                    }
-                },
-                onDrag = { change, _ ->
-                    ownBounds?.let { rect ->
-                        onDragSelectionPoint?.invoke(
-                            Offset(rect.left + change.position.x, rect.top + change.position.y)
-                        )
-                    }
-                    change.consume()
-                }
-            )
-        }
-    } else Modifier
 
     Box(
         modifier = modifier
@@ -184,19 +149,11 @@ fun MediaTile(
             .aspectRatio(1f)
             .background(SurfaceAlt)
             .onGloballyPositioned { coordinates ->
-                val rect = coordinates.boundsInWindow()
-                ownBounds = rect
-                onBoundsChanged?.invoke(rect)
+                onBoundsChanged?.invoke(coordinates.boundsInWindow())
             }
-            .then(gestureModifier)
-            .combinedClickable(
-                onClick = {
-                    if (selectionEnabled && selectionMode) onToggleSelection() else onClick()
-                },
-                onLongClick = {
-                    if (selectionEnabled) onSelect()
-                }
-            )
+            .clickable {
+                if (selectionEnabled && selectionMode) onToggleSelection() else onClick()
+            }
     ) {
         AsyncThumbnail(loader, item.uri, Modifier.fillMaxSize(), 240)
 
