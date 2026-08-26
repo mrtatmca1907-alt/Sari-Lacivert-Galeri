@@ -31,14 +31,15 @@ class DuplicateScanWorker(
         val repo = MediaRepository(applicationContext)
         val prefs = GalleryPreferences(applicationContext)
         val threshold = prefs.duplicateDistance.first()
-        val all = repo.loadAll()
 
-        setProgress(Data.Builder().putInt(KEY_PROGRESS, 1).putString(KEY_STAGE, "Dosyalar hazırlanıyor").build())
+        // Çift/benzer ekranı yalnızca fotoğrafları tarar. Videolar bu denetleyiciye dahil edilmez.
+        val imageItems = repo.loadAll(showImages = true, showVideos = false)
 
-        val exactGroups = findExactDuplicates(all)
+        setProgress(Data.Builder().putInt(KEY_PROGRESS, 1).putString(KEY_STAGE, "Fotoğraflar hazırlanıyor").build())
+
+        val exactGroups = findExactDuplicates(imageItems)
         setProgress(Data.Builder().putInt(KEY_PROGRESS, 50).putString(KEY_STAGE, "Benzer fotoğraflar taranıyor").build())
 
-        val imageItems = all.filter { !it.isVideo }
         val similarGroups = findSimilarImages(imageItems, threshold)
 
         val json = JSONObject().apply {
@@ -79,7 +80,7 @@ class DuplicateScanWorker(
                 processed++
                 if (processed % 3 == 0) {
                     val p = (processed * 45 / total).coerceIn(2, 48)
-                    setProgress(Data.Builder().putInt(KEY_PROGRESS, p).putString(KEY_STAGE, "Aynı dosyalar karşılaştırılıyor").build())
+                    setProgress(Data.Builder().putInt(KEY_PROGRESS, p).putString(KEY_STAGE, "Aynı fotoğraflar karşılaştırılıyor").build())
                 }
             }
             out += byHash.values.filter { it.size > 1 }
