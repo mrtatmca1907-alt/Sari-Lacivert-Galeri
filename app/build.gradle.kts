@@ -11,8 +11,8 @@ android {
         applicationId = "com.sarilacivert.galeri"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20
-        versionName = "2.0.0-modern-core"
+        versionCode = 21
+        versionName = "2.0.1-stable-scan"
 
         vectorDrawables {
             useSupportLibrary = true
