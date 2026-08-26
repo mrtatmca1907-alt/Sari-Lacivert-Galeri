@@ -2,11 +2,6 @@ name: Build BestGallery Base APK
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '*/5 * * * *'
-  workflow_run:
-    workflows: ["Build Sari Lacivert Galeri V2 APK"]
-    types: [completed]
   push:
     branches: [ main ]
     paths:
