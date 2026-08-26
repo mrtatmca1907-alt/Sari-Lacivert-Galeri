@@ -1,5 +1,12 @@
 package com.sarilacivert.galeri.ui
 
+import android.app.Activity
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,7 +45,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -52,14 +61,17 @@ import com.sarilacivert.galeri.data.DuplicateGroup
 import com.sarilacivert.galeri.data.DuplicateKind
 import com.sarilacivert.galeri.data.DuplicateResultStore
 import com.sarilacivert.galeri.data.MediaItem
+import com.sarilacivert.galeri.data.MediaRepository
 import com.sarilacivert.galeri.worker.DuplicateScanWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DuplicatesScreen(
+    repo: MediaRepository,
     loader: BitmapLoader,
     duplicateDistance: Int,
     favorites: Set<String>,
@@ -68,15 +80,51 @@ fun DuplicatesScreen(
     onBottomNavigate: (Screen) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val workManager = remember { WorkManager.getInstance(context.applicationContext) }
     var groups by remember { mutableStateOf<List<DuplicateGroup>>(emptyList()) }
     var progress by remember { mutableIntStateOf(0) }
     var stage by remember { mutableStateOf("Hazır") }
     var running by remember { mutableStateOf(false) }
     var refreshToken by remember { mutableIntStateOf(0) }
+    var selectedUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var lastResultSignature by remember { mutableStateOf("") }
+
+    fun exactDeleteSuggestion(source: List<DuplicateGroup>): Set<String> = source
+        .filter { it.kind == DuplicateKind.EXACT }
+        .flatMap { it.items.drop(1) }
+        .map { it.uri.toString() }
+        .toSet()
 
     suspend fun refreshResults() {
-        groups = DuplicateResultStore.load(context.applicationContext)
+        val loaded = DuplicateResultStore.load(context.applicationContext)
+        groups = loaded
+        val signature = loaded.joinToString("|") { group ->
+            group.kind.name + ":" + group.items.joinToString(",") { it.uri.toString() }
+        }
+        if (signature != lastResultSignature) {
+            selectedUris = exactDeleteSuggestion(loaded)
+            lastResultSignature = signature
+        }
+    }
+
+    fun removeDeletedFromScreen(deleted: Set<String>) {
+        groups = groups.mapNotNull { group ->
+            val remaining = group.items.filterNot { it.uri.toString() in deleted }
+            if (remaining.size > 1) group.copy(items = remaining) else null
+        }
+        selectedUris = emptySet()
+        runCatching { DuplicateScanWorker.resultFile(context.applicationContext).delete() }
+    }
+
+    val trashLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val deleted = selectedUris
+            removeDeletedFromScreen(deleted)
+            Toast.makeText(context, "Seçilen kopyalar çöp kutusuna taşındı", Toast.LENGTH_SHORT).show()
+        }
     }
 
     LaunchedEffect(refreshToken) {
@@ -107,6 +155,8 @@ fun DuplicatesScreen(
         progress = 0
         stage = "Tarama başlatılıyor"
         running = true
+        selectedUris = emptySet()
+        lastResultSignature = ""
         refreshToken++
     }
 
@@ -116,13 +166,41 @@ fun DuplicatesScreen(
         running = false
     }
 
+    fun toggleSelection(media: MediaItem) {
+        val key = media.uri.toString()
+        selectedUris = if (key in selectedUris) selectedUris - key else selectedUris + key
+    }
+
+    fun deleteSelected() {
+        val targets = groups.flatMap { it.items }.distinctBy { it.uri }.filter { it.uri.toString() in selectedUris }
+        if (targets.isEmpty()) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val sender = repo.createTrashRequest(targets, true)
+            if (sender != null) {
+                trashLauncher.launch(IntentSenderRequest.Builder(sender).build())
+            } else {
+                Toast.makeText(context, "Silme isteği oluşturulamadı", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            scope.launch {
+                val deleted = mutableSetOf<String>()
+                targets.forEach { media ->
+                    if (repo.deleteLegacy(media)) deleted += media.uri.toString()
+                }
+                removeDeletedFromScreen(deleted)
+                Toast.makeText(context, "${deleted.size} kopya silindi", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
                         Text("Çift ve Benzer")
-                        Text("Silme otomatik yapılmaz", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                        Text("Birebir kopyalarda 1 dosya korunur", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                     }
                 },
                 actions = {
@@ -156,6 +234,24 @@ fun DuplicatesScreen(
                 }
             }
 
+            if (selectedUris.isNotEmpty() && !running) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${selectedUris.size} kopya silinmek üzere seçili", color = TextPrimary, fontWeight = FontWeight.Bold)
+                        Text("Her birebir grupta ilk dosya korunuyor.", color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+                    }
+                    Button(onClick = ::deleteSelected) {
+                        Icon(Icons.Default.DeleteOutline, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Sil")
+                    }
+                }
+            }
+
             if (groups.isEmpty() && !running) {
                 EmptyState(
                     "Henüz sonuç yok",
@@ -166,19 +262,34 @@ fun DuplicatesScreen(
                     items(groups) { group ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                             Text(
-                                if (group.kind == DuplicateKind.EXACT) "Birebir aynı • ${group.items.size} dosya" else "Benzer fotoğraflar • ${group.items.size} dosya",
+                                if (group.kind == DuplicateKind.EXACT) {
+                                    "Birebir aynı • ${group.items.size} dosya • 1 tanesi korunacak"
+                                } else {
+                                    "Benzer fotoğraflar • ${group.items.size} dosya • otomatik seçilmez"
+                                },
                                 color = if (group.kind == DuplicateKind.EXACT) Yellow500 else TextPrimary,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
                             LazyRow(Modifier.fillMaxWidth()) {
                                 items(group.items) { media ->
+                                    val key = media.uri.toString()
                                     MediaTile(
                                         item = media,
                                         loader = loader,
-                                        favorite = media.uri.toString() in favorites,
+                                        favorite = key in favorites,
                                         modifier = Modifier.width(126.dp),
-                                        onClick = { onOpen(group.items, group.items.indexOf(media)) }
+                                        onClick = {
+                                            if (selectedUris.isNotEmpty() || group.kind == DuplicateKind.EXACT) {
+                                                toggleSelection(media)
+                                            } else {
+                                                onOpen(group.items, group.items.indexOf(media))
+                                            }
+                                        },
+                                        selected = key in selectedUris,
+                                        selectionMode = selectedUris.isNotEmpty(),
+                                        selectionEnabled = true,
+                                        onToggleSelection = { toggleSelection(media) }
                                     )
                                 }
                             }
