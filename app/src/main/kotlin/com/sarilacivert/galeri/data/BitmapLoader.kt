@@ -18,21 +18,26 @@ class BitmapLoader(private val context: Context) {
     }
 
     suspend fun thumbnail(uri: Uri, sizePx: Int): Bitmap? = withContext(Dispatchers.IO) {
-        val key = "${uri}_$sizePx"
+        val safeSize = sizePx.coerceIn(96, 512)
+        val key = "${uri}_$safeSize"
         thumbCache.get(key)?.let { return@withContext it }
         val bitmap = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                resolver.loadThumbnail(uri, Size(sizePx, sizePx), null)
+                resolver.loadThumbnail(uri, Size(safeSize, safeSize), null)
             } else {
-                decodeSampled(uri, sizePx, sizePx)
+                decodeSampled(uri, safeSize, safeSize)
             }
         }.getOrNull()
         if (bitmap != null) thumbCache.put(key, bitmap)
         bitmap
     }
 
-    suspend fun full(uri: Uri, maxDimension: Int = 4096): Bitmap? = withContext(Dispatchers.IO) {
+    suspend fun full(uri: Uri, maxDimension: Int = 2560): Bitmap? = withContext(Dispatchers.IO) {
         runCatching { decodeSampled(uri, maxDimension, maxDimension) }.getOrNull()
+    }
+
+    fun clearMemory() {
+        thumbCache.evictAll()
     }
 
     private fun decodeSampled(uri: Uri, reqWidth: Int, reqHeight: Int): Bitmap? {
@@ -54,7 +59,7 @@ class BitmapLoader(private val context: Context) {
     companion object {
         private fun cacheSizeKb(): Int {
             val maxKb = (Runtime.getRuntime().maxMemory() / 1024L).toInt()
-            return (maxKb / 10).coerceAtLeast(8 * 1024)
+            return (maxKb / 16).coerceIn(6 * 1024, 24 * 1024)
         }
     }
 }
