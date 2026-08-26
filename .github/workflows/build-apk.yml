@@ -2,8 +2,6 @@ name: Build Sari Lacivert Galeri V2 APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   build:
