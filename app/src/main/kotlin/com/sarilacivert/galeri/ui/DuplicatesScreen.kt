@@ -68,6 +68,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val SAFE_TRASH_BATCH = 300
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DuplicatesScreen(
@@ -88,16 +90,22 @@ fun DuplicatesScreen(
     var running by remember { mutableStateOf(false) }
     var refreshToken by remember { mutableIntStateOf(0) }
     var selectedUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingDeleteUris by remember { mutableStateOf<Set<String>>(emptySet()) }
     var lastResultSignature by remember { mutableStateOf("") }
 
     fun exactDeleteSuggestion(source: List<DuplicateGroup>): Set<String> = source
         .filter { it.kind == DuplicateKind.EXACT }
         .flatMap { it.items.drop(1) }
+        .filterNot { it.isVideo }
         .map { it.uri.toString() }
         .toSet()
 
     suspend fun refreshResults() {
         val loaded = DuplicateResultStore.load(context.applicationContext)
+            .mapNotNull { group ->
+                val photos = group.items.filterNot { it.isVideo }
+                if (photos.size > 1) group.copy(items = photos) else null
+            }
         groups = loaded
         val signature = loaded.joinToString("|") { group ->
             group.kind.name + ":" + group.items.joinToString(",") { it.uri.toString() }
@@ -113,17 +121,20 @@ fun DuplicatesScreen(
             val remaining = group.items.filterNot { it.uri.toString() in deleted }
             if (remaining.size > 1) group.copy(items = remaining) else null
         }
-        selectedUris = emptySet()
-        runCatching { DuplicateScanWorker.resultFile(context.applicationContext).delete() }
+        selectedUris = selectedUris - deleted
+        pendingDeleteUris = emptySet()
+        repo.invalidateCache()
     }
 
     val trashLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val deleted = selectedUris
+            val deleted = pendingDeleteUris
             removeDeletedFromScreen(deleted)
-            Toast.makeText(context, "Seçilen kopyalar çöp kutusuna taşındı", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "${deleted.size} kopya çöp kutusuna taşındı", Toast.LENGTH_SHORT).show()
+        } else {
+            pendingDeleteUris = emptySet()
         }
     }
 
@@ -145,7 +156,8 @@ fun DuplicatesScreen(
                 }
                 if (info.state == WorkInfo.State.SUCCEEDED) refreshResults()
             }
-            delay(if (running) 700 else 2500)
+            if (!running) break
+            delay(700)
         }
     }
 
@@ -164,23 +176,40 @@ fun DuplicatesScreen(
         workManager.cancelUniqueWork(DuplicateScanWorker.UNIQUE_WORK)
         stage = "Tarama durduruluyor…"
         running = false
+        refreshToken++
     }
 
     fun toggleSelection(media: MediaItem) {
+        if (media.isVideo) return
         val key = media.uri.toString()
         selectedUris = if (key in selectedUris) selectedUris - key else selectedUris + key
     }
 
     fun deleteSelected() {
-        val targets = groups.flatMap { it.items }.distinctBy { it.uri }.filter { it.uri.toString() in selectedUris }
+        val targets = groups
+            .flatMap { it.items }
+            .distinctBy { it.uri }
+            .filterNot { it.isVideo }
+            .filter { it.uri.toString() in selectedUris }
+
         if (targets.isEmpty()) return
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val sender = repo.createTrashRequest(targets, true)
-            if (sender != null) {
+            val batch = targets.take(SAFE_TRASH_BATCH)
+            val sender = repo.createTrashRequest(batch, true)
+            if (sender == null) {
+                Toast.makeText(context, "Silme isteği oluşturulamadı; uygulama kapatılmadı", Toast.LENGTH_LONG).show()
+                return
+            }
+            pendingDeleteUris = batch.map { it.uri.toString() }.toSet()
+            if (targets.size > batch.size) {
+                Toast.makeText(context, "Güvenli silme: önce ${batch.size} dosya. Kalan ${targets.size - batch.size} için tekrar Sil'e bas.", Toast.LENGTH_LONG).show()
+            }
+            runCatching {
                 trashLauncher.launch(IntentSenderRequest.Builder(sender).build())
-            } else {
-                Toast.makeText(context, "Silme isteği oluşturulamadı", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                pendingDeleteUris = emptySet()
+                Toast.makeText(context, "Silme ekranı açılamadı; hiçbir dosya silinmedi", Toast.LENGTH_LONG).show()
             }
         } else {
             scope.launch {
@@ -200,7 +229,7 @@ fun DuplicatesScreen(
                 title = {
                     Column {
                         Text("Çift ve Benzer")
-                        Text("Birebir kopyalarda 1 dosya korunur", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                        Text("Yalnızca fotoğraflar • birebir kopyalarda 1 dosya korunur", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                     }
                 },
                 actions = {
@@ -242,7 +271,7 @@ fun DuplicatesScreen(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text("${selectedUris.size} kopya silinmek üzere seçili", color = TextPrimary, fontWeight = FontWeight.Bold)
-                        Text("Her birebir grupta ilk dosya korunuyor.", color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+                        Text("Her birebir grupta ilk fotoğraf korunuyor.", color = TextSecondary, style = MaterialTheme.typography.labelSmall)
                     }
                     Button(onClick = ::deleteSelected) {
                         Icon(Icons.Default.DeleteOutline, null)
@@ -255,7 +284,7 @@ fun DuplicatesScreen(
             if (groups.isEmpty() && !running) {
                 EmptyState(
                     "Henüz sonuç yok",
-                    "Tarama aynı dosyaları SHA-256 ile, benzer fotoğrafları görüntü karması ile karşılaştırır. Hassasiyet: $duplicateDistance"
+                    "Tarama yalnızca fotoğrafları karşılaştırır. Video dosyaları çift/benzer taramasına girmez. Hassasiyet: $duplicateDistance"
                 )
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -263,9 +292,9 @@ fun DuplicatesScreen(
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                             Text(
                                 if (group.kind == DuplicateKind.EXACT) {
-                                    "Birebir aynı • ${group.items.size} dosya • 1 tanesi korunacak"
+                                    "Birebir aynı • ${group.items.size} fotoğraf • 1 tanesi korunacak"
                                 } else {
-                                    "Benzer fotoğraflar • ${group.items.size} dosya • otomatik seçilmez"
+                                    "Benzer fotoğraflar • ${group.items.size} fotoğraf • otomatik seçilmez"
                                 },
                                 color = if (group.kind == DuplicateKind.EXACT) Yellow500 else TextPrimary,
                                 fontWeight = FontWeight.Bold,
