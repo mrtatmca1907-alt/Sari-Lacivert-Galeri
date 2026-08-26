@@ -6,6 +6,7 @@ import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
+import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -210,7 +211,12 @@ fun ViewerScreen(
 
     Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
         if (current.isVideo) {
-            VideoViewer(current, onTap = { barsVisible = !barsVisible })
+            VideoViewer(
+                item = current,
+                onTap = { barsVisible = !barsVisible },
+                onPrevious = { if (index > 0) index-- },
+                onNext = { if (index < items.lastIndex) index++ }
+            )
         } else {
             ZoomableImage(
                 loader = loader,
@@ -358,7 +364,12 @@ private fun ViewerAction(icon: androidx.compose.ui.graphics.vector.ImageVector, 
 }
 
 @Composable
-private fun VideoViewer(item: MediaItem, onTap: () -> Unit) {
+private fun VideoViewer(
+    item: MediaItem,
+    onTap: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
     val context = LocalContext.current
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
@@ -388,6 +399,33 @@ private fun VideoViewer(item: MediaItem, onTap: () -> Unit) {
                 useController = true
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                 setOnClickListener { onTap() }
+
+                var downX = 0f
+                var downY = 0f
+                var downTime = 0L
+                setOnTouchListener { _, event ->
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            downX = event.x
+                            downY = event.y
+                            downTime = event.eventTime
+                            false
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            val dx = event.x - downX
+                            val dy = event.y - downY
+                            val elapsed = event.eventTime - downTime
+                            val horizontalSwipe = abs(dx) > 170f && abs(dx) > abs(dy) * 1.25f && elapsed < 1400L
+                            if (horizontalSwipe) {
+                                if (dx > 0f) onPrevious() else onNext()
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        else -> false
+                    }
+                }
             }
         },
         update = { it.player = player },
