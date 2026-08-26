@@ -9,6 +9,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.MediaStore
 import androidx.documentfile.provider.DocumentFile
 import androidx.exifinterface.media.ExifInterface
@@ -19,6 +20,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
+import java.util.LinkedHashMap
 import java.util.Locale
 
 class MediaRepository(private val context: Context) {
@@ -28,8 +30,14 @@ class MediaRepository(private val context: Context) {
     @Volatile
     private var mediaCache: List<MediaItem>? = null
 
+    @Volatile
+    private var cacheBuiltAtMs: Long = 0L
+
+    private val cacheTtlMs = 2_000L
+
     fun invalidateCache() {
         mediaCache = null
+        cacheBuiltAtMs = 0L
     }
 
     suspend fun loadAll(
@@ -41,8 +49,23 @@ class MediaRepository(private val context: Context) {
         val base = if (includeTrashed || onlyTrashed) {
             buildMediaList(includeTrashed, onlyTrashed)
         } else {
-            mediaCache ?: cacheMutex.withLock {
-                mediaCache ?: buildMediaList(false, false).also { mediaCache = it }
+            val now = SystemClock.elapsedRealtime()
+            val cached = mediaCache
+            if (cached != null && now - cacheBuiltAtMs <= cacheTtlMs) {
+                cached
+            } else {
+                cacheMutex.withLock {
+                    val again = mediaCache
+                    val nowInside = SystemClock.elapsedRealtime()
+                    if (again != null && nowInside - cacheBuiltAtMs <= cacheTtlMs) {
+                        again
+                    } else {
+                        buildMediaList(false, false).also {
+                            mediaCache = it
+                            cacheBuiltAtMs = SystemClock.elapsedRealtime()
+                        }
+                    }
+                }
             }
         }
 
@@ -66,18 +89,43 @@ class MediaRepository(private val context: Context) {
         showVideos: Boolean = true,
         sort: AlbumSort = AlbumSort.NEWEST
     ): List<Album> = withContext(Dispatchers.Default) {
-        val grouped = loadAll(showImages, showVideos).groupBy { it.albumPath }
-        val albums = grouped.mapNotNull { (path, items) ->
-            val cover = items.maxByOrNull { maxOf(it.dateTaken, it.dateAdded) } ?: return@mapNotNull null
-            Album(
-                name = cover.albumName,
+        data class Acc(
+            var count: Int,
+            var cover: MediaItem,
+            var hasVideo: Boolean,
+            var newestDate: Long
+        )
+
+        // groupBy binlerce öğede her albüm için yeni List oluşturup GC baskısı yapıyordu.
+        // Tek geçişte sadece albüm özeti tutuluyor.
+        val map = LinkedHashMap<String, Acc>()
+        for (item in loadAll(showImages, showVideos)) {
+            val whenMs = maxOf(item.dateTaken, item.dateAdded)
+            val acc = map[item.albumPath]
+            if (acc == null) {
+                map[item.albumPath] = Acc(1, item, item.isVideo, whenMs)
+            } else {
+                acc.count++
+                acc.hasVideo = acc.hasVideo || item.isVideo
+                if (whenMs > acc.newestDate) {
+                    acc.newestDate = whenMs
+                    acc.cover = item
+                }
+            }
+        }
+
+        val albums = ArrayList<Album>(map.size)
+        for ((path, acc) in map) {
+            albums += Album(
+                name = acc.cover.albumName,
                 path = path,
-                count = items.size,
-                coverUri = cover.uri,
-                hasVideo = items.any { it.isVideo },
-                newestDate = items.maxOfOrNull { maxOf(it.dateTaken, it.dateAdded) } ?: 0L
+                count = acc.count,
+                coverUri = acc.cover.uri,
+                hasVideo = acc.hasVideo,
+                newestDate = acc.newestDate
             )
         }
+
         when (sort) {
             AlbumSort.NEWEST -> albums.sortedByDescending { it.newestDate }
             AlbumSort.NAME -> albums.sortedBy { it.name.lowercase(Locale.getDefault()) }
