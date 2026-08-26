@@ -360,43 +360,112 @@ private fun AlbumScreen(
     onColumns: (Int) -> Unit,
     onSort: (MediaSort) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var sortMenu by remember { mutableStateOf(false) }
+    var selectedUris by remember(album.path) { mutableStateOf<Set<String>>(emptySet()) }
+    var reloadToken by remember(album.path) { mutableIntStateOf(0) }
 
-    LaunchedEffect(album.path, showImages, showVideos, sort, refreshKey) {
+    val trashLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            selectedUris = emptySet()
+            reloadToken++
+            Toast.makeText(context, "Seçilenler çöp kutusuna taşındı", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    LaunchedEffect(album.path, showImages, showVideos, sort, refreshKey, reloadToken) {
         loading = true
         items = repo.loadAlbum(album.path, showImages, showVideos, sort)
+        selectedUris = selectedUris.intersect(items.map { it.uri.toString() }.toSet())
         loading = false
     }
-    BackHandler(onBack = onBack)
+
+    BackHandler {
+        if (selectedUris.isNotEmpty()) selectedUris = emptySet() else onBack()
+    }
+
+    fun toggleSelection(item: MediaItem) {
+        val key = item.uri.toString()
+        selectedUris = if (key in selectedUris) selectedUris - key else selectedUris + key
+    }
+
+    fun selectItem(item: MediaItem) {
+        val key = item.uri.toString()
+        if (key !in selectedUris) selectedUris = selectedUris + key
+    }
+
+    fun deleteSelection() {
+        val targets = items.filter { it.uri.toString() in selectedUris }
+        if (targets.isEmpty()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val sender = repo.createTrashRequest(targets, true)
+            if (sender != null) {
+                trashLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(sender).build())
+            } else {
+                Toast.makeText(context, "Silme isteği oluşturulamadı", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            scope.launch {
+                var deleted = 0
+                for (item in targets) {
+                    if (repo.deleteLegacy(item)) deleted++
+                }
+                selectedUris = emptySet()
+                reloadToken++
+                Toast.makeText(context, "$deleted öğe silindi", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${items.size} öğe • ${album.path}", style = MaterialTheme.typography.labelSmall, color = TextSecondary, maxLines = 1)
-                    }
-                },
-                navigationIcon = { TextButton(onClick = onBack) { Text("‹ Geri") } },
-                actions = {
-                    IconButton(onClick = { onColumns(if (columns >= 5) 3 else columns + 1) }) { Icon(Icons.Default.ViewColumn, "Sütun") }
-                    if (items.any { !it.isVideo }) {
-                        TextButton(onClick = { onOpen(items, items.indexOfFirst { !it.isVideo }.coerceAtLeast(0), true) }) { Text("Slayt") }
-                    }
-                    Box {
-                        IconButton(onClick = { sortMenu = true }) { Icon(Icons.Default.Sort, "Sırala") }
-                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                            MediaSort.entries.forEach { choice ->
-                                DropdownMenuItem(text = { Text(mediaSortLabel(choice)) }, onClick = { sortMenu = false; onSort(choice) })
+            if (selectedUris.isNotEmpty()) {
+                TopAppBar(
+                    title = { Text("${selectedUris.size} seçildi") },
+                    navigationIcon = {
+                        TextButton(onClick = { selectedUris = emptySet() }) { Text("✕") }
+                    },
+                    actions = {
+                        TextButton(onClick = { selectedUris = items.map { it.uri.toString() }.toSet() }) {
+                            Text("Tümü")
+                        }
+                        IconButton(onClick = ::deleteSelection) {
+                            Icon(Icons.Default.DeleteOutline, "Sil")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy800)
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${items.size} öğe • ${album.path}", style = MaterialTheme.typography.labelSmall, color = TextSecondary, maxLines = 1)
+                        }
+                    },
+                    navigationIcon = { TextButton(onClick = onBack) { Text("‹ Geri") } },
+                    actions = {
+                        IconButton(onClick = { onColumns(if (columns >= 5) 3 else columns + 1) }) { Icon(Icons.Default.ViewColumn, "Sütun") }
+                        if (items.any { !it.isVideo }) {
+                            TextButton(onClick = { onOpen(items, items.indexOfFirst { !it.isVideo }.coerceAtLeast(0), true) }) { Text("Slayt") }
+                        }
+                        Box {
+                            IconButton(onClick = { sortMenu = true }) { Icon(Icons.Default.Sort, "Sırala") }
+                            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                                MediaSort.entries.forEach { choice ->
+                                    DropdownMenuItem(text = { Text(mediaSortLabel(choice)) }, onClick = { sortMenu = false; onSort(choice) })
+                                }
                             }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy800)
-            )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy800)
+                )
+            }
         },
         containerColor = Navy900
     ) { padding ->
@@ -409,6 +478,10 @@ private fun AlbumScreen(
                 favorites = favorites,
                 columns = columns,
                 modifier = Modifier.fillMaxSize().padding(padding),
+                selectionEnabled = true,
+                selectedUris = selectedUris,
+                onToggleSelection = ::toggleSelection,
+                onSelect = ::selectItem,
                 onOpen = { index -> onOpen(items, index, false) }
             )
         }
@@ -545,12 +618,39 @@ private fun MediaGrid(
     favorites: Set<String>,
     columns: Int,
     modifier: Modifier = Modifier,
+    selectionEnabled: Boolean = false,
+    selectedUris: Set<String> = emptySet(),
+    onToggleSelection: (MediaItem) -> Unit = {},
+    onSelect: (MediaItem) -> Unit = {},
     onOpen: (Int) -> Unit
 ) {
+    val bounds = remember(items) { mutableMapOf<String, androidx.compose.ui.geometry.Rect>() }
+    val byKey = remember(items) { items.associateBy { it.uri.toString() } }
+
+    fun selectAt(point: androidx.compose.ui.geometry.Offset) {
+        val key = bounds.entries.firstOrNull { (_, rect) -> rect.contains(point) }?.key ?: return
+        byKey[key]?.let(onSelect)
+    }
+
     LazyVerticalGrid(columns = GridCells.Fixed(columns.coerceIn(3, 5)), modifier = modifier) {
         items(items.size, key = { items[it].uri.toString() }) { index ->
             val item = items[index]
-            MediaTile(item, loader, item.uri.toString() in favorites, onClick = { onOpen(index) })
+            val key = item.uri.toString()
+            MediaTile(
+                item = item,
+                loader = loader,
+                favorite = key in favorites,
+                onClick = { onOpen(index) },
+                selected = key in selectedUris,
+                selectionMode = selectedUris.isNotEmpty(),
+                selectionEnabled = selectionEnabled,
+                onToggleSelection = { onToggleSelection(item) },
+                onSelect = { onSelect(item) },
+                onDragSelectionPoint = if (selectionEnabled) ::selectAt else null,
+                onBoundsChanged = if (selectionEnabled) {
+                    { rect -> if (rect == null) bounds.remove(key) else bounds[key] = rect }
+                } else null
+            )
         }
     }
 }
@@ -611,7 +711,7 @@ private fun SettingsScreen(
                 }
             }
 
-            Text("Android 13 uyumlu • minSdk 26 • targetSdk 36 • compileSdk 36", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+            Text("Android 13 uyumlu • minSdk 26 • targetSdk 36 • compileSdk 37", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
