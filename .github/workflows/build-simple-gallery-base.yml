@@ -2,14 +2,7 @@ name: Build BestGallery Base APK
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '*/5 * * * *'
   push:
-    branches: [ main ]
-    paths:
-      - '.github/workflows/build-simple-gallery-base.yml'
-      - 'bestgallery/**'
-  pull_request:
     branches: [ main ]
     paths:
       - '.github/workflows/build-simple-gallery-base.yml'
