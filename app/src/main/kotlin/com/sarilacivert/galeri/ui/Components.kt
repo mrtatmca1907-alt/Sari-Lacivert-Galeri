@@ -2,7 +2,6 @@ package com.sarilacivert.galeri.ui
 
 import android.graphics.Bitmap
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,16 +29,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -134,15 +136,44 @@ fun MediaTile(
     loader: BitmapLoader,
     favorite: Boolean,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    selected: Boolean = false,
+    selectionMode: Boolean = false,
+    selectionEnabled: Boolean = false,
+    onToggleSelection: () -> Unit = {},
+    onSelect: () -> Unit = {},
+    onDragSelectionPoint: ((Offset) -> Unit)? = null,
+    onBoundsChanged: ((Rect?) -> Unit)? = null
 ) {
-    val context = LocalContext.current
     val key = item.uri.toString()
-    val selected = DragSelectionRegistry.isSelected(key)
+    var ownBounds by remember(key) { mutableStateOf<Rect?>(null) }
 
     DisposableEffect(key) {
-        onDispose { DragSelectionRegistry.bounds.remove(key) }
+        onDispose { onBoundsChanged?.invoke(null) }
     }
+
+    val gestureModifier = if (selectionEnabled) {
+        Modifier.pointerInput(key, selected) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = { localPoint ->
+                    if (!selected) onSelect()
+                    ownBounds?.let { rect ->
+                        onDragSelectionPoint?.invoke(
+                            Offset(rect.left + localPoint.x, rect.top + localPoint.y)
+                        )
+                    }
+                },
+                onDrag = { change, _ ->
+                    ownBounds?.let { rect ->
+                        onDragSelectionPoint?.invoke(
+                            Offset(rect.left + change.position.x, rect.top + change.position.y)
+                        )
+                    }
+                    change.consume()
+                }
+            )
+        }
+    } else Modifier
 
     Box(
         modifier = modifier
@@ -150,38 +181,13 @@ fun MediaTile(
             .aspectRatio(1f)
             .background(SurfaceAlt)
             .onGloballyPositioned { coordinates ->
-                DragSelectionRegistry.bounds[key] = coordinates.boundsInWindow()
+                val rect = coordinates.boundsInWindow()
+                ownBounds = rect
+                onBoundsChanged?.invoke(rect)
             }
-            .pointerInput(key) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { localPoint ->
-                        DragSelectionRegistry.select(key)
-                        DragSelectionRegistry.bounds[key]?.let { rect ->
-                            DragSelectionRegistry.selectAt(Offset(rect.left + localPoint.x, rect.top + localPoint.y))
-                        }
-                    },
-                    onDrag = { change, _ ->
-                        DragSelectionRegistry.bounds[key]?.let { rect ->
-                            DragSelectionRegistry.selectAt(
-                                Offset(rect.left + change.position.x, rect.top + change.position.y)
-                            )
-                        }
-                    },
-                    onDragEnd = {
-                        Toast.makeText(
-                            context,
-                            "${DragSelectionRegistry.selected.size} öğe seçildi",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                )
-            }
+            .then(gestureModifier)
             .clickable {
-                if (DragSelectionRegistry.hasSelection()) {
-                    DragSelectionRegistry.toggle(key)
-                } else {
-                    onClick()
-                }
+                if (selectionEnabled && selectionMode) onToggleSelection() else onClick()
             }
     ) {
         AsyncThumbnail(loader, item.uri, Modifier.fillMaxSize(), 240)
