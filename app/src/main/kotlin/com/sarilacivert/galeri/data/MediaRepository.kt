@@ -1,6 +1,5 @@
 package com.sarilacivert.galeri.data
 
-import android.app.RecoverableSecurityException
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
@@ -14,6 +13,8 @@ import android.provider.MediaStore
 import androidx.documentfile.provider.DocumentFile
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.DateFormat
@@ -22,6 +23,14 @@ import java.util.Locale
 
 class MediaRepository(private val context: Context) {
     private val resolver: ContentResolver = context.contentResolver
+    private val cacheMutex = Mutex()
+
+    @Volatile
+    private var mediaCache: List<MediaItem>? = null
+
+    fun invalidateCache() {
+        mediaCache = null
+    }
 
     suspend fun loadAll(
         showImages: Boolean = true,
@@ -29,10 +38,27 @@ class MediaRepository(private val context: Context) {
         includeTrashed: Boolean = false,
         onlyTrashed: Boolean = false
     ): List<MediaItem> = withContext(Dispatchers.IO) {
+        val base = if (includeTrashed || onlyTrashed) {
+            buildMediaList(includeTrashed, onlyTrashed)
+        } else {
+            mediaCache ?: cacheMutex.withLock {
+                mediaCache ?: buildMediaList(false, false).also { mediaCache = it }
+            }
+        }
+
+        when {
+            showImages && showVideos -> base
+            showImages -> base.filterNot { it.isVideo }
+            showVideos -> base.filter { it.isVideo }
+            else -> emptyList()
+        }
+    }
+
+    private fun buildMediaList(includeTrashed: Boolean, onlyTrashed: Boolean): List<MediaItem> {
         val out = ArrayList<MediaItem>(4096)
-        if (showImages) out += queryCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, includeTrashed, onlyTrashed)
-        if (showVideos) out += queryCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, includeTrashed, onlyTrashed)
-        out.sortedByDescending { maxOf(it.dateTaken, it.dateAdded) }
+        out += queryCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, includeTrashed, onlyTrashed)
+        out += queryCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, includeTrashed, onlyTrashed)
+        return out.sortedByDescending { maxOf(it.dateTaken, it.dateAdded) }
     }
 
     suspend fun loadAlbums(
@@ -96,21 +122,23 @@ class MediaRepository(private val context: Context) {
 
     fun createTrashRequest(items: Collection<MediaItem>, trash: Boolean): IntentSender? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || items.isEmpty()) return null
-        return MediaStore.createTrashRequest(resolver, items.map { it.uri }, trash).intentSender
+        return runCatching { MediaStore.createTrashRequest(resolver, items.map { it.uri }, trash).intentSender }.getOrNull()
     }
 
     fun createDeleteRequest(items: Collection<MediaItem>): IntentSender? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || items.isEmpty()) return null
-        return MediaStore.createDeleteRequest(resolver, items.map { it.uri }).intentSender
+        return runCatching { MediaStore.createDeleteRequest(resolver, items.map { it.uri }).intentSender }.getOrNull()
     }
 
     fun createWriteRequest(items: Collection<MediaItem>): IntentSender? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || items.isEmpty()) return null
-        return MediaStore.createWriteRequest(resolver, items.map { it.uri }).intentSender
+        return runCatching { MediaStore.createWriteRequest(resolver, items.map { it.uri }).intentSender }.getOrNull()
     }
 
     suspend fun deleteLegacy(item: MediaItem): Boolean = withContext(Dispatchers.IO) {
-        runCatching { resolver.delete(item.uri, null, null) > 0 }.getOrDefault(false)
+        val deleted = runCatching { resolver.delete(item.uri, null, null) > 0 }.getOrDefault(false)
+        if (deleted) invalidateCache()
+        deleted
     }
 
     suspend fun rename(item: MediaItem, newName: String): Result<Unit> = withContext(Dispatchers.IO) {
@@ -121,6 +149,7 @@ class MediaRepository(private val context: Context) {
             }
             val changed = resolver.update(item.uri, values, null, null)
             if (changed <= 0) error("Dosya adı değiştirilemedi")
+            invalidateCache()
         }
     }
 
