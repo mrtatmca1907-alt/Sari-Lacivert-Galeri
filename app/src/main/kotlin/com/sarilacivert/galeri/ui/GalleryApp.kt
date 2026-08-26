@@ -70,10 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -637,54 +634,61 @@ private fun MediaGrid(
 ) {
     val gridState = rememberLazyGridState()
     val density = LocalDensity.current
-    val edgePx = with(density) { 92.dp.toPx() }
-    val bounds = remember(items) { mutableMapOf<String, Rect>() }
-    val indexByKey = remember(items) { items.mapIndexed { index, item -> item.uri.toString() to index }.toMap() }
-    var gridBounds by remember { mutableStateOf<Rect?>(null) }
+    val edgePx = with(density) { 88.dp.toPx() }
     var dragging by remember { mutableStateOf(false) }
     var dragPoint by remember { mutableStateOf<Offset?>(null) }
     var dragStartIndex by remember { mutableStateOf<Int?>(null) }
 
-    fun indexAt(localPoint: Offset): Int? {
-        val root = gridBounds ?: return null
-        val windowPoint = Offset(root.left + localPoint.x, root.top + localPoint.y)
-        val key = bounds.entries.firstOrNull { (_, rect) -> rect.contains(windowPoint) }?.key ?: return null
-        return indexByKey[key]
+    fun indexAt(point: Offset): Int? {
+        val layout = gridState.layoutInfo
+        val hit = layout.visibleItemsInfo.firstOrNull { info ->
+            val left = info.offset.x.toFloat()
+            val top = info.offset.y.toFloat()
+            val right = left + info.size.width
+            val bottom = top + info.size.height
+            point.x >= left && point.x < right && point.y >= top && point.y < bottom
+        }
+        if (hit != null) return hit.index
+
+        val visible = layout.visibleItemsInfo
+        if (visible.isEmpty()) return null
+        return when {
+            point.y <= edgePx -> visible.minByOrNull { it.index }?.index
+            point.y >= layout.viewportSize.height - edgePx -> visible.maxByOrNull { it.index }?.index
+            else -> null
+        }
     }
 
-    fun selectRangeTo(localPoint: Offset) {
-        val currentIndex = indexAt(localPoint) ?: return
+    fun selectRangeTo(point: Offset) {
+        val currentIndex = indexAt(point)?.coerceIn(0, items.lastIndex) ?: return
         val start = dragStartIndex ?: currentIndex.also { dragStartIndex = it }
         val first = minOf(start, currentIndex)
         val last = maxOf(start, currentIndex)
         for (i in first..last) onSelect(items[i])
     }
 
-    LaunchedEffect(selectionEnabled, gridState) {
-        while (true) {
-            if (selectionEnabled && dragging) {
-                val point = dragPoint
-                val root = gridBounds
-                if (point != null && root != null) {
-                    val height = root.height
-                    val speed = when {
-                        point.y < edgePx -> {
-                            val strength = ((edgePx - point.y) / edgePx).coerceIn(0f, 1f)
-                            -(14f + 42f * strength)
-                        }
-                        point.y > height - edgePx -> {
-                            val strength = ((point.y - (height - edgePx)) / edgePx).coerceIn(0f, 1f)
-                            14f + 42f * strength
-                        }
-                        else -> 0f
+    LaunchedEffect(dragging, selectionEnabled) {
+        while (dragging && selectionEnabled) {
+            val point = dragPoint
+            if (point != null) {
+                val viewportHeight = gridState.layoutInfo.viewportSize.height.toFloat()
+                val speed = when {
+                    point.y < edgePx -> {
+                        val strength = ((edgePx - point.y) / edgePx).coerceIn(0f, 1f)
+                        -(10f + 34f * strength)
                     }
-                    if (speed != 0f) {
-                        val moved = gridState.scrollBy(speed)
-                        if (moved != 0f) selectRangeTo(point)
+                    point.y > viewportHeight - edgePx -> {
+                        val strength = ((point.y - (viewportHeight - edgePx)) / edgePx).coerceIn(0f, 1f)
+                        10f + 34f * strength
                     }
+                    else -> 0f
+                }
+                if (speed != 0f) {
+                    val moved = gridState.scrollBy(speed)
+                    if (moved != 0f) selectRangeTo(point)
                 }
             }
-            delay(16)
+            delay(24)
         }
     }
 
@@ -719,9 +723,7 @@ private fun MediaGrid(
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns.coerceIn(3, 5)),
         state = gridState,
-        modifier = modifier
-            .onGloballyPositioned { gridBounds = it.boundsInWindow() }
-            .then(selectionModifier)
+        modifier = modifier.then(selectionModifier)
     ) {
         items(items.size, key = { items[it].uri.toString() }) { index ->
             val item = items[index]
@@ -734,10 +736,7 @@ private fun MediaGrid(
                 selected = key in selectedUris,
                 selectionMode = selectedUris.isNotEmpty(),
                 selectionEnabled = selectionEnabled,
-                onToggleSelection = { onToggleSelection(item) },
-                onBoundsChanged = if (selectionEnabled) {
-                    { rect -> if (rect == null) bounds.remove(key) else bounds[key] = rect }
-                } else null
+                onToggleSelection = { onToggleSelection(item) }
             )
         }
     }
