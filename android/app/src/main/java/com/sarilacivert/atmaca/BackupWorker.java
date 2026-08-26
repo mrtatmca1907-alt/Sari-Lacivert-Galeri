@@ -1,33 +1,52 @@
 package com.sarilacivert.atmaca;
 
-import android.content.ContentUris;
 import android.content.Context;
-import android.database.Cursor;
+import android.content.SharedPreferences;
 import android.net.Uri;
-import android.provider.MediaStore;
 
 import androidx.annotation.NonNull;
+import androidx.documentfile.provider.DocumentFile;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
+import java.util.ArrayDeque;
+
 public class BackupWorker extends Worker {
     public BackupWorker(@NonNull Context c, @NonNull WorkerParameters p) { super(c,p); }
+
     @NonNull @Override public Result doWork() {
-        scan(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "Fotoğraflar");
-        scan(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "Videolar");
-        MainActivity.startUploader(getApplicationContext());
-        return Result.success();
-    }
-    private void scan(Uri collection, String type) {
-        String[] proj={MediaStore.MediaColumns._ID,MediaStore.MediaColumns.DISPLAY_NAME,MediaStore.MediaColumns.SIZE,MediaStore.MediaColumns.DATE_MODIFIED,MediaStore.MediaColumns.BUCKET_DISPLAY_NAME};
-        try(Cursor c=getApplicationContext().getContentResolver().query(collection,proj,null,null,MediaStore.MediaColumns.DATE_MODIFIED+" ASC")){
-            if(c==null)return; QueueDb q=new QueueDb(getApplicationContext());
-            int idI=c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID), nameI=c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME), sizeI=c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE), timeI=c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED), bucketI=c.getColumnIndex(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME);
-            while(c.moveToNext()){
-                long id=c.getLong(idI), size=c.getLong(sizeI), mt=c.getLong(timeI)*1000L; String name=safe(c.getString(nameI)); String bucket=bucketI>=0?safe(c.getString(bucketI)):"Galeri";
-                Uri uri=ContentUris.withAppendedId(collection,id); q.enqueue(uri.toString(),"Telefon/"+type+"/"+bucket+"/"+name,size,mt);
+        Context ctx=getApplicationContext();
+        SharedPreferences prefs=ctx.getSharedPreferences("atmaca",Context.MODE_PRIVATE);
+        String value=prefs.getString("auto_tree_uri","");
+        if(value==null||value.isEmpty()) return Result.success();
+        try{
+            Uri tree=Uri.parse(value);
+            DocumentFile root=DocumentFile.fromTreeUri(ctx,tree);
+            if(root==null||!root.exists()) return Result.failure();
+            QueueDb q=new QueueDb(ctx);
+            String rootName=MainActivity.safe(root.getName());
+            ArrayDeque<Node> stack=new ArrayDeque<>();
+            stack.push(new Node(root,"Otomatik/"+rootName));
+            while(!stack.isEmpty()){
+                Node n=stack.pop();
+                DocumentFile[] children;
+                try{ children=n.file.listFiles(); }catch(Exception e){ continue; }
+                for(DocumentFile f:children){
+                    String path=n.path+"/"+MainActivity.safe(f.getName());
+                    if(f.isDirectory()) stack.push(new Node(f,path));
+                    else if(f.isFile()) q.enqueue(f.getUri().toString(),path,Math.max(0,f.length()),Math.max(0,f.lastModified()));
+                }
             }
-        } catch(Exception ignored){}
+            MainActivity.startUploader(ctx);
+            return Result.success();
+        }catch(Exception e){
+            return Result.retry();
+        }
     }
-    private String safe(String s){ if(s==null||s.trim().isEmpty())return "Bilinmeyen"; return s.replace("/","_").replace("\\","_"); }
+
+    static class Node{
+        final DocumentFile file;
+        final String path;
+        Node(DocumentFile f,String p){file=f;path=p;}
+    }
 }
