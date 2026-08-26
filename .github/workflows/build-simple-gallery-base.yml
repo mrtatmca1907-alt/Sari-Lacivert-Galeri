@@ -1,0 +1,66 @@
+name: Build Simple Gallery Base APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-simple-gallery-base.yml'
+      - 'simplebase/**'
+
+jobs:
+  build-simple-base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Bu repoyu al
+        uses: actions/checkout@v5
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: API 34 kur
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Simple Gallery 6.28.1 kaynagini al
+        run: |
+          git clone --depth 1 --branch 6.28.1 https://github.com/SimpleMobileTools/Simple-Gallery.git simple-gallery-upstream
+
+      - name: Paket ve uygulama adini ayir
+        working-directory: simple-gallery-upstream
+        run: |
+          # Namespace/source paketleri upstream olarak kalir; sadece kurulabilir uygulama kimligi degisir.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/build.gradle.kts')
+          s = p.read_text()
+          s = s.replace('applicationId = libs.versions.app.version.appId.get()', 'applicationId = "com.sarilacivert.simplegallery"', 1)
+          p.write_text(s)
+
+          for f in Path('app/src').rglob('strings.xml'):
+              t = f.read_text(errors='ignore')
+              if '<string name="app_name">' in t:
+                  import re
+                  t = re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">Sarı Lacivert Galeri</string>', t, count=1)
+                  f.write_text(t)
+          PY
+
+      - name: FOSS Debug APK derle
+        working-directory: simple-gallery-upstream
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleFossDebug --stacktrace
+
+      - name: APK artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sari-Lacivert-Galeri-SimpleBase-APK
+          path: simple-gallery-upstream/app/build/outputs/apk/foss/debug/*.apk
+          if-no-files-found: error
