@@ -13,13 +13,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FindReplace
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -91,12 +92,12 @@ fun DuplicatesScreen(
                 stage = info.progress.getString(DuplicateScanWorker.KEY_STAGE) ?: when (info.state) {
                     WorkInfo.State.SUCCEEDED -> "Tamamlandı"
                     WorkInfo.State.FAILED -> "Tarama hata verdi"
-                    WorkInfo.State.CANCELLED -> "Tarama iptal edildi"
+                    WorkInfo.State.CANCELLED -> "Tarama durduruldu"
                     else -> stage
                 }
                 if (info.state == WorkInfo.State.SUCCEEDED) refreshResults()
             }
-            delay(if (running) 1000 else 3000)
+            delay(if (running) 700 else 2500)
         }
     }
 
@@ -109,6 +110,12 @@ fun DuplicatesScreen(
         refreshToken++
     }
 
+    fun stopScan() {
+        workManager.cancelUniqueWork(DuplicateScanWorker.UNIQUE_WORK)
+        stage = "Tarama durduruluyor…"
+        running = false
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -119,10 +126,18 @@ fun DuplicatesScreen(
                     }
                 },
                 actions = {
-                    Button(onClick = ::startScan, enabled = !running) {
-                        Icon(if (groups.isEmpty()) Icons.Default.FindReplace else Icons.Default.Refresh, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (groups.isEmpty()) "Tara" else "Yeniden tara")
+                    if (running) {
+                        Button(onClick = ::stopScan) {
+                            Icon(Icons.Default.Stop, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Durdur")
+                        }
+                    } else {
+                        Button(onClick = ::startScan) {
+                            Icon(if (groups.isEmpty()) Icons.Default.FindReplace else Icons.Default.Refresh, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (groups.isEmpty()) "Tara" else "Yeniden tara")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy800)
@@ -132,7 +147,7 @@ fun DuplicatesScreen(
         containerColor = Navy900
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (running || progress in 1..99) {
+            if (running || progress in 1..99 || stage == "Tarama durduruluyor…") {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Text(stage, color = TextPrimary)
                     Spacer(Modifier.height(6.dp))
