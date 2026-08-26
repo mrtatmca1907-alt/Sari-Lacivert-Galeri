@@ -2,9 +2,11 @@ package com.sarilacivert.galeri.ui
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -130,6 +132,7 @@ fun AlbumCard(album: Album, loader: BitmapLoader, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaTile(
     item: MediaItem,
@@ -186,9 +189,14 @@ fun MediaTile(
                 onBoundsChanged?.invoke(rect)
             }
             .then(gestureModifier)
-            .clickable {
-                if (selectionEnabled && selectionMode) onToggleSelection() else onClick()
-            }
+            .combinedClickable(
+                onClick = {
+                    if (selectionEnabled && selectionMode) onToggleSelection() else onClick()
+                },
+                onLongClick = {
+                    if (selectionEnabled) onSelect()
+                }
+            )
     ) {
         AsyncThumbnail(loader, item.uri, Modifier.fillMaxSize(), 240)
 
