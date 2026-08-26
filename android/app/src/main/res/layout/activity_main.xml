@@ -18,17 +18,17 @@
 
         <Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="BAĞLANTIYI KAYDET" android:layout_marginTop="10dp"/>
+        <Button android:id="@+id/cloudFiles" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="BULUT DOSYALARIM" android:layout_marginTop="10dp"/>
         <Button android:id="@+id/pickFiles" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="DOSYA / FOTO / VİDEO YÜKLE" android:layout_marginTop="10dp"/>
+            android:text="DOSYA YÖNETİCİSİNDEN DOSYA SEÇ" android:layout_marginTop="8dp"/>
         <Button android:id="@+id/pickFolder" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="KLASÖRÜ TAMAMEN YÜKLE" android:layout_marginTop="8dp"/>
-        <Button android:id="@+id/backupGallery" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="GALERİYİ YEDEKLE" android:layout_marginTop="8dp"/>
-        <Button android:id="@+id/openPanel" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="BULUT PANELİNİ AÇ" android:layout_marginTop="8dp"/>
+            android:text="DOSYA YÖNETİCİSİNDEN KLASÖR YÜKLE" android:layout_marginTop="8dp"/>
+        <Button android:id="@+id/chooseAutoFolder" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="OTOMATİK YEDEK KLASÖRÜNÜ SEÇ" android:layout_marginTop="8dp"/>
 
         <Switch android:id="@+id/autoBackup" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Fotoğraf/video otomatik yedekleme" android:textColor="@color/text_primary" android:layout_marginTop="12dp"/>
+            android:text="Seçili klasörü otomatik yedekle" android:textColor="@color/text_primary" android:layout_marginTop="12dp"/>
         <Switch android:id="@+id/wifiOnly" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="Yalnızca Wi‑Fi ile yükle" android:textColor="@color/text_primary" android:checked="true"/>
 
