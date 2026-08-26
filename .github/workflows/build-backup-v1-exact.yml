@@ -1,0 +1,46 @@
+name: Build Exact Backup V1 APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-backup-v1-exact.yml'
+
+jobs:
+  build-exact-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Eski yedegi aynen al
+        uses: actions/checkout@v4
+        with:
+          ref: backup-before-v2-0573799
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: API 35 kur
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.7 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Eski kaynakta hicbir degisiklik yapmadan APK derle
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: APK artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sari-Lacivert-Galeri-Eski-V1-Aynen
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
