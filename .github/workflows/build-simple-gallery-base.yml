@@ -17,17 +17,23 @@ jobs:
       - name: Bu repoyu al
         uses: actions/checkout@v5
 
-      - name: Java 8 kur
+      - name: SDK icin Java 17 kur
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '8'
+          java-version: '17'
 
       - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
       - name: API 28 kur
         run: sdkmanager "platforms;android-28" "build-tools;28.0.3"
+
+      - name: Eski Gradle icin Java 8 kur
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '8'
 
       - name: BestGallery kaynagini al
         run: git clone --depth 1 https://github.com/JustinBeeper/BestGallery.git bestgallery-upstream
@@ -39,12 +45,10 @@ jobs:
           from pathlib import Path
           import re
 
-          # Uygulamayı kaynak paketlerine dokunmadan ayrı kimlikle kur.
           p = Path('app/build.gradle')
           s = p.read_text()
           s = s.replace('applicationId "com.eagle.gallery.photos.videos.album.hd.gallery.editor"', 'applicationId "com.sarilacivert.bestgallery"')
 
-          # Telemetri / reklam bağımlılıklarını kaldır.
           for dep in [
               "implementation 'com.tencent.bugly:crashreport:2.3.1'",
               "implementation 'com.google.firebase:firebase-core:16.0.0'",
@@ -53,35 +57,30 @@ jobs:
           ]:
               s = s.replace(dep, '')
 
-          # JCenter'dan kaybolmuş VR kütüphaneleri yerel AAR olarak eklenecek.
           s = s.replace("implementation 'com.google.vr:sdk-panowidget:1.180.0'", '')
           s = s.replace("implementation 'com.google.vr:sdk-videowidget:1.180.0'", '')
           if "implementation fileTree(dir: 'libs', include: ['*.aar'])" not in s:
               s = s.replace('dependencies {', "dependencies {\n    implementation fileTree(dir: 'libs', include: ['*.aar'])\n    implementation 'com.google.protobuf.nano:protobuf-javanano:3.1.0'")
           p.write_text(s)
 
-          # App adını değiştir.
           strings = Path('app/src/main/res/values/strings.xml')
           t = strings.read_text()
           t = re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">Sarı Lacivert Galeri</string>', t, count=1)
           t = re.sub(r'<string name="app_launcher_name">.*?</string>', '<string name="app_launcher_name">Sarı Lacivert Galeri</string>', t, count=1)
           strings.write_text(t)
 
-          # Firebase başlangıcını kaldır.
           app = Path('app/src/main/kotlin/com/eagle/gallery/pro/App.kt')
           a = app.read_text()
           a = a.replace('import com.google.firebase.FirebaseApp\n', '')
           a = re.sub(r'\n\s*Thread \{\s*FirebaseApp\.initializeApp\(this\)\s*\}\.start\(\)\s*\n', '\n', a, flags=re.S)
           app.write_text(a)
 
-          # Manifestten reklam aktivitesi ve GMS meta verisini kaldır, internet izinlerini de gereksizse sök.
           manifest = Path('app/src/main/AndroidManifest.xml')
           m = manifest.read_text()
           m = re.sub(r'\s*<meta-data\s+android:name="com\.google\.android\.gms\.version"\s+android:value="@integer/google_play_services_version"\s*/>', '', m, flags=re.S)
           m = re.sub(r'\s*<activity\s+android:name="com\.google\.android\.gms\.ads\.AdActivity".*?/>', '', m, flags=re.S)
           manifest.write_text(m)
 
-          # Eski depo aynaları: derlenebilirlik için, uygulama çalışma zamanı ağına bağlı değil.
           root = Path('build.gradle')
           r = root.read_text()
           marker = 'maven { url "https://jitpack.io" }'
