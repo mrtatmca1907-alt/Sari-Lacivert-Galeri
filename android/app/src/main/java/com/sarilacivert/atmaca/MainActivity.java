@@ -28,6 +28,10 @@ import androidx.work.WorkManager;
 import java.util.ArrayDeque;
 import java.util.concurrent.TimeUnit;
 
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+
 public class MainActivity extends AppCompatActivity {
     private EditText serverUrl, token;
     private TextView status;
@@ -98,7 +102,7 @@ public class MainActivity extends AppCompatActivity {
             if(autoBackup.isChecked()) scheduleAuto();
         });
 
-        save.setOnClickListener(v->{ savePrefs(); status.setText("Bağlantı kaydedildi."); });
+        save.setOnClickListener(v->saveAndTestConnection(save));
         pickFiles.setOnClickListener(v->openFiles());
         pickFolder.setOnClickListener(v->openTree(treePicker));
         chooseAutoFolder.setOnClickListener(v->openTree(autoTreePicker));
@@ -125,12 +129,69 @@ public class MainActivity extends AppCompatActivity {
 
     private void savePrefs(){
         String url=serverUrl.getText().toString().trim().replaceAll("/+$","");
+        if(url.startsWith("https://10.") || url.startsWith("https://192.168.")){
+            url="http://"+url.substring(8);
+            serverUrl.setText(url);
+        }
         prefs.edit()
                 .putString("url",url)
                 .putString("token",token.getText().toString().trim())
                 .putBoolean("wifi",wifiOnly.isChecked())
                 .putBoolean("auto",autoBackup.isChecked())
                 .apply();
+    }
+
+    private void saveAndTestConnection(Button saveButton){
+        savePrefs();
+        String url=prefs.getString("url","");
+        String t=prefs.getString("token","");
+
+        if(url.isEmpty() || t.isEmpty()){
+            status.setText("Sunucu adresi veya anahtar eksik.");
+            Toast.makeText(this,"Sunucu adresi ve anahtarı gir",Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        status.setText("Bağlantı deneniyor…");
+        saveButton.setEnabled(false);
+
+        new Thread(()->{
+            OkHttpClient client=new OkHttpClient.Builder()
+                    .connectTimeout(6,TimeUnit.SECONDS)
+                    .readTimeout(8,TimeUnit.SECONDS)
+                    .build();
+            Request req=new Request.Builder()
+                    .url(url+"/api/status")
+                    .header("Authorization","Bearer "+t)
+                    .get()
+                    .build();
+
+            String message;
+            boolean ok=false;
+            try(Response r=client.newCall(req).execute()){
+                if(r.isSuccessful()){
+                    ok=true;
+                    message="BAĞLANDI ✅";
+                }else if(r.code()==401 || r.code()==403){
+                    message="ANAHTAR YANLIŞ ❌";
+                }else{
+                    message="SUNUCU HATASI: "+r.code()+" ❌";
+                }
+            }catch(Exception e){
+                message="BAĞLANTI YOK ❌";
+            }
+
+            final boolean connected=ok;
+            final String result=message;
+            runOnUiThread(()->{
+                saveButton.setEnabled(true);
+                status.setText(result);
+                Toast.makeText(this,result,Toast.LENGTH_LONG).show();
+                if(connected){
+                    prefs.edit().putBoolean("connected_once",true).apply();
+                }
+            });
+        }).start();
     }
 
     private void openFiles(){
