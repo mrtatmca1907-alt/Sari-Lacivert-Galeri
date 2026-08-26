@@ -2,6 +2,9 @@ name: Build BestGallery Base APK
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Build Sari Lacivert Galeri V2 APK"]
+    types: [completed]
   push:
     branches: [ main ]
     paths:
@@ -38,10 +41,10 @@ jobs:
       - name: BestGallery kaynagini al
         run: git clone --depth 1 https://github.com/JustinBeeper/BestGallery.git bestgallery-upstream
 
-      - name: V7 hizli MediaStore motorunu uygula
+      - name: V8 sonsuz spinner duzeltmesini uygula
         working-directory: bestgallery-upstream
         run: |
-          python3 ../bestgallery/patch_v7.py
+          python3 ../bestgallery/patch_v8.py
           mkdir -p app/libs
           BASE="https://raw.githubusercontent.com/googlevr/gvr-android-sdk/25a0c20415bd3854b76f3e0e55f73d36cdc076fd/libraries"
           curl -L --fail "$BASE/sdk-common-1.180.0.aar" -o app/libs/sdk-common-1.180.0.aar
@@ -58,6 +61,6 @@ jobs:
       - name: APK artifact yukle
         uses: actions/upload-artifact@v4
         with:
-          name: Sari-Lacivert-Galeri-V7-Hizli-Media-APK
+          name: Sari-Lacivert-Galeri-V8-Spinner-Fix-APK
           path: bestgallery-upstream/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
