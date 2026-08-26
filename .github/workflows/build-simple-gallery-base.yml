@@ -38,10 +38,10 @@ jobs:
       - name: BestGallery kaynagini al
         run: git clone --depth 1 https://github.com/JustinBeeper/BestGallery.git bestgallery-upstream
 
-      - name: Modern V5 MediaStore motorunu uygula
+      - name: V6 Android 13 MediaStore motorunu uygula
         working-directory: bestgallery-upstream
         run: |
-          python3 ../bestgallery/patch_v5_fun.py
+          python3 ../bestgallery/patch_v6.py
           mkdir -p app/libs
           BASE="https://raw.githubusercontent.com/googlevr/gvr-android-sdk/25a0c20415bd3854b76f3e0e55f73d36cdc076fd/libraries"
           curl -L --fail "$BASE/sdk-common-1.180.0.aar" -o app/libs/sdk-common-1.180.0.aar
@@ -58,6 +58,6 @@ jobs:
       - name: APK artifact yukle
         uses: actions/upload-artifact@v4
         with:
-          name: Sari-Lacivert-Galeri-V5-Atmaca-Modern-Motor-APK
+          name: Sari-Lacivert-Galeri-V6-Android13-MediaStore-APK
           path: bestgallery-upstream/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
