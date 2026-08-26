@@ -1,0 +1,57 @@
+name: Build Hızlı Klasör Galeri APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'gallery-fast/**'
+      - '.github/workflows/build-gallery-fast.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Araçları al
+        uses: actions/checkout@v4
+        with:
+          path: tooling
+
+      - name: Eski çalışan V1 yedeğini al
+        uses: actions/checkout@v4
+        with:
+          ref: backup-before-v2-0573799
+          path: appsrc
+
+      - name: Hızlı klasör ve silme yamasını uygula
+        run: python3 tooling/gallery-fast/patch_fast.py
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: API 35 kur
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.7 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: APK derle
+        working-directory: appsrc
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: APK artifact yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sari-Lacivert-Galeri-Hizli-Klasor-APK
+          path: appsrc/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
