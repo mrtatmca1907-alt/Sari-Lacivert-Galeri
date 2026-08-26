@@ -1,0 +1,38 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@color/navy_900">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="20dp">
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="ATMACA" android:textSize="30sp" android:textStyle="bold" android:textColor="@color/yellow_500"/>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Kişisel Bulut Depolama" android:textSize="15sp" android:textColor="@color/text_secondary" android:layout_marginBottom="18dp"/>
+
+        <EditText android:id="@+id/serverUrl" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="http://192.168.1.50:8765" android:textColor="@color/text_primary" android:textColorHint="@color/text_secondary"
+            android:backgroundTint="@color/yellow_500" android:inputType="textUri"/>
+        <EditText android:id="@+id/token" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="Sunucu anahtarı" android:textColor="@color/text_primary" android:textColorHint="@color/text_secondary"
+            android:backgroundTint="@color/yellow_500" android:inputType="textPassword" android:layout_marginTop="8dp"/>
+
+        <Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="BAĞLANTIYI KAYDET" android:layout_marginTop="10dp"/>
+        <Button android:id="@+id/pickFiles" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="DOSYA / FOTO / VİDEO YÜKLE" android:layout_marginTop="10dp"/>
+        <Button android:id="@+id/pickFolder" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="KLASÖRÜ TAMAMEN YÜKLE" android:layout_marginTop="8dp"/>
+        <Button android:id="@+id/backupGallery" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="GALERİYİ YEDEKLE" android:layout_marginTop="8dp"/>
+        <Button android:id="@+id/openPanel" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="BULUT PANELİNİ AÇ" android:layout_marginTop="8dp"/>
+
+        <Switch android:id="@+id/autoBackup" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Fotoğraf/video otomatik yedekleme" android:textColor="@color/text_primary" android:layout_marginTop="12dp"/>
+        <Switch android:id="@+id/wifiOnly" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Yalnızca Wi‑Fi ile yükle" android:textColor="@color/text_primary" android:checked="true"/>
+
+        <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Hazır" android:textColor="@color/text_secondary" android:textSize="15sp" android:layout_marginTop="18dp"/>
+    </LinearLayout>
+</ScrollView>
