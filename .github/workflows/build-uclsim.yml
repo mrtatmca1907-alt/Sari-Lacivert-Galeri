@@ -1,0 +1,46 @@
+name: Build UCL Kura Simulatoru APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'uclsim/**'
+      - '.github/workflows/build-uclsim.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v5
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: API 35 kur
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.10.2 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: APK derle
+        working-directory: uclsim
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: APK artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: UCL-Kura-Simulatoru-APK
+          path: uclsim/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
