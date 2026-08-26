@@ -2,8 +2,11 @@ package com.sarilacivert.galeri.ui
 
 import android.graphics.Bitmap
 import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,17 +28,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Image
 import com.sarilacivert.galeri.data.Album
 import com.sarilacivert.galeri.data.BitmapLoader
 import com.sarilacivert.galeri.data.MediaItem
@@ -46,7 +54,7 @@ fun AsyncThumbnail(
     loader: BitmapLoader,
     uri: Uri,
     modifier: Modifier = Modifier,
-    sizePx: Int = 480,
+    sizePx: Int = 320,
     contentScale: ContentScale = ContentScale.Crop
 ) {
     val bitmap by produceState<Bitmap?>(initialValue = null, uri, sizePx) {
@@ -81,7 +89,8 @@ fun AlbumCard(album: Album, loader: BitmapLoader, onClick: () -> Unit) {
                 AsyncThumbnail(
                     loader = loader,
                     uri = album.coverUri,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1.15f)
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1.15f),
+                    sizePx = 320
                 )
                 if (album.hasVideo) {
                     Box(
@@ -127,14 +136,75 @@ fun MediaTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val key = item.uri.toString()
+    val selected = DragSelectionRegistry.isSelected(key)
+
+    DisposableEffect(key) {
+        onDispose { DragSelectionRegistry.bounds.remove(key) }
+    }
+
     Box(
         modifier = modifier
             .padding(1.dp)
             .aspectRatio(1f)
             .background(SurfaceAlt)
-            .clickable(onClick = onClick)
+            .onGloballyPositioned { coordinates ->
+                DragSelectionRegistry.bounds[key] = coordinates.boundsInWindow()
+            }
+            .pointerInput(key) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { localPoint ->
+                        DragSelectionRegistry.select(key)
+                        DragSelectionRegistry.bounds[key]?.let { rect ->
+                            DragSelectionRegistry.selectAt(Offset(rect.left + localPoint.x, rect.top + localPoint.y))
+                        }
+                    },
+                    onDrag = { change, _ ->
+                        DragSelectionRegistry.bounds[key]?.let { rect ->
+                            DragSelectionRegistry.selectAt(
+                                Offset(rect.left + change.position.x, rect.top + change.position.y)
+                            )
+                        }
+                    },
+                    onDragEnd = {
+                        Toast.makeText(
+                            context,
+                            "${DragSelectionRegistry.selected.size} öğe seçildi",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                )
+            }
+            .clickable {
+                if (DragSelectionRegistry.hasSelection()) {
+                    DragSelectionRegistry.toggle(key)
+                } else {
+                    onClick()
+                }
+            }
     ) {
-        AsyncThumbnail(loader, item.uri, Modifier.fillMaxSize(), 420)
+        AsyncThumbnail(loader, item.uri, Modifier.fillMaxSize(), 240)
+
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Yellow500.copy(alpha = 0.22f))
+            )
+            Text(
+                "✓",
+                color = TextPrimary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .background(Navy800.copy(alpha = 0.92f), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
+            )
+        }
+
         if (item.isVideo) {
             Row(
                 modifier = Modifier
