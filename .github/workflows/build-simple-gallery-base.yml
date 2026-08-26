@@ -38,13 +38,13 @@ jobs:
           distribution: temurin
           java-version: '8'
 
-      - name: BestGallery kaynagini al
+      - name: Eski calisan BestGallery kaynagini al
         run: git clone --depth 1 https://github.com/JustinBeeper/BestGallery.git bestgallery-upstream
 
-      - name: V9 Android 13 MediaStore motorunu uygula
+      - name: Klasik tazeleme uygula
         working-directory: bestgallery-upstream
         run: |
-          python3 ../bestgallery/patch_v9.py
+          python3 ../bestgallery/patch_classic_refresh.py
           mkdir -p app/libs
           BASE="https://raw.githubusercontent.com/googlevr/gvr-android-sdk/25a0c20415bd3854b76f3e0e55f73d36cdc076fd/libraries"
           curl -L --fail "$BASE/sdk-common-1.180.0.aar" -o app/libs/sdk-common-1.180.0.aar
@@ -61,6 +61,6 @@ jobs:
       - name: APK artifact yukle
         uses: actions/upload-artifact@v4
         with:
-          name: Sari-Lacivert-Galeri-V9-Android13-Direct-APK
+          name: Sari-Lacivert-Galeri-Klasik-Tazelenmis-APK
           path: bestgallery-upstream/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
