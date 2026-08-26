@@ -41,7 +41,7 @@ jobs:
       - name: Modern V5 MediaStore motorunu uygula
         working-directory: bestgallery-upstream
         run: |
-          python3 ../bestgallery/patch_v5.py
+          python3 ../bestgallery/patch_v5_fun.py
           mkdir -p app/libs
           BASE="https://raw.githubusercontent.com/googlevr/gvr-android-sdk/25a0c20415bd3854b76f3e0e55f73d36cdc076fd/libraries"
           curl -L --fail "$BASE/sdk-common-1.180.0.aar" -o app/libs/sdk-common-1.180.0.aar
