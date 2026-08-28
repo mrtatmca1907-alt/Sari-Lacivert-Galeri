@@ -185,6 +185,7 @@ class DownloadService : Service() {
                 db.jobs().setState(job.id, "POST_PROCESSING", System.currentTimeMillis(), null, null, 0, job.attempt)
                 runCatching { publisher.publishTree(parsed.platform.name, job.sourceKey, data.tempDir) }
                     .onSuccess { published ->
+                        val errorCount = (job.failedCount + data.itemErrors).coerceAtLeast(0)
                         db.jobs().updateProgress(
                             job.id,
                             100f,
@@ -194,10 +195,18 @@ class DownloadService : Service() {
                             published.files,
                             published.photos,
                             published.videos,
-                            job.failedCount,
+                            errorCount,
                             System.currentTimeMillis()
                         )
-                        db.jobs().setState(job.id, "COMPLETED", System.currentTimeMillis(), null, null, 0, job.attempt)
+                        db.jobs().setState(
+                            job.id,
+                            "COMPLETED",
+                            System.currentTimeMillis(),
+                            if (data.itemErrors > 0) "PARTIAL" else null,
+                            data.partialError?.take(1200),
+                            0,
+                            job.attempt
+                        )
                         data.tempDir.deleteRecursively()
                     }
                     .onFailure { throwable -> handleFailure(job, throwable) }
