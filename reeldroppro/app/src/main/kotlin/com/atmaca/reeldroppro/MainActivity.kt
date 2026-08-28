@@ -17,9 +17,11 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.atmaca.reeldroppro.cookie.CookieModePolicy
 import com.atmaca.reeldroppro.core.InputParser
 import com.atmaca.reeldroppro.data.AppDatabase
 import com.atmaca.reeldroppro.data.JobEntity
@@ -32,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
     private lateinit var db: AppDatabase
@@ -39,6 +42,33 @@ class MainActivity : AppCompatActivity() {
     private val navy = Color.rgb(5, 24, 63)
     private val yellow = Color.rgb(255, 215, 0)
     private val panel = Color.rgb(13, 42, 88)
+    private lateinit var cookieStatus: TextView
+
+    private val cookiePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                    input.readBytes()
+                } ?: error("Dosya okunamadı")
+                require(bytes.size <= 2 * 1024 * 1024) { "Cookie dosyası çok büyük" }
+                val text = bytes.toString(Charsets.UTF_8)
+                require(CookieModePolicy.looksUsable(text)) { "Geçerli Instagram cookies.txt bulunamadı" }
+                val target = cookieFile()
+                target.parentFile?.mkdirs()
+                target.writeBytes(bytes)
+                target
+            }
+            withContext(Dispatchers.Main) {
+                result.onSuccess {
+                    refreshCookieStatus()
+                    Toast.makeText(this@MainActivity, "Instagram cookie yüklendi", Toast.LENGTH_SHORT).show()
+                }.onFailure {
+                    Toast.makeText(this@MainActivity, it.message ?: "Cookie yüklenemedi", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 
     data class SlotViews(
         val mode: Spinner,
@@ -52,8 +82,11 @@ class MainActivity : AppCompatActivity() {
         db = AppDatabase.get(this)
         setContentView(buildUi())
         askNotificationPermission()
+        refreshCookieStatus()
         observeSlots()
     }
+
+    private fun cookieFile(): File = File(filesDir, "reeldrop-pro/auth/instagram-cookies.txt")
 
     private fun buildUi(): ScrollView {
         val scroll = ScrollView(this).apply { setBackgroundColor(navy) }
@@ -78,15 +111,57 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(4), 0, dp(14))
         })
 
+        val authBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setBackgroundColor(panel)
+        }
+        authBox.addView(TextView(this).apply {
+            text = "INSTAGRAM COOKIE MODU"
+            textSize = 17f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(yellow)
+        })
+        cookieStatus = TextView(this).apply {
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(5), 0, dp(8))
+        }
+        authBox.addView(cookieStatus)
+        val cookieButtons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        cookieButtons.addView(Button(this).apply {
+            text = "COOKIE DOSYASI SEÇ"
+            setOnClickListener { cookiePicker.launch("*/*") }
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(4) })
+        cookieButtons.addView(Button(this).apply {
+            text = "COOKIE SİL"
+            setOnClickListener {
+                cookieFile().delete()
+                refreshCookieStatus()
+                Toast.makeText(this@MainActivity, "Instagram cookie silindi", Toast.LENGTH_SHORT).show()
+            }
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(4) })
+        authBox.addView(cookieButtons)
+        root.addView(authBox, lp(dp(4)))
+
         for (slotId in 1..5) root.addView(buildSlot(slotId), lp(dp(10)))
 
         root.addView(TextView(this).apply {
-            text = "İndirme sürerken uygulamadan çıksan veya ekran kapansa da aktif motorlar foreground servis ile çalışmaya devam eder."
+            text = "Cookie yalnızca bu uygulamanın özel depolamasında tutulur. 5 Instagram motoru aynı oturumu kullanır."
             setTextColor(Color.LTGRAY)
             textSize = 12f
             setPadding(dp(4), dp(16), dp(4), 0)
         })
         return scroll
+    }
+
+    private fun refreshCookieStatus() {
+        if (!::cookieStatus.isInitialized) return
+        cookieStatus.text = if (cookieFile().isFile) {
+            "Durum: YÜKLÜ • Instagram profil/hashtag motorlarında kullanılacak"
+        } else {
+            "Durum: YOK • Instagram giriş yönlendirmesi alırsa cookies.txt seç"
+        }
     }
 
     private fun buildSlot(slotId: Int): LinearLayout {
