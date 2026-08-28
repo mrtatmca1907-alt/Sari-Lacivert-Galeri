@@ -35,8 +35,7 @@ class GalleryDlEngine(private val context: Context) {
         runCatching {
             require(input.platform == Platform.INSTAGRAM_PROFILE || input.platform == Platform.INSTAGRAM_HASHTAG)
             ensurePython()
-            val py = Python.getInstance()
-            val module = py.getModule("gallery_bridge")
+            val module = Python.getInstance().getModule("gallery_bridge")
             val raw = module.callAttr(
                 "run_download",
                 slotId,
@@ -47,11 +46,21 @@ class GalleryDlEngine(private val context: Context) {
             ).toString()
             val result = JSONObject(raw)
             if (result.optBoolean("cancelled", false)) throw SlotCancelledException()
+
             val status = result.optInt("status", 1)
+            val partial = result.optBoolean("partial_success", false)
             val log = result.optString("log", "")
             val error = result.optString("error", "")
-            if (status != 0) throw RuntimeException(error.ifBlank { log.ifBlank { "gallery-dl çıkış kodu: $status" } })
-            ExtractorEngine.ResultData(log, File(result.getString("source_dir")))
+            val errorCount = result.optInt("error_count", 0)
+            if (status != 0 && !partial) {
+                throw RuntimeException(error.ifBlank { log.ifBlank { "gallery-dl çıkış kodu: $status" } })
+            }
+            ExtractorEngine.ResultData(
+                stdout = log,
+                tempDir = File(result.getString("source_dir")),
+                itemErrors = errorCount,
+                partialError = error.takeIf { partial && it.isNotBlank() }
+            )
         }
     }
 
