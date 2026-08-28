@@ -14,12 +14,21 @@ import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.*
 
 class MainActivity : Activity() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val refreshGate = RefreshGate()
     private lateinit var adapter: AlbumAdapter
     private lateinit var status: TextView
     private var observerRegistered = false
+    private var observerRefreshJob: Job? = null
+
     private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-        override fun onChange(selfChange: Boolean) { loadAlbums() }
+        override fun onChange(selfChange: Boolean) {
+            observerRefreshJob?.cancel()
+            observerRefreshJob = scope.launch {
+                delay(650)
+                loadAlbums(showLoading = false)
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,13 +76,23 @@ class MainActivity : Activity() {
         if (requestCode == REQ_MEDIA && hasPermission()) loadAlbums() else status.text = "Fotoğraf/video izni gerekli."
     }
 
-    private fun loadAlbums() {
-        if (!hasPermission()) return
-        status.text = "Albümler yükleniyor..."
+    private fun loadAlbums(showLoading: Boolean = true) {
+        if (!hasPermission() || !refreshGate.request()) return
+        if (showLoading) status.text = "Albümler yükleniyor..."
         scope.launch {
-            val result = withContext(Dispatchers.IO) { MediaRepository(contentResolver).albums() }
-            adapter.submit(result)
-            status.text = "${result.size} albüm"
+            try {
+                val result = withContext(Dispatchers.IO) { MediaRepository(contentResolver).albums() }
+                adapter.submit(result)
+                status.text = "${result.size} albüm"
+            } finally {
+                if (refreshGate.finishAndCheckPending() && scope.isActive) {
+                    observerRefreshJob?.cancel()
+                    observerRefreshJob = scope.launch {
+                        delay(350)
+                        loadAlbums(showLoading = false)
+                    }
+                }
+            }
         }
     }
 
@@ -87,6 +106,8 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        observerRefreshJob?.cancel()
+        observerRefreshJob = null
         if (observerRegistered) { runCatching { contentResolver.unregisterContentObserver(observer) }; observerRegistered = false }
         super.onStop()
     }
