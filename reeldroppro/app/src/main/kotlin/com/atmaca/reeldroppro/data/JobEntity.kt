@@ -23,5 +23,6 @@ data class JobEntity(
     val failedCount: Int = 0,
     val currentFile: String? = null,
     val bytesTransferred: Long = 0,
-    val speedBytesPerSec: Long = 0
+    val speedBytesPerSec: Long = 0,
+    val slotId: Int = 0
 )
