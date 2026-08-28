@@ -1,0 +1,25 @@
+name: Build ATMACA Files
+
+on:
+  push:
+    branches: [lite-file-manager-build]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Test and Build APK
+        working-directory: filemanager
+        run: gradle testDebugUnitTest assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Dosyalar-APK
+          path: filemanager/app/build/outputs/apk/debug/app-debug.apk
