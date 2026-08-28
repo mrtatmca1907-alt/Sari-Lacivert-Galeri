@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
-import com.sarilacivert.galeri.ui.GalleryApp
+import com.sarilacivert.galeri.ui.AtmacaModernApp
 import com.sarilacivert.galeri.ui.GalleryTheme
 
 class MainActivity : ComponentActivity() {
@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             GalleryTheme {
-                GalleryApp()
+                AtmacaModernApp()
             }
         }
     }
