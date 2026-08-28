@@ -1,9 +1,9 @@
-name: Build Sari Lacivert Galeri V2 APK
+name: Build ATMACA Modern APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, atmaca-dosyalar-modern ]
 
 jobs:
   build:
@@ -37,6 +37,6 @@ jobs:
       - name: APK artifact yukle
         uses: actions/upload-artifact@v4
         with:
-          name: Sari-Lacivert-Galeri-V2-APK
+          name: ATMACA-Dosyalar-Modern-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
