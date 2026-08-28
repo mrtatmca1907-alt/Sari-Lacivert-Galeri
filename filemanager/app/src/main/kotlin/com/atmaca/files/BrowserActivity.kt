@@ -6,7 +6,6 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
-import android.view.MenuItem
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -28,7 +27,7 @@ class BrowserActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val uri = Uri.parse(intent.getStringExtra("uri") ?: run { finish(); return })
-        current = if (intent.getBooleanExtra("isRoot", false)) DocumentFile.fromTreeUri(this, uri) else DocumentFile.fromSingleUri(this, uri)
+        current = (if (intent.getBooleanExtra("isRoot", false)) DocumentFile.fromTreeUri(this, uri) else DocumentFile.fromSingleUri(this, uri))
             ?: run { finish(); return }
         buildUi(); load()
     }
