@@ -24,6 +24,7 @@ import com.atmaca.reeldroppro.engine.RetryClassificationPolicy
 import com.atmaca.reeldroppro.engine.SlotCancelledException
 import com.atmaca.reeldroppro.model.ParsedInput
 import com.atmaca.reeldroppro.model.Platform
+import com.atmaca.reeldroppro.storage.IncrementalPublishTracker
 import com.atmaca.reeldroppro.storage.MediaPublisher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -144,11 +145,15 @@ class DownloadService : Service() {
     private suspend fun processJob(slotId: Int, job: JobEntity, parsed: ParsedInput) = coroutineScope {
         val workingDir = extractor.workingDir(parsed, job.id)
         val progressRef = AtomicReference(job.progress)
+        val publishTracker = IncrementalPublishTracker()
+        val observedSizes = mutableMapOf<String, Long>()
+
         val monitor = launch(Dispatchers.IO) {
             var lastBytes = 0L
             var lastAt = System.currentTimeMillis()
             while (isActive) {
                 val snapshot = scan(workingDir)
+                publishStableFiles(parsed, workingDir, publishTracker, observedSizes)
                 val now = System.currentTimeMillis()
                 val elapsedMs = (now - lastAt).coerceAtLeast(1L)
                 val speed = ((snapshot.bytes - lastBytes).coerceAtLeast(0L) * 1000L) / elapsedMs
@@ -220,6 +225,32 @@ class DownloadService : Service() {
             }
         )
         updateSummaryNotification()
+    }
+
+    private fun publishStableFiles(
+        parsed: ParsedInput,
+        root: File,
+        tracker: IncrementalPublishTracker,
+        observedSizes: MutableMap<String, Long>
+    ) {
+        if (!root.exists()) return
+        val stableFiles = mutableListOf<File>()
+        root.walkTopDown().forEach { file ->
+            if (!file.isFile || file.name.endsWith(".part")) return@forEach
+            if (MediaTypePolicy.fromExtension(file.extension) == MediaKind.OTHER) return@forEach
+            val key = file.absolutePath
+            val size = file.length()
+            val previousSize = observedSizes.put(key, size)
+            if (size > 0L && previousSize != null && previousSize == size) stableFiles += file
+        }
+
+        val byPath = stableFiles.associateBy { it.absolutePath }
+        val unpublished = tracker.unpublished(byPath.keys.toList())
+        unpublished.forEach { path ->
+            val file = byPath[path] ?: return@forEach
+            runCatching { publisher.publishFile(parsed.platform.name, parsed.sourceKey, file) }
+                .onSuccess { tracker.markPublished(listOf(path)) }
+        }
     }
 
     private suspend fun handleFailure(job: JobEntity, throwable: Throwable) {
