@@ -10,6 +10,7 @@ _init_lock = threading.Lock()
 _cancel_lock = threading.Lock()
 _configured_root = None
 _cancelled_slots = set()
+_MEDIA_EXTS = {"jpg", "jpeg", "png", "webp", "heic", "heif", "gif", "mp4", "m4v", "mov", "mkv", "webm", "avi", "3gp"}
 
 
 def _is_cancelled(slot_id):
@@ -82,6 +83,19 @@ def source_dir(platform, source_key, base_dir):
     return os.path.join(base_dir, "instagram", source_key)
 
 
+def _media_count(root):
+    count = 0
+    if not os.path.isdir(root):
+        return 0
+    for directory, _, files in os.walk(root):
+        for name in files:
+            if name.endswith(".part"):
+                continue
+            if name.rsplit(".", 1)[-1].lower() in _MEDIA_EXTS:
+                count += 1
+    return count
+
+
 def run_download(slot_id, platform, url, source_key, base_dir):
     slot_id = int(slot_id)
     reset_slot(slot_id)
@@ -89,6 +103,7 @@ def run_download(slot_id, platform, url, source_key, base_dir):
     target = source_dir(platform, source_key, base_dir)
     os.makedirs(target, exist_ok=True)
 
+    before_count = _media_count(target)
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
     handler.setLevel(logging.INFO)
@@ -115,14 +130,21 @@ def run_download(slot_id, platform, url, source_key, base_dir):
     cancelled = _is_cancelled(slot_id)
     reset_slot(slot_id)
     lines = [line.strip() for line in stream.getvalue().splitlines() if line.strip()]
+    error_lines = [line for line in lines if line.lower().startswith("error")]
+    after_count = _media_count(target)
+    new_files = max(0, after_count - before_count)
+    partial_success = bool(status and new_files > 0 and not cancelled)
+
     if not error and status:
-        meaningful = [line for line in lines if "warning" not in line.lower()]
-        error = (meaningful or lines or [f"gallery-dl çıkış kodu: {status}"])[-1]
+        error = (error_lines or [f"gallery-dl çıkış kodu: {status}"])[-1]
 
     return json.dumps({
         "status": status,
         "cancelled": cancelled,
+        "partial_success": partial_success,
+        "error_count": len(error_lines),
+        "new_files": new_files,
         "error": error,
         "source_dir": target,
-        "log": "\n".join(lines[-40:]),
+        "log": "\n".join(lines[-60:]),
     }, ensure_ascii=False)
