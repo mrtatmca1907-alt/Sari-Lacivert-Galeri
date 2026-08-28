@@ -12,8 +12,8 @@ android {
         applicationId = "com.atmaca.reeldroppro"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.1-cookie"
+        versionCode = 5
+        versionName = "2.2-cookie-live"
         ndk { abiFilters += listOf("arm64-v8a") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
