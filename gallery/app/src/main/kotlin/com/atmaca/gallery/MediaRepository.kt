@@ -6,30 +6,35 @@ import android.net.Uri
 import android.provider.MediaStore
 import java.util.LinkedHashMap
 
-data class AlbumInfo(val path: String, val name: String, val count: Int)
+data class AlbumInfo(val path: String, val name: String, val count: Int, val coverUri: Uri?)
 data class MediaItem(val uri: Uri, val name: String, val mime: String, val path: String, val dateModified: Long)
 
 class MediaRepository(private val resolver: ContentResolver) {
     private val filesUri = MediaStore.Files.getContentUri("external")
 
     fun albums(): List<AlbumInfo> {
-        val counts = LinkedHashMap<String, Int>()
-        val projection = arrayOf(MediaStore.MediaColumns.RELATIVE_PATH)
+        data class Acc(var count: Int = 0, var cover: Uri? = null)
+        val data = LinkedHashMap<String, Acc>()
+        val projection = arrayOf(MediaStore.Files.FileColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH)
         val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?"
         val args = arrayOf(
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
         )
-        resolver.query(filesUri, projection, selection, args, null)?.use { c ->
+        resolver.query(filesUri, projection, selection, args, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { c ->
+            val idCol = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
             val pathCol = c.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
             while (c.moveToNext()) {
                 val raw = if (pathCol >= 0) c.getString(pathCol) else null
                 val path = raw?.takeIf { it.isNotBlank() } ?: ROOT
-                counts[path] = (counts[path] ?: 0) + 1
+                val acc = data.getOrPut(path) { Acc() }
+                acc.count++
+                if (acc.cover == null) acc.cover = ContentUris.withAppendedId(filesUri, c.getLong(idCol))
             }
         }
-        return counts.map { (path, count) ->
-            AlbumInfo(path, if (path == ROOT) ROOT else path.trimEnd('/').substringAfterLast('/').ifBlank { path }, count)
+        return data.map { (path, acc) ->
+            val name = if (path == ROOT) ROOT else path.trimEnd('/').substringAfterLast('/').ifBlank { path }
+            AlbumInfo(path, name, acc.count, acc.cover)
         }.sortedWith(compareByDescending<AlbumInfo> { it.count }.thenBy { it.name.lowercase() })
     }
 
