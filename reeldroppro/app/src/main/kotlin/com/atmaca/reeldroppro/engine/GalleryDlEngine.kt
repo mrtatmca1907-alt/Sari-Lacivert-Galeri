@@ -21,6 +21,7 @@ class GalleryDlEngine(private val context: Context) {
     }
 
     fun baseDir(): File = File(requireNotNull(appContext.getExternalFilesDir(null)), "reeldrop-pro/gallery")
+    private fun cookieFile(): File = File(appContext.filesDir, "reeldrop-pro/auth/instagram-cookies.txt")
 
     fun sourceDir(input: ParsedInput): File {
         val clean = input.sourceKey.removePrefix("#").trim().lowercase()
@@ -36,13 +37,15 @@ class GalleryDlEngine(private val context: Context) {
             require(input.platform == Platform.INSTAGRAM_PROFILE || input.platform == Platform.INSTAGRAM_HASHTAG)
             ensurePython()
             val module = Python.getInstance().getModule("gallery_bridge")
+            val cookies = cookieFile().takeIf { it.isFile }?.absolutePath.orEmpty()
             val raw = module.callAttr(
                 "run_download",
                 slotId,
                 input.platform.name,
                 input.value,
                 input.sourceKey,
-                baseDir().absolutePath
+                baseDir().absolutePath,
+                cookies
             ).toString()
             val result = JSONObject(raw)
             if (result.optBoolean("cancelled", false)) throw SlotCancelledException()
