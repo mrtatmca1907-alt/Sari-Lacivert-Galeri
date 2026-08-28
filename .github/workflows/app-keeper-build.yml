@@ -14,6 +14,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Test
+      - name: Test and Build APK
         working-directory: keeper
-        run: gradle testDebugUnitTest --stacktrace
+        run: gradle testDebugUnitTest assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Koruma-APK
+          path: keeper/app/build/outputs/apk/debug/app-debug.apk
