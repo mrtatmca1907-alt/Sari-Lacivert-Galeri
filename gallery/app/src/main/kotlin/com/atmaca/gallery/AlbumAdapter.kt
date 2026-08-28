@@ -7,6 +7,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import coil.load
 
 class AlbumAdapter(private var items: List<AlbumInfo>, private val onClick: (AlbumInfo) -> Unit) : RecyclerView.Adapter<AlbumAdapter.Holder>() {
     fun submit(value: List<AlbumInfo>) { items = value; notifyDataSetChanged() }
@@ -17,22 +18,17 @@ class AlbumAdapter(private var items: List<AlbumInfo>, private val onClick: (Alb
         val card = LinearLayout(parent.context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(5), dp(5), dp(5), dp(10))
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(10, 31, 66))
-                cornerRadius = dp(14).toFloat()
-            }
+            background = GradientDrawable().apply { setColor(Color.rgb(10, 31, 66)); cornerRadius = dp(14).toFloat() }
             val margin = dp(7)
             layoutParams = ViewGroup.MarginLayoutParams(-1, -2).apply { setMargins(margin, margin, margin, margin) }
         }
         val cover = ImageView(parent.context).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             setBackgroundColor(Color.rgb(25, 45, 75))
-            clipToOutline = true
         }
         card.addView(cover, LinearLayout.LayoutParams(-1, dp(150)))
         val title = TextView(parent.context).apply {
-            textSize = 16f; setTextColor(Color.WHITE); setTypeface(null, 1); maxLines = 1
-            setPadding(dp(7), dp(9), dp(7), 0)
+            textSize = 16f; setTextColor(Color.WHITE); setTypeface(null, 1); maxLines = 1; setPadding(dp(7), dp(9), dp(7), 0)
         }
         val count = TextView(parent.context).apply {
             textSize = 12f; setTextColor(Color.rgb(185, 195, 210)); setPadding(dp(7), dp(2), dp(7), 0)
@@ -45,8 +41,7 @@ class AlbumAdapter(private var items: List<AlbumInfo>, private val onClick: (Alb
         val item = items[position]
         holder.title.text = item.name
         holder.count.text = "${item.count} öğe"
-        holder.cover.setImageDrawable(null)
-        item.coverUri?.let { holder.cover.setImageURI(it) }
+        holder.cover.load(item.coverUri) { crossfade(false); size(420); allowHardware(true) }
         holder.itemView.setOnClickListener { onClick(item) }
     }
 
