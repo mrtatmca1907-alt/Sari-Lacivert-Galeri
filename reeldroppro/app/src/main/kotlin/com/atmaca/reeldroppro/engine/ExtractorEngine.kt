@@ -12,7 +12,12 @@ import java.io.File
 import java.util.UUID
 
 class ExtractorEngine(private val context: Context) {
-    data class ResultData(val stdout: String, val tempDir: File)
+    data class ResultData(
+        val stdout: String,
+        val tempDir: File,
+        val itemErrors: Int = 0,
+        val partialError: String? = null
+    )
 
     @Volatile private var initialized = false
     private val processes = SlotProcessRegistry()
