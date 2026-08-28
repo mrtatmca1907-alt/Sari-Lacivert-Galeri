@@ -28,29 +28,34 @@ def reset_slot(slot_id):
         _cancelled_slots.discard(int(slot_id))
 
 
-def _configure(base_dir):
+def _configure(base_dir, cookie_path=None):
     global _configured_root
     base_dir = os.path.abspath(base_dir)
     with _init_lock:
-        if _configured_root == base_dir:
-            return
-        os.makedirs(base_dir, exist_ok=True)
-        archive_path = os.path.join(base_dir, ".reeldrop-archive.sqlite3")
-        config.clear()
-        config.set(("extractor",), "base-directory", base_dir)
-        config.set(("extractor",), "archive", archive_path)
-        config.set(("extractor",), "skip", True)
-        config.set(("extractor",), "retries", 4)
-        config.set(("extractor",), "timeout", 30.0)
-        config.set(("extractor",), "sleep-retries", "lin=2")
-        config.set(("extractor",), "sleep-429", 60.0)
-        config.set(("extractor", "instagram"), "sleep-request", "6.0-12.0")
-        config.set(("extractor", "instagram"), "videos", True)
-        config.set(("extractor", "instagram"), "max-posts", None)
-        config.set(("extractor", "instagram"), "include", "posts")
-        config.set(("extractor", "instagram"), "api", "rest")
-        config.set(("extractor", "instagram"), "user-cache", "disk")
-        _configured_root = base_dir
+        if _configured_root != base_dir:
+            os.makedirs(base_dir, exist_ok=True)
+            archive_path = os.path.join(base_dir, ".reeldrop-archive.sqlite3")
+            config.clear()
+            config.set(("extractor",), "base-directory", base_dir)
+            config.set(("extractor",), "archive", archive_path)
+            config.set(("extractor",), "skip", True)
+            config.set(("extractor",), "retries", 4)
+            config.set(("extractor",), "timeout", 30.0)
+            config.set(("extractor",), "sleep-retries", "lin=2")
+            config.set(("extractor",), "sleep-429", 60.0)
+            config.set(("extractor", "instagram"), "sleep-request", "6.0-12.0")
+            config.set(("extractor", "instagram"), "videos", True)
+            config.set(("extractor", "instagram"), "max-posts", None)
+            config.set(("extractor", "instagram"), "include", "posts")
+            config.set(("extractor", "instagram"), "api", "rest")
+            config.set(("extractor", "instagram"), "user-cache", "disk")
+            _configured_root = base_dir
+
+        if cookie_path and os.path.isfile(cookie_path):
+            config.set(("extractor", "instagram"), "cookies", os.path.abspath(cookie_path))
+            config.set(("extractor", "instagram"), "cookies-update", True)
+        else:
+            config.set(("extractor", "instagram"), "cookies", None)
 
 
 class _ThreadFilter(logging.Filter):
@@ -96,10 +101,10 @@ def _media_count(root):
     return count
 
 
-def run_download(slot_id, platform, url, source_key, base_dir):
+def run_download(slot_id, platform, url, source_key, base_dir, cookie_path=""):
     slot_id = int(slot_id)
     reset_slot(slot_id)
-    _configure(base_dir)
+    _configure(base_dir, cookie_path)
     target = source_dir(platform, source_key, base_dir)
     os.makedirs(target, exist_ok=True)
 
