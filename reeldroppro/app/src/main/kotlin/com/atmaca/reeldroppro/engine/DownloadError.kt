@@ -15,4 +15,12 @@ data class DownloadError(
         EXTRACTOR,
         UNKNOWN
     }
+
+    companion object {
+        val NETWORK: Kind = Kind.NETWORK
+        val RATE_LIMIT: Kind = Kind.RATE_LIMITED
+        val PRIVATE: Kind = Kind.AUTH_REQUIRED
+        val REMOVED: Kind = Kind.REMOVED
+        val UNSUPPORTED: Kind = Kind.UNSUPPORTED
+    }
 }
