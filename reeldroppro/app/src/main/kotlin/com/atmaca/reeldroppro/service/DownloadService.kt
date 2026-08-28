@@ -8,12 +8,11 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.atmaca.reeldroppro.MainActivity
-import com.atmaca.reeldroppro.R
 import com.atmaca.reeldroppro.data.AppDatabase
+import com.atmaca.reeldroppro.core.RetryPolicy
 import com.atmaca.reeldroppro.engine.ErrorClassifier
 import com.atmaca.reeldroppro.engine.ExtractorEngine
 import com.atmaca.reeldroppro.engine.RetryClassificationPolicy
-import com.atmaca.reeldroppro.engine.RetryPolicy
 import com.atmaca.reeldroppro.model.ParsedInput
 import com.atmaca.reeldroppro.model.Platform
 import com.atmaca.reeldroppro.storage.MediaPublisher
