@@ -4,15 +4,20 @@ import java.security.MessageDigest
 import java.util.Locale
 
 enum class MediaBucket(val folder: String) {
-    PHOTO("photos"),
-    VIDEO("videos")
+    PHOTO("Fotoğraflar"),
+    VIDEO("Videolar")
 }
 
 object OutputPathPolicy {
     fun relativePath(platform: String, source: String, bucket: MediaBucket): String {
-        val p = sanitize(platform).lowercase(Locale.ROOT)
-        val s = sanitize(source).lowercase(Locale.ROOT)
-        return "Download/ReelDrop Pro/$p/$s/${bucket.folder}"
+        val category = when (platform.trim().uppercase(Locale.ROOT)) {
+            "INSTAGRAM_PROFILE", "INSTAGRAM", "PROFILE", "PROFIL" -> "Profil"
+            "INSTAGRAM_HASHTAG", "HASHTAG" -> "Hashtag"
+            "FACEBOOK" -> "Facebook"
+            else -> sanitize(platform)
+        }
+        val cleanSource = sanitize(source.removePrefix("#")).lowercase(Locale.ROOT)
+        return "Download/ReelDrop Pro/$category/$cleanSource/${bucket.folder}"
     }
 
     private fun sanitize(raw: String): String = raw
