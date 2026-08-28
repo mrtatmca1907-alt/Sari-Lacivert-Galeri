@@ -41,13 +41,17 @@ object InputParser {
         .map { it.trim() }
         .filter { it.isNotEmpty() }
 
-    private fun instagramUsernameFromUrl(value: String): String? = try {
-        val uri = URI(value)
-        val host = uri.host?.lowercase().orEmpty().removePrefix("www.")
-        if (host != "instagram.com") return null
-        val first = uri.path.orEmpty().trim('/').substringBefore('/')
-        if (first.isBlank() || first in setOf("p", "reel", "reels", "stories", "explore")) null else cleanKey(first)
-    } catch (_: Exception) { null }
+    private fun instagramUsernameFromUrl(value: String): String? {
+        return try {
+            val uri = URI(value)
+            val host = uri.host?.lowercase().orEmpty().removePrefix("www.")
+            if (host != "instagram.com") null
+            else {
+                val first = uri.path.orEmpty().trim('/').substringBefore('/')
+                if (first.isBlank() || first in setOf("p", "reel", "reels", "stories", "explore")) null else cleanKey(first)
+            }
+        } catch (_: Exception) { null }
+    }
 
     private fun isFacebookUrl(value: String): Boolean = try {
         val uri = URI(value)
