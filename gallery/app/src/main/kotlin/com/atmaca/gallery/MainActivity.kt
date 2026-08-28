@@ -9,8 +9,7 @@ import android.graphics.Color
 import android.os.*
 import android.provider.MediaStore
 import android.widget.*
-import androidx.recyclerview.widget.DividerItemDecoration
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.*
 
@@ -30,19 +29,24 @@ class MainActivity : Activity() {
     }
 
     private fun buildUi() {
-        val navy = Color.rgb(0, 35, 102); val yellow = Color.rgb(255, 220, 0)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(navy) }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(5, 12, 24)) }
         root.addView(TextView(this).apply {
-            text = "HAFİF GALERİ"; textSize = 27f; setTypeface(null, 1); setTextColor(yellow); setPadding(dp(18), dp(22), dp(18), dp(6))
+            text = "Galeri"; textSize = 30f; setTypeface(null, 1); setTextColor(Color.WHITE); setPadding(dp(18), dp(22), dp(18), dp(2))
         })
-        status = TextView(this).apply { text = "Hazırlanıyor..."; textSize = 13f; setTextColor(Color.WHITE); setPadding(dp(18), 0, dp(18), dp(12)) }
+        status = TextView(this).apply {
+            text = "Hazırlanıyor..."; textSize = 13f; setTextColor(Color.rgb(170,180,195)); setPadding(dp(18), 0, dp(18), dp(8))
+        }
         root.addView(status)
         val recycler = RecyclerView(this).apply {
-            layoutManager = LinearLayoutManager(this@MainActivity)
+            layoutManager = GridLayoutManager(this@MainActivity, 2)
             adapter = AlbumAdapter(emptyList()) { album ->
-                startActivity(Intent(this@MainActivity, AlbumActivity::class.java).putExtra(AlbumActivity.EXTRA_PATH, album.path).putExtra(AlbumActivity.EXTRA_NAME, album.name))
+                startActivity(Intent(this@MainActivity, AlbumActivity::class.java)
+                    .putExtra(AlbumActivity.EXTRA_PATH, album.path)
+                    .putExtra(AlbumActivity.EXTRA_NAME, album.name))
             }.also { this@MainActivity.adapter = it }
-            addItemDecoration(DividerItemDecoration(this@MainActivity, DividerItemDecoration.VERTICAL))
+            setHasFixedSize(true)
+            setPadding(dp(7), dp(4), dp(7), dp(16))
+            clipToPadding = false
         }
         root.addView(recycler, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
@@ -65,11 +69,11 @@ class MainActivity : Activity() {
 
     private fun loadAlbums() {
         if (!hasPermission()) return
-        status.text = "Klasörler yükleniyor..."
+        status.text = "Albümler yükleniyor..."
         scope.launch {
             val result = withContext(Dispatchers.IO) { MediaRepository(contentResolver).albums() }
             adapter.submit(result)
-            status.text = "${result.size} klasör • MediaStore hızlı mod"
+            status.text = "${result.size} albüm"
         }
     }
 
