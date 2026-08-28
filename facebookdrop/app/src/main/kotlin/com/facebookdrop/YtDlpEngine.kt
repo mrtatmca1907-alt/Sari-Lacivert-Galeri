@@ -41,7 +41,9 @@ class YtDlpEngine(private val context: Context) {
             val processId = UUID.randomUUID().toString()
             activeProcessId = processId
             try {
-                YoutubeDL.getInstance().execute(request, { progress, eta -> onProgress(progress, eta) }, processId).out
+                YoutubeDL.getInstance().execute(request, processId) { progress, eta, _ ->
+                    onProgress(progress, eta)
+                }.out
             } finally {
                 activeProcessId = null
             }
