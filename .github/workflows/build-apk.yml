@@ -1,9 +1,9 @@
-name: Build Sari Lacivert Galeri V2 APK
+name: Build ATMACA Galeri Performance APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, gallery-performance-rebuild ]
 
 jobs:
   build:
@@ -31,12 +31,15 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
+      - name: Unit testleri calistir
+        run: gradle :app:testDebugUnitTest --stacktrace
+
       - name: Debug APK derle
         run: gradle :app:assembleDebug --stacktrace
 
       - name: APK artifact yukle
         uses: actions/upload-artifact@v4
         with:
-          name: Sari-Lacivert-Galeri-V2-APK
+          name: ATMACA-Galeri-Performance-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
