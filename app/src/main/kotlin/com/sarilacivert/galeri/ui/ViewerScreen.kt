@@ -60,6 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.sarilacivert.galeri.data.BitmapLoader
@@ -115,8 +117,6 @@ fun ViewerScreen(
 
     val trashLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            // MediaStore işlemi başarılı olsa bile eski mediaCache tutulursa silinen dosya
-            // ekranda hayalet olarak kalıyordu.
             repo.invalidateCache()
             Toast.makeText(context, if (fromTrash) "Geri yüklendi" else "Çöp kutusuna taşındı", Toast.LENGTH_SHORT).show()
             closeCurrentAndBack()
@@ -402,14 +402,45 @@ private fun VideoViewer(
     onNext: () -> Unit
 ) {
     val context = LocalContext.current
+    var playbackState by remember(item.uri) { mutableStateOf<ViewerPlaybackState>(ViewerPlaybackState.Idle) }
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(androidx.media3.common.MediaItem.fromUri(item.uri))
-            prepare()
         }
     }
     val positionPrefs = remember {
         context.getSharedPreferences("video_positions_v2", android.content.Context.MODE_PRIVATE)
+    }
+
+    DisposableEffect(player, item.uri) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) {
+                    playbackState = reducePlayback(playbackState, PlaybackEvent.Ready)
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                playbackState = reducePlayback(
+                    playbackState,
+                    PlaybackEvent.Failed(error.message ?: "Video oynatılamadı")
+                )
+            }
+        }
+        player.addListener(listener)
+        playbackState = reducePlayback(playbackState, PlaybackEvent.Prepare)
+        player.prepare()
+
+        onDispose {
+            runCatching {
+                positionPrefs.edit().putLong(item.uri.toString(), player.currentPosition).apply()
+            }
+            player.removeListener(listener)
+            player.stop()
+            player.clearMediaItems()
+            player.release()
+            playbackState = reducePlayback(playbackState, PlaybackEvent.Dispose)
+        }
     }
 
     LaunchedEffect(player, item.uri) {
@@ -418,52 +449,63 @@ private fun VideoViewer(
         player.playWhenReady = true
     }
 
-    DisposableEffect(player, item.uri) {
-        onDispose {
-            positionPrefs.edit().putLong(item.uri.toString(), player.currentPosition).apply()
-            player.release()
-        }
-    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    this.player = player
+                    useController = true
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                    setOnClickListener { onTap() }
 
-    AndroidView(
-        factory = { ctx ->
-            PlayerView(ctx).apply {
-                this.player = player
-                useController = true
-                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                setOnClickListener { onTap() }
-
-                var downX = 0f
-                var downY = 0f
-                var downTime = 0L
-                setOnTouchListener { _, event ->
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> {
-                            downX = event.x
-                            downY = event.y
-                            downTime = event.eventTime
-                            false
-                        }
-                        MotionEvent.ACTION_UP -> {
-                            val dx = event.x - downX
-                            val dy = event.y - downY
-                            val elapsed = event.eventTime - downTime
-                            val horizontalSwipe = abs(dx) > 170f && abs(dx) > abs(dy) * 1.25f && elapsed < 1400L
-                            if (horizontalSwipe) {
-                                if (dx > 0f) onPrevious() else onNext()
-                                true
-                            } else {
+                    var downX = 0f
+                    var downY = 0f
+                    var downTime = 0L
+                    setOnTouchListener { _, event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                downX = event.x
+                                downY = event.y
+                                downTime = event.eventTime
                                 false
                             }
+                            MotionEvent.ACTION_UP -> {
+                                val dx = event.x - downX
+                                val dy = event.y - downY
+                                val elapsed = event.eventTime - downTime
+                                val horizontalSwipe = abs(dx) > 170f && abs(dx) > abs(dy) * 1.25f && elapsed < 1400L
+                                if (horizontalSwipe) {
+                                    if (dx > 0f) onPrevious() else onNext()
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            else -> false
                         }
-                        else -> false
                     }
                 }
+            },
+            update = { it.player = player },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        when (val state = playbackState) {
+            ViewerPlaybackState.Idle, ViewerPlaybackState.Loading -> LoadingState("Video hazırlanıyor…")
+            ViewerPlaybackState.Ready -> Unit
+            is ViewerPlaybackState.Error -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(state.message, color = TextPrimary)
+                Button(
+                    modifier = Modifier.padding(top = 12.dp),
+                    onClick = {
+                        playbackState = reducePlayback(playbackState, PlaybackEvent.Prepare)
+                        player.prepare()
+                        player.playWhenReady = true
+                    }
+                ) { Text("Tekrar dene") }
             }
-        },
-        update = { it.player = player },
-        modifier = Modifier.fillMaxSize()
-    )
+        }
+    }
 }
 
 @Composable
