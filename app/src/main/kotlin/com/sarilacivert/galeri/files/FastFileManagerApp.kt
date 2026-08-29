@@ -36,7 +36,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -78,6 +80,7 @@ data class FastFileEntry(
 @Composable
 fun FastFileManagerApp() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var accessRefresh by remember { mutableIntStateOf(0) }
     var hasAccess by remember(accessRefresh) { mutableStateOf(hasFileAccess(context)) }
 
@@ -183,7 +186,7 @@ fun FastFileManagerApp() {
                         },
                         onDelete = { pendingDelete = entry.file }
                     )
-                    Divider(color = Navy2)
+                    HorizontalDivider(color = Navy2)
                 }
             }
         }
@@ -199,10 +202,12 @@ fun FastFileManagerApp() {
                     val target = pendingDelete
                     pendingDelete = null
                     if (target != null) {
-                        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                            if (target.isDirectory) target.deleteRecursively() else target.delete()
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                if (target.isDirectory) target.deleteRecursively() else target.delete()
+                            }
+                            refresh++
                         }
-                        refresh++
                     }
                 }) { Text("Sil") }
             },
