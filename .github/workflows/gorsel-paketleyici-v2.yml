@@ -1,0 +1,33 @@
+name: Gorsel Paketleyici V2
+
+on:
+  push:
+    branches: [gorsel-paketleyici-v2]
+    paths:
+      - 'gorselpaketleyici/**'
+      - '.github/workflows/gorsel-paketleyici-v2.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Tests
+        run: gradle -p gorselpaketleyici testDebugUnitTest --stacktrace
+      - name: Build APK
+        run: gradle -p gorselpaketleyici assembleDebug --stacktrace
+      - name: Collect APK
+        run: cp gorselpaketleyici/app/build/outputs/apk/debug/app-debug.apk ATMACA-Gorsel-Paketleyici-v2.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Gorsel-Paketleyici-v2
+          path: ATMACA-Gorsel-Paketleyici-v2.apk
+          if-no-files-found: error
