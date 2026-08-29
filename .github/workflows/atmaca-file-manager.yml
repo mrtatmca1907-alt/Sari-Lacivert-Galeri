@@ -1,8 +1,8 @@
-name: ATMACA File Manager
+name: ATMACA File Manager V2
 
 on:
   push:
-    branches: [ "atmaca-file-manager-v1" ]
+    branches: [ "atmaca-file-manager-v2-look" ]
   workflow_dispatch:
 
 jobs:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -22,9 +22,9 @@ jobs:
       - name: Build debug APK
         run: gradle -p atmaca-file-manager assembleDebug --stacktrace
       - name: Collect APK
-        run: cp atmaca-file-manager/app/build/outputs/apk/debug/app-debug.apk ATMACA-Dosya-Yoneticisi-v1.apk
+        run: cp atmaca-file-manager/app/build/outputs/apk/debug/app-debug.apk ATMACA-File-Manager-Plus-Style-v2.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: ATMACA-Dosya-Yoneticisi-v1
-          path: ATMACA-Dosya-Yoneticisi-v1.apk
+          name: ATMACA-File-Manager-Plus-Style-v2
+          path: ATMACA-File-Manager-Plus-Style-v2.apk
           if-no-files-found: error
