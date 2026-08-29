@@ -6,6 +6,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -26,6 +28,7 @@ public final class FileAdapter extends RecyclerView.Adapter<FileAdapter.Holder> 
 
     private List<FileEntry> items = Collections.emptyList();
     private final Listener listener;
+    private final ThumbnailLoader thumbnails = new ThumbnailLoader();
 
     public FileAdapter(Listener listener) {
         this.listener = listener;
@@ -41,91 +44,108 @@ public final class FileAdapter extends RecyclerView.Adapter<FileAdapter.Holder> 
 
     @Override public long getItemId(int position) {
         String p = items.get(position).path;
-        long h1 = p.hashCode() & 0xffffffffL;
-        long h2 = (long) p.length() << 32;
-        return h1 ^ h2;
+        return (p.hashCode() & 0xffffffffL) ^ ((long) p.length() << 32);
     }
 
     @NonNull @Override public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         LinearLayout row = new LinearLayout(parent.getContext());
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(row, 12), dp(row, 7), dp(row, 10), dp(row, 7));
-        row.setMinimumHeight(dp(row, 60));
+        row.setPadding(dp(row, 12), dp(row, 5), dp(row, 8), dp(row, 5));
+        row.setMinimumHeight(dp(row, 58));
+
+        FrameLayout iconBox = new FrameLayout(parent.getContext());
+        LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(row, 48), dp(row, 48));
+        ip.setMarginEnd(dp(row, 12));
+        row.addView(iconBox, ip);
+
+        ImageView preview = new ImageView(parent.getContext());
+        preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        iconBox.addView(preview, new FrameLayout.LayoutParams(-1, -1));
 
         TextView icon = new TextView(parent.getContext());
         icon.setGravity(Gravity.CENTER);
-        icon.setTextSize(12);
+        icon.setTextSize(11);
         icon.setTypeface(Typeface.DEFAULT_BOLD);
-        LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(row, 45), dp(row, 42));
-        ip.setMarginEnd(dp(row, 12));
-        row.addView(icon, ip);
+        iconBox.addView(icon, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout texts = new LinearLayout(parent.getContext());
         texts.setOrientation(LinearLayout.VERTICAL);
         TextView title = new TextView(parent.getContext());
-        title.setTextColor(Color.rgb(35, 35, 35));
+        title.setTextColor(Color.rgb(35,35,35));
         title.setTextSize(16);
         title.setSingleLine(true);
         TextView sub = new TextView(parent.getContext());
-        sub.setTextColor(Color.rgb(125, 125, 125));
+        sub.setTextColor(Color.rgb(120,120,120));
         sub.setTextSize(12);
         sub.setSingleLine(true);
-        texts.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        texts.addView(sub, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        texts.addView(title, new LinearLayout.LayoutParams(-1, -2));
+        texts.addView(sub, new LinearLayout.LayoutParams(-1, -2));
+        row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1f));
 
         TextView more = new TextView(parent.getContext());
         more.setText("⋮");
-        more.setTextColor(Color.rgb(95,95,95));
+        more.setTextColor(Color.rgb(90,90,90));
         more.setTextSize(24);
         more.setGravity(Gravity.CENTER);
         row.addView(more, new LinearLayout.LayoutParams(dp(row, 34), dp(row, 44)));
-        return new Holder(row, icon, title, sub, more);
+        return new Holder(row, preview, icon, title, sub, more);
     }
 
     @Override public void onBindViewHolder(@NonNull Holder h, int position) {
         FileEntry e = items.get(position);
         h.title.setText(e.name);
-        h.icon.setText(symbol(e));
-        h.icon.setTextColor(iconTextColor(e));
-        h.icon.setBackground(iconBackground(e));
         h.sub.setText(e.directory ? "Klasör" : typeLabel(e) + "  •  " + humanSize(e.size));
+
+        boolean isImage = !e.directory && FileTypes.categoryOf(e.name) == FileTypes.Category.IMAGE;
+        h.preview.setImageDrawable(null);
+        h.preview.setVisibility(isImage ? View.VISIBLE : View.GONE);
+        h.icon.setVisibility(isImage ? View.GONE : View.VISIBLE);
+        if (isImage) {
+            h.preview.setBackgroundColor(Color.rgb(238,238,238));
+            thumbnails.load(e.toFile(), h.preview, dp(h.itemView, 96));
+        } else {
+            h.icon.setText(symbol(e));
+            h.icon.setTextColor(Color.WHITE);
+            h.icon.setBackground(iconBackground(e));
+        }
+
         boolean selected = listener != null && listener.isSelected(e);
-        h.itemView.setBackgroundColor(selected ? Color.rgb(225, 240, 238) : Color.WHITE);
+        h.itemView.setBackgroundColor(selected ? Color.rgb(225,240,238) : Color.WHITE);
         h.itemView.setOnClickListener(v -> { if (listener != null) listener.onClick(e); });
-        h.itemView.setOnLongClickListener(v -> {
-            if (listener != null) listener.onLongClick(e);
-            return true;
-        });
+        h.itemView.setOnLongClickListener(v -> { if (listener != null) listener.onLongClick(e); return true; });
         h.more.setOnClickListener(v -> { if (listener != null) listener.onLongClick(e); });
+    }
+
+    @Override public void onViewRecycled(@NonNull Holder holder) {
+        holder.preview.setTag(null);
+        holder.preview.setImageDrawable(null);
+        super.onViewRecycled(holder);
     }
 
     @Override public int getItemCount() { return items.size(); }
 
+    public void shutdown() { thumbnails.shutdown(); }
+
     private static GradientDrawable iconBackground(FileEntry e) {
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(8f);
-        if (e.directory) g.setColor(Color.rgb(224, 170, 74));
+        if (e.directory) g.setColor(Color.rgb(215,165,48));
         else {
             switch (FileTypes.categoryOf(e.name)) {
-                case IMAGE: g.setColor(Color.rgb(121, 88, 132)); break;
-                case VIDEO: g.setColor(Color.rgb(176, 45, 55)); break;
-                case DOCUMENT: g.setColor(Color.rgb(56, 108, 166)); break;
-                case APK: g.setColor(Color.rgb(132, 190, 55)); break;
-                case ARCHIVE: g.setColor(Color.rgb(143, 102, 70)); break;
-                default: g.setColor(Color.rgb(120, 130, 130)); break;
+                case VIDEO: g.setColor(Color.rgb(53,117,181)); break;
+                case DOCUMENT: g.setColor(Color.rgb(93,120,145)); break;
+                case APK: g.setColor(Color.rgb(89,150,72)); break;
+                case ARCHIVE: g.setColor(Color.rgb(105,113,120)); break;
+                default: g.setColor(Color.rgb(36,150,145)); break;
             }
         }
         return g;
     }
 
-    private static int iconTextColor(FileEntry e) { return Color.WHITE; }
-
     private static String symbol(FileEntry e) {
         if (e.directory) return "DIR";
         switch (FileTypes.categoryOf(e.name)) {
-            case IMAGE: return "IMG";
             case VIDEO: return "VID";
             case DOCUMENT: return "DOC";
             case APK: return "APK";
@@ -159,9 +179,11 @@ public final class FileAdapter extends RecyclerView.Adapter<FileAdapter.Holder> 
     }
 
     static final class Holder extends RecyclerView.ViewHolder {
+        final ImageView preview;
         final TextView icon, title, sub, more;
-        Holder(@NonNull View itemView, TextView icon, TextView title, TextView sub, TextView more) {
+        Holder(@NonNull View itemView, ImageView preview, TextView icon, TextView title, TextView sub, TextView more) {
             super(itemView);
+            this.preview = preview;
             this.icon = icon;
             this.title = title;
             this.sub = sub;
