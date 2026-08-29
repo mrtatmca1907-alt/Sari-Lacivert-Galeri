@@ -140,8 +140,37 @@ class MediaRepository(private val context: Context) {
         showImages: Boolean = true,
         showVideos: Boolean = true,
         sort: MediaSort = MediaSort.NEWEST
-    ): List<MediaItem> = withContext(Dispatchers.Default) {
-        sortMedia(loadAll(showImages, showVideos).filter { it.albumPath == albumPath }, sort)
+    ): List<MediaItem> = withContext(Dispatchers.IO) {
+        val query = AlbumQueryPolicy.forAlbum(
+            albumPath = albumPath,
+            modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        )
+        val out = ArrayList<MediaItem>()
+        if (showImages) {
+            out += runCatching {
+                queryCollection(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    false,
+                    includeTrashed = false,
+                    onlyTrashed = false,
+                    selection = query.selection,
+                    selectionArgs = query.args.toTypedArray()
+                )
+            }.getOrDefault(emptyList())
+        }
+        if (showVideos) {
+            out += runCatching {
+                queryCollection(
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    true,
+                    includeTrashed = false,
+                    onlyTrashed = false,
+                    selection = query.selection,
+                    selectionArgs = query.args.toTypedArray()
+                )
+            }.getOrDefault(emptyList())
+        }
+        sortMedia(out, sort)
     }
 
     suspend fun search(
@@ -262,7 +291,9 @@ class MediaRepository(private val context: Context) {
         collection: Uri,
         isVideo: Boolean,
         includeTrashed: Boolean,
-        onlyTrashed: Boolean
+        onlyTrashed: Boolean,
+        selection: String? = null,
+        selectionArgs: Array<String>? = null
     ): List<MediaItem> {
         val projection = buildList {
             add(MediaStore.MediaColumns._ID)
@@ -293,7 +324,13 @@ class MediaRepository(private val context: Context) {
             }
             resolver.query(collection, projection, args, null)
         } else {
-            resolver.query(collection, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")
+            resolver.query(
+                collection,
+                projection,
+                selection,
+                selectionArgs,
+                "${MediaStore.MediaColumns.DATE_ADDED} DESC"
+            )
         }
 
         val out = ArrayList<MediaItem>()
