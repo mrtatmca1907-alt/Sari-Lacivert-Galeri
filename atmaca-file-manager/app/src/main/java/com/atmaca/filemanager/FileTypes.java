@@ -1,15 +1,22 @@
 package com.atmaca.filemanager;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
 public final class FileTypes {
     public enum Category { IMAGE, VIDEO, DOCUMENT, APK, ARCHIVE, OTHER }
 
-    private static final Set<String> IMAGES = Set.of("jpg","jpeg","png","webp","gif","bmp","heic","heif","avif","dng","tif","tiff");
-    private static final Set<String> VIDEOS = Set.of("mp4","mkv","avi","mov","webm","3gp","m4v","ts","mpeg","mpg");
-    private static final Set<String> DOCUMENTS = Set.of("pdf","txt","doc","docx","xls","xlsx","ppt","pptx","csv","rtf","odt","ods","epub");
-    private static final Set<String> ARCHIVES = Set.of("zip","rar","7z","tar","gz","bz2","xz","tgz");
+    private static Set<String> set(String... values) {
+        return Collections.unmodifiableSet(new HashSet<>(Arrays.asList(values)));
+    }
+
+    private static final Set<String> IMAGES = set("jpg","jpeg","png","webp","gif","bmp","heic","heif","avif","dng","tif","tiff");
+    private static final Set<String> VIDEOS = set("mp4","mkv","avi","mov","webm","3gp","m4v","ts","mpeg","mpg");
+    private static final Set<String> DOCUMENTS = set("pdf","txt","doc","docx","xls","xlsx","ppt","pptx","csv","rtf","odt","ods","epub");
+    private static final Set<String> ARCHIVES = set("zip","rar","7z","tar","gz","bz2","xz","tgz");
 
     private FileTypes() {}
 
