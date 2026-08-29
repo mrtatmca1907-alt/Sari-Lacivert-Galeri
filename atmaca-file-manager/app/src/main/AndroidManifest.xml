@@ -15,6 +15,11 @@
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <activity
+            android:name=".VideoPlayerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <activity
             android:name=".StableMainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden">
