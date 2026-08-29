@@ -31,6 +31,9 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
+      - name: Dosya yoneticisi testleri
+        run: gradle :app:testDebugUnitTest --stacktrace
+
       - name: Debug APK derle
         run: gradle :app:assembleDebug --stacktrace
 
