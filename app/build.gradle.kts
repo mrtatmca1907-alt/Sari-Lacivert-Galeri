@@ -11,8 +11,8 @@ android {
         applicationId = "com.sarilacivert.galeri"
         minSdk = 26
         targetSdk = 36
-        versionCode = 22
-        versionName = "2.1.0-performance-zoom"
+        versionCode = 23
+        versionName = "2.2.0-stable"
 
         vectorDrawables {
             useSupportLibrary = true
