@@ -1,8 +1,11 @@
 package com.atmaca.filemanager;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.ImageDecoder;
 import android.graphics.Matrix;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -33,8 +36,9 @@ public final class ImageViewerActivity extends AppCompatActivity {
         String path = getIntent().getStringExtra(EXTRA_PATH);
         if (path == null || path.isEmpty()) { finish(); return; }
         File file = new File(path);
+        if (!file.isFile()) { finish(); return; }
         title.setText(file.getName());
-        load(path);
+        load(file);
     }
 
     private void buildUi() {
@@ -46,7 +50,6 @@ public final class ImageViewerActivity extends AppCompatActivity {
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setBackgroundColor(Color.rgb(31,31,31));
-        bar.setPadding(dp(4), 0, dp(8), 0);
 
         TextView back = new TextView(this);
         back.setText("‹");
@@ -62,7 +65,6 @@ public final class ImageViewerActivity extends AppCompatActivity {
         title.setSingleLine(true);
         title.setGravity(Gravity.CENTER_VERTICAL);
         bar.addView(title, new LinearLayout.LayoutParams(0, dp(56), 1f));
-
         root.addView(bar, new LinearLayout.LayoutParams(-1, dp(56)));
 
         image = new ZoomImageView(this);
@@ -70,15 +72,40 @@ public final class ImageViewerActivity extends AppCompatActivity {
         setContentView(root);
     }
 
-    private void load(String path) {
+    private void load(File file) {
         worker.execute(() -> {
-            int w = Math.max(1080, getResources().getDisplayMetrics().widthPixels * 2);
-            int h = Math.max(1920, getResources().getDisplayMetrics().heightPixels * 2);
-            Bitmap b = ThumbnailLoader.decodeSampled(path, w, h);
+            Bitmap bitmap = null;
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    ImageDecoder.Source source = ImageDecoder.createSource(file);
+                    final int maxSide = Math.max(getResources().getDisplayMetrics().widthPixels,
+                            getResources().getDisplayMetrics().heightPixels) * 2;
+                    bitmap = ImageDecoder.decodeBitmap(source, (decoder, info, src) -> {
+                        int w = info.getSize().getWidth();
+                        int h = info.getSize().getHeight();
+                        int largest = Math.max(w, h);
+                        if (largest > maxSide && largest > 0) {
+                            float ratio = maxSide / (float) largest;
+                            decoder.setTargetSize(Math.max(1, Math.round(w * ratio)), Math.max(1, Math.round(h * ratio)));
+                        }
+                        decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                    });
+                } else {
+                    bitmap = ThumbnailLoader.decodeSampled(file.getAbsolutePath(), 2160, 3840);
+                }
+            } catch (OutOfMemoryError | Exception ignored) {
+                try {
+                    BitmapFactory.Options opts = new BitmapFactory.Options();
+                    opts.inSampleSize = 2;
+                    opts.inPreferredConfig = Bitmap.Config.RGB_565;
+                    bitmap = BitmapFactory.decodeFile(file.getAbsolutePath(), opts);
+                } catch (Throwable ignoredAgain) { bitmap = null; }
+            }
+            Bitmap finalBitmap = bitmap;
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
-                if (b == null) Toast.makeText(this, "Görsel açılamadı.", Toast.LENGTH_SHORT).show();
-                else image.setImageBitmapAndReset(b);
+                if (finalBitmap == null) Toast.makeText(this, "Görsel açılamadı.", Toast.LENGTH_SHORT).show();
+                else image.setImageBitmapAndReset(finalBitmap);
             });
         });
     }
@@ -112,9 +139,6 @@ public final class ImageViewerActivity extends AppCompatActivity {
                     return true;
                 }
             });
-            setOnClickListener(v -> {
-                if (scale > 1.01f) resetMatrix();
-            });
         }
 
         void setImageBitmapAndReset(Bitmap bitmap) {
@@ -141,10 +165,7 @@ public final class ImageViewerActivity extends AppCompatActivity {
             scaleDetector.onTouchEvent(event);
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
-                    lastX = event.getX();
-                    lastY = event.getY();
-                    dragging = false;
-                    return true;
+                    lastX = event.getX(); lastY = event.getY(); dragging = false; return true;
                 case MotionEvent.ACTION_MOVE:
                     if (event.getPointerCount() == 1 && scale > 1f && !scaleDetector.isInProgress()) {
                         float dx = event.getX() - lastX;
@@ -152,21 +173,17 @@ public final class ImageViewerActivity extends AppCompatActivity {
                         if (Math.abs(dx) + Math.abs(dy) > 2f) dragging = true;
                         drawMatrix.postTranslate(dx, dy);
                         setImageMatrix(drawMatrix);
-                        lastX = event.getX();
-                        lastY = event.getY();
+                        lastX = event.getX(); lastY = event.getY();
                     }
                     return true;
                 case MotionEvent.ACTION_UP:
-                    if (!dragging && !scaleDetector.isInProgress()) performClick();
+                    if (!dragging && !scaleDetector.isInProgress() && scale > 1.01f) resetMatrix();
+                    performClick();
                     return true;
-                default:
-                    return true;
+                default: return true;
             }
         }
 
-        @Override public boolean performClick() {
-            super.performClick();
-            return true;
-        }
+        @Override public boolean performClick() { super.performClick(); return true; }
     }
 }
