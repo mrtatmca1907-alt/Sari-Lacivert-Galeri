@@ -1,0 +1,8 @@
+<resources>
+    <color name="navy">#071A3A</color>
+    <color name="navy2">#0D2B5C</color>
+    <color name="yellow">#F5C400</color>
+    <color name="white">#FFFFFF</color>
+    <color name="muted">#B8C4D9</color>
+    <color name="selected">#2A4777</color>
+</resources>
