@@ -115,7 +115,7 @@ public final class FileOperations {
         int ok = 0;
         List<String> failures = new ArrayList<>();
         if (destinationDir == null || !destinationDir.isDirectory()) {
-            return new Result(0, safeList(sources).size(), List.of("Hedef klasör geçersiz"));
+            return new Result(0, safeList(sources).size(), Collections.singletonList("Hedef klasör geçersiz"));
         }
         for (File source : safeList(sources)) {
             try {
@@ -137,7 +137,7 @@ public final class FileOperations {
                 }
                 if (done) ok++; else failures.add(source.getAbsolutePath());
             } catch (Throwable t) {
-                failures.add(source.getAbsolutePath() + " — " + message(t));
+                failures.add((source == null ? "Kaynak" : source.getAbsolutePath()) + " — " + message(t));
             }
         }
         return new Result(ok, failures.size(), failures);
@@ -223,7 +223,7 @@ public final class FileOperations {
         worker.execute(() -> {
             Result result;
             try { result = op.run(); }
-            catch (Throwable t) { result = new Result(0, 1, List.of(message(t))); }
+            catch (Throwable t) { result = new Result(0, 1, Collections.singletonList(message(t))); }
             Result finalResult = result;
             main.post(() -> { if (callback != null) callback.onComplete(finalResult); });
         });
