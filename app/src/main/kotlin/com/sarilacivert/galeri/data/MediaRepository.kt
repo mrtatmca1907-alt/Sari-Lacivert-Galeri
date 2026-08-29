@@ -51,13 +51,13 @@ class MediaRepository(private val context: Context) {
         } else {
             val now = SystemClock.elapsedRealtime()
             val cached = mediaCache
-            if (cached != null && now - cacheBuiltAtMs <= cacheTtlMs) {
+            if (cached != null && MediaIndexPolicy.shouldReuseCache(now, cacheBuiltAtMs, cacheTtlMs)) {
                 cached
             } else {
                 cacheMutex.withLock {
                     val again = mediaCache
                     val nowInside = SystemClock.elapsedRealtime()
-                    if (again != null && nowInside - cacheBuiltAtMs <= cacheTtlMs) {
+                    if (again != null && MediaIndexPolicy.shouldReuseCache(nowInside, cacheBuiltAtMs, cacheTtlMs)) {
                         again
                     } else {
                         buildMediaList(false, false).also {
@@ -79,9 +79,13 @@ class MediaRepository(private val context: Context) {
 
     private fun buildMediaList(includeTrashed: Boolean, onlyTrashed: Boolean): List<MediaItem> {
         val out = ArrayList<MediaItem>(4096)
-        out += queryCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, includeTrashed, onlyTrashed)
-        out += queryCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, includeTrashed, onlyTrashed)
-        return out.sortedByDescending { maxOf(it.dateTaken, it.dateAdded) }
+        out += runCatching {
+            queryCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, includeTrashed, onlyTrashed)
+        }.getOrDefault(emptyList())
+        out += runCatching {
+            queryCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, includeTrashed, onlyTrashed)
+        }.getOrDefault(emptyList())
+        return out.sortedByDescending { MediaIndexPolicy.normalizedTimestamp(it.dateTaken, it.dateAdded) }
     }
 
     suspend fun loadAlbums(
@@ -96,11 +100,9 @@ class MediaRepository(private val context: Context) {
             var newestDate: Long
         )
 
-        // groupBy binlerce öğede her albüm için yeni List oluşturup GC baskısı yapıyordu.
-        // Tek geçişte sadece albüm özeti tutuluyor.
         val map = LinkedHashMap<String, Acc>()
         for (item in loadAll(showImages, showVideos)) {
-            val whenMs = maxOf(item.dateTaken, item.dateAdded)
+            val whenMs = MediaIndexPolicy.normalizedTimestamp(item.dateTaken, item.dateAdded)
             val acc = map[item.albumPath]
             if (acc == null) {
                 map[item.albumPath] = Acc(1, item, item.isVideo, whenMs)
@@ -218,7 +220,7 @@ class MediaRepository(private val context: Context) {
     }
 
     suspend fun mediaInfo(item: MediaItem): String = withContext(Dispatchers.IO) {
-        val date = maxOf(item.dateTaken, item.dateAdded)
+        val date = MediaIndexPolicy.normalizedTimestamp(item.dateTaken, item.dateAdded)
         val dateText = if (date > 0) {
             val millis = if (date < 100_000_000_000L) date * 1000 else date
             DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, Locale.getDefault()).format(Date(millis))
@@ -311,41 +313,45 @@ class MediaRepository(private val context: Context) {
             val trashedCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) c.getColumnIndex(MediaStore.MediaColumns.IS_TRASHED) else -1
 
             while (c.moveToNext()) {
-                val id = c.getLong(idCol)
-                val uri = ContentUris.withAppendedId(collection, id)
-                val name = c.getString(nameCol) ?: if (isVideo) "Video" else "Fotoğraf"
-                val relativePath = if (relativeCol >= 0) c.getString(relativeCol).orEmpty().trimEnd('/') else ""
-                val dataPath = if (dataCol >= 0) c.getString(dataCol).orEmpty() else ""
-                val albumPath = if (relativePath.isNotBlank()) relativePath else File(dataPath).parent.orEmpty()
-                val albumName = albumPath.trimEnd('/').substringAfterLast('/').ifBlank { "Diğer" }
-                val trashed = trashedCol >= 0 && c.getInt(trashedCol) == 1
-                if (onlyTrashed && !trashed) continue
-                if (!includeTrashed && trashed) continue
+                val item = runCatching {
+                    val id = c.getLong(idCol)
+                    val uri = ContentUris.withAppendedId(collection, id)
+                    val name = c.getString(nameCol) ?: if (isVideo) "Video" else "Fotoğraf"
+                    val relativePath = if (relativeCol >= 0) c.getString(relativeCol).orEmpty().trimEnd('/') else ""
+                    val dataPath = if (dataCol >= 0) c.getString(dataCol).orEmpty() else ""
+                    val albumPath = if (relativePath.isNotBlank()) relativePath else File(dataPath).parent.orEmpty()
+                    val albumName = albumPath.trimEnd('/').substringAfterLast('/').ifBlank { "Diğer" }
+                    val trashed = trashedCol >= 0 && c.getInt(trashedCol) == 1
 
-                out += MediaItem(
-                    id = id,
-                    uri = uri,
-                    name = name,
-                    mimeType = c.getString(mimeCol).orEmpty(),
-                    size = c.getLong(sizeCol),
-                    dateAdded = c.getLong(addedCol),
-                    dateTaken = if (takenCol >= 0) c.getLong(takenCol) else 0L,
-                    duration = if (durationCol >= 0) c.getLong(durationCol) else 0L,
-                    width = if (widthCol >= 0) c.getInt(widthCol) else 0,
-                    height = if (heightCol >= 0) c.getInt(heightCol) else 0,
-                    albumPath = albumPath,
-                    albumName = albumName,
-                    isVideo = isVideo,
-                    isTrashed = trashed
-                )
+                    MediaItem(
+                        id = id,
+                        uri = uri,
+                        name = name,
+                        mimeType = c.getString(mimeCol).orEmpty(),
+                        size = c.getLong(sizeCol),
+                        dateAdded = c.getLong(addedCol),
+                        dateTaken = if (takenCol >= 0) c.getLong(takenCol) else 0L,
+                        duration = if (durationCol >= 0) c.getLong(durationCol) else 0L,
+                        width = if (widthCol >= 0) c.getInt(widthCol) else 0,
+                        height = if (heightCol >= 0) c.getInt(heightCol) else 0,
+                        albumPath = albumPath,
+                        albumName = albumName,
+                        isVideo = isVideo,
+                        isTrashed = trashed
+                    )
+                }.getOrNull() ?: continue
+
+                if (onlyTrashed && !item.isTrashed) continue
+                if (!includeTrashed && item.isTrashed) continue
+                out += item
             }
         }
         return out
     }
 
     private fun sortMedia(items: List<MediaItem>, sort: MediaSort): List<MediaItem> = when (sort) {
-        MediaSort.NEWEST -> items.sortedByDescending { maxOf(it.dateTaken, it.dateAdded) }
-        MediaSort.OLDEST -> items.sortedBy { maxOf(it.dateTaken, it.dateAdded) }
+        MediaSort.NEWEST -> items.sortedByDescending { MediaIndexPolicy.normalizedTimestamp(it.dateTaken, it.dateAdded) }
+        MediaSort.OLDEST -> items.sortedBy { MediaIndexPolicy.normalizedTimestamp(it.dateTaken, it.dateAdded) }
         MediaSort.NAME_ASC -> items.sortedBy { it.name.lowercase(Locale.getDefault()) }
         MediaSort.NAME_DESC -> items.sortedByDescending { it.name.lowercase(Locale.getDefault()) }
         MediaSort.SIZE_DESC -> items.sortedByDescending { it.size }
