@@ -12,9 +12,7 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
-import android.webkit.MimeTypeMap;
 import android.widget.EditText;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
@@ -36,7 +34,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 
 public final class StableMainActivity extends AppCompatActivity implements FileAdapter.Listener {
@@ -96,7 +93,7 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.WHITE);
-        root.addView(appBar("File Manager +", false), new LinearLayout.LayoutParams(-1, dp(56)));
+        root.addView(appBar("Dosya Yöneticisi +", false), new LinearLayout.LayoutParams(-1, dp(56)));
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout content = new LinearLayout(this);
@@ -105,15 +102,15 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
         GridLayout grid = new GridLayout(this);
         grid.setColumnCount(3);
         File main = Environment.getExternalStorageDirectory();
-        addTile(grid, "▰", "Main storage", Color.rgb(120,130,135), () -> openDir(main));
-        addTile(grid, "⬇", "Downloads", Color.rgb(219,166,53), () -> openPublic(Environment.DIRECTORY_DOWNLOADS));
-        addTile(grid, "▣", "Images", Color.rgb(36,150,145), () -> openPublic(Environment.DIRECTORY_PICTURES));
-        addTile(grid, "♫", "Audio", Color.rgb(77,137,156), () -> openPublic(Environment.DIRECTORY_MUSIC));
-        addTile(grid, "▤", "Videos", Color.rgb(53,117,181), () -> openPublic(Environment.DIRECTORY_MOVIES));
-        addTile(grid, "≡", "Documents", Color.rgb(93,120,145), () -> openPublic(Environment.DIRECTORY_DOCUMENTS));
-        addTile(grid, "A", "Apps", Color.rgb(89,150,72), () -> openDir(main));
-        addTile(grid, "◷", "New files", Color.rgb(105,113,120), () -> openDir(main));
-        addTile(grid, "★", "Favorites", Color.rgb(194,155,45), () -> toast("Favoriler sonraki sürümde."));
+        addTile(grid, "▰", "Dahili depolama", Color.rgb(120,130,135), () -> openDir(main));
+        addTile(grid, "⬇", "İndirilenler", Color.rgb(219,166,53), () -> openPublic(Environment.DIRECTORY_DOWNLOADS));
+        addTile(grid, "▣", "Görseller", Color.rgb(36,150,145), () -> openPublic(Environment.DIRECTORY_PICTURES));
+        addTile(grid, "♫", "Sesler", Color.rgb(77,137,156), () -> openPublic(Environment.DIRECTORY_MUSIC));
+        addTile(grid, "▤", "Videolar", Color.rgb(53,117,181), () -> openPublic(Environment.DIRECTORY_MOVIES));
+        addTile(grid, "≡", "Belgeler", Color.rgb(93,120,145), () -> openPublic(Environment.DIRECTORY_DOCUMENTS));
+        addTile(grid, "A", "Uygulamalar", Color.rgb(89,150,72), () -> openDir(main));
+        addTile(grid, "◷", "Yeni dosyalar", Color.rgb(105,113,120), () -> openDir(main));
+        addTile(grid, "★", "Favoriler", Color.rgb(194,155,45), () -> toast("Favoriler sonraki sürümde."));
         content.addView(grid, new LinearLayout.LayoutParams(-1, -2));
         scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -125,7 +122,7 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.WHITE);
-        root.addView(appBar("Main storage", true), new LinearLayout.LayoutParams(-1, dp(56)));
+        root.addView(appBar("Dahili depolama", true), new LinearLayout.LayoutParams(-1, dp(56)));
 
         pathView = new TextView(this);
         pathView.setTextColor(SUB);
@@ -141,7 +138,7 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
         searchView.setSingleLine(true);
         searchView.setTextColor(TEXT);
         searchView.setHintTextColor(Color.rgb(150,150,150));
-        searchView.setHint("Search in this folder");
+        searchView.setHint("Bu klasörde ara");
         searchView.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         searchView.setBackgroundColor(Color.rgb(246,246,246));
         searchView.setPadding(dp(12), 0, dp(12), 0);
@@ -199,17 +196,17 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
     private void showMenu(View anchor, boolean browser) {
         PopupMenu p = new PopupMenu(this, anchor);
         if (browser) {
-            p.getMenu().add("Refresh");
-            p.getMenu().add("New folder");
-            p.getMenu().add("Select all");
-            if (pendingMode != PendingMode.NONE) p.getMenu().add("Paste here");
-        } else p.getMenu().add("Permission");
+            p.getMenu().add("Yenile");
+            p.getMenu().add("Yeni klasör");
+            p.getMenu().add("Tümünü seç");
+            if (pendingMode != PendingMode.NONE) p.getMenu().add("Buraya yapıştır");
+        } else p.getMenu().add("Depolama izni");
         p.setOnMenuItemClickListener(item -> {
             String s = item.getTitle().toString();
-            if ("Refresh".equals(s)) viewModel.refresh();
-            else if ("New folder".equals(s)) createFolder();
-            else if ("Select all".equals(s)) selectAll();
-            else if ("Paste here".equals(s)) pasteHere();
+            if ("Yenile".equals(s)) viewModel.refresh();
+            else if ("Yeni klasör".equals(s)) createFolder();
+            else if ("Tümünü seç".equals(s)) selectAll();
+            else if ("Buraya yapıştır".equals(s)) pasteHere();
             else requestStorageAccess();
             return true;
         });
@@ -263,11 +260,11 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
                 titleView.setText(displayName(s.currentDir));
                 pathView.setText(breadcrumb(s.currentDir));
             }
-            if (s.loading) { setStatus("Loading…"); return; }
+            if (s.loading) { setStatus("Yükleniyor…"); return; }
             latestItems = s.items == null ? Collections.emptyList() : s.items;
             adapter.submitList(latestItems);
             selected.retainAll(pathsOf(latestItems));
-            if (s.error != null) setStatus(s.error); else setStatus(latestItems.size() + " items");
+            if (s.error != null) setStatus(s.error); else setStatus(latestItems.size() + " öğe");
         });
     }
 
@@ -288,7 +285,7 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
     @Override public void onLongClick(FileEntry entry) {
         if (!selected.contains(entry.path)) selected.add(entry.path);
         if (adapter != null) adapter.notifyDataSetChanged();
-        final String[] items = {"Open", "Copy", "Move", "Rename", "Share", "Delete"};
+        final String[] items = {"Aç", "Kopyala", "Taşı", "Yeniden adlandır", "Paylaş", "Sil"};
         new AlertDialog.Builder(this).setTitle(entry.name).setItems(items, (d, which) -> {
             switch (which) {
                 case 0: clearSelection(); openFileOrDir(entry); break;
@@ -306,13 +303,18 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
     private void openFileOrDir(FileEntry e) { if (e.directory) openDir(e.toFile()); else openFile(e.toFile()); }
 
     private void openFile(File file) {
-        if (FileTypes.categoryOf(file.getName()) == FileTypes.Category.IMAGE) {
+        FileTypes.Category category = FileTypes.categoryOf(file.getName());
+        if (category == FileTypes.Category.IMAGE) {
             startActivity(new Intent(this, ImageViewerActivity.class).putExtra(ImageViewerActivity.EXTRA_PATH, file.getAbsolutePath()));
+            return;
+        }
+        if (category == FileTypes.Category.VIDEO) {
+            startActivity(new Intent(this, VideoPlayerActivity.class).putExtra(VideoPlayerActivity.EXTRA_PATH, file.getAbsolutePath()));
             return;
         }
         try {
             Uri uri = FileProvider.getUriForFile(this, getPackageName()+".files", file);
-            String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(FileTypes.extension(file.getName()));
+            String mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(FileTypes.extension(file.getName()));
             if (mime == null) mime = "*/*";
             startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
         } catch (Throwable t) { toast("Bu dosya açılamadı."); }
@@ -337,7 +339,7 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
         pendingMode = mode;
         pendingSources = new ArrayList<>(files);
         clearSelection();
-        toast("Hedef klasöre git, sağ üst menüden Paste here seç.");
+        toast("Hedef klasöre git, sağ üst menüden Buraya yapıştır seç.");
     }
 
     private void pasteHere() {
@@ -417,14 +419,14 @@ public final class StableMainActivity extends AppCompatActivity implements FileA
     private void toast(String t) { Toast.makeText(this, t, Toast.LENGTH_SHORT).show(); }
 
     private String displayName(File dir) {
-        if (sameFile(dir, Environment.getExternalStorageDirectory())) return "Main storage";
-        String n = dir.getName(); return n == null || n.isEmpty() ? "Main storage" : n;
+        if (sameFile(dir, Environment.getExternalStorageDirectory())) return "Dahili depolama";
+        String n = dir.getName(); return n == null || n.isEmpty() ? "Dahili depolama" : n;
     }
 
     private String breadcrumb(File dir) {
         File root = Environment.getExternalStorageDirectory();
-        if (sameFile(dir, root)) return "⌂  >  Main storage";
-        String p = dir.getAbsolutePath().replace(root.getAbsolutePath(), "Main storage");
+        if (sameFile(dir, root)) return "⌂  >  Dahili depolama";
+        String p = dir.getAbsolutePath().replace(root.getAbsolutePath(), "Dahili depolama");
         return "⌂  >  " + p.replace(File.separator, "  >  ");
     }
 
