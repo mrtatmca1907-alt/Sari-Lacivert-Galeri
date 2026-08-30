@@ -1,24 +1,36 @@
 package com.atmaca.files;
 
+import android.content.ContentValues;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.ViewGroup;
+import android.webkit.MimeTypeMap;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -123,10 +135,24 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
     }
 
     @Override public void onClick(CatalogEntry e) {
-        if (!e.isFolder()) return;
-        currentPath = e.path;
-        if (searchInput != null) searchInput.setText("");
-        refreshList();
+        if (FileActionPolicy.onTap(e.isFolder()) == FileActionPolicy.Action.NAVIGATE) {
+            currentPath = e.path;
+            if (searchInput != null) searchInput.setText("");
+            refreshList();
+            return;
+        }
+        showFileMenu(e);
+    }
+
+    private void showFileMenu(CatalogEntry e) {
+        String[] items = FileActionPolicy.fileMenu();
+        new AlertDialog.Builder(this).setTitle(e.name).setItems(items, (d, which) -> {
+            if (which == 0) openRemoteFile(e);
+            else if (which == 1) downloadRemoteFile(e);
+            else if (which == 2) askRename(e);
+            else if (which == 3) askMove(e);
+            else queueDelete(e);
+        }).show();
     }
 
     @Override public void onLongClick(CatalogEntry e) {
@@ -134,6 +160,73 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         new AlertDialog.Builder(this).setTitle(e.name).setItems(items, (d, which) -> {
             if (which == 0) askRename(e); else if (which == 1) askMove(e); else queueDelete(e);
         }).show();
+    }
+
+    private void openRemoteFile(CatalogEntry e) {
+        status.setText("Dosya açılmak için alınıyor...");
+        String host = hostInput.getText().toString().trim();
+        io.execute(() -> {
+            try {
+                File dir = new File(getCacheDir(), "open");
+                if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Önbellek klasörü oluşturulamadı");
+                File outFile = new File(dir, safeName(e.name));
+                try (FileOutputStream out = new FileOutputStream(outFile, false)) {
+                    new AtmacaApi(host).download(e.path, out);
+                }
+                Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".provider", outFile);
+                String mime = mimeFor(e.name);
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(uri, mime);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                runOnUiThread(() -> {
+                    try { startActivity(intent); status.setText("Dosya açıldı: " + e.name); }
+                    catch (Exception ex) { toast("Bu dosyayı açacak uygulama bulunamadı"); }
+                });
+            } catch (Exception ex) {
+                runOnUiThread(() -> { status.setText("Açma hatası: " + safe(ex.getMessage())); toast("Dosya HDD'den alınamadı"); });
+            }
+        });
+    }
+
+    private void downloadRemoteFile(CatalogEntry e) {
+        status.setText("İndiriliyor: " + e.name);
+        String host = hostInput.getText().toString().trim();
+        io.execute(() -> {
+            Uri created = null;
+            try {
+                AtmacaApi api = new AtmacaApi(host);
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.Downloads.DISPLAY_NAME, e.name);
+                    v.put(MediaStore.Downloads.MIME_TYPE, mimeFor(e.name));
+                    v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/ATMACA");
+                    v.put(MediaStore.Downloads.IS_PENDING, 1);
+                    created = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    if (created == null) throw new IllegalStateException("İndirme kaydı oluşturulamadı");
+                    try (OutputStream out = getContentResolver().openOutputStream(created)) {
+                        if (out == null) throw new IllegalStateException("Dosya açılamadı");
+                        api.download(e.path, out);
+                    }
+                    ContentValues done = new ContentValues();
+                    done.put(MediaStore.Downloads.IS_PENDING, 0);
+                    getContentResolver().update(created, done, null, null);
+                } else {
+                    File base = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                    if (base == null) throw new IllegalStateException("İndirme klasörü yok");
+                    File dir = new File(base, "ATMACA");
+                    if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("ATMACA klasörü oluşturulamadı");
+                    try (FileOutputStream out = new FileOutputStream(new File(dir, safeName(e.name)), false)) {
+                        api.download(e.path, out);
+                    }
+                }
+                runOnUiThread(() -> { status.setText("İndirildi: " + e.name); toast("Download/ATMACA içine indirildi"); });
+            } catch (Exception ex) {
+                if (created != null && Build.VERSION.SDK_INT >= 29) {
+                    try { getContentResolver().delete(created, null, null); } catch (Exception ignored) {}
+                }
+                runOnUiThread(() -> { status.setText("İndirme hatası: " + safe(ex.getMessage())); toast("İndirme tamamlanamadı"); });
+            }
+        });
     }
 
     private void askMkdir() { askText("Yeni klasör oluştur", "Klasör adı", "", text -> queueOp("mkdir", PathUtil.child(currentPath, text), null, null)); }
@@ -153,9 +246,16 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         try {
             JSONObject o = new JSONObject(); o.put("op", op); if (path != null) o.put("path", path); if (dest != null) o.put("dest", dest); if (newName != null) o.put("newName", newName);
             o.put("createdAt", System.currentTimeMillis()); db.addQueue(o.toString()); toast("İşlem kuyruğa alındı"); refreshList();
+            sendPending();
         } catch (Exception e) { toast("İşlem kaydedilemedi"); }
     }
 
+    private static String safeName(String name) { return (name == null || name.trim().isEmpty()) ? "dosya" : name.replace('/', '_').replace('\\', '_'); }
+    private static String mimeFor(String name) {
+        String ext = MimeTypeMap.getFileExtensionFromUrl(name == null ? "" : name).toLowerCase();
+        String type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext);
+        return type == null ? "application/octet-stream" : type;
+    }
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
     private static String safe(String s) { return s == null ? "bağlantı yok" : s; }
     @Override protected void onDestroy() { super.onDestroy(); io.shutdownNow(); }
