@@ -5,6 +5,7 @@ import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -48,6 +49,25 @@ public final class AtmacaApi {
                 while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
                 out.flush();
             }
+        } finally { c.disconnect(); }
+    }
+
+    public void upload(String remoteDir, String fileName, InputStream in) throws Exception {
+        String dir = URLEncoder.encode(PathUtil.normalize(remoteDir), StandardCharsets.UTF_8.toString());
+        String name = URLEncoder.encode(fileName == null ? "video" : fileName, StandardCharsets.UTF_8.toString());
+        HttpURLConnection c = open("/upload?dir=" + dir + "&name=" + name, "POST");
+        c.setReadTimeout(120000);
+        c.setRequestProperty("Content-Type", "application/octet-stream");
+        c.setChunkedStreamingMode(1024 * 1024);
+        try {
+            try (OutputStream out = c.getOutputStream()) {
+                byte[] buf = new byte[1024 * 1024];
+                int n;
+                while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
+                out.flush();
+            }
+            int code = c.getResponseCode();
+            if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
         } finally { c.disconnect(); }
     }
 
