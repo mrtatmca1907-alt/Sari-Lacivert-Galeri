@@ -7,7 +7,15 @@ public final class StorageTargetPolicy {
         return new String[]{"Kart", "Bulut", "HDD"};
     }
 
-    public static String hddFolder(String currentPath) {
-        return PathUtil.normalize(currentPath == null ? "/" : currentPath);
+    public static boolean requiresFolderSelection(String target) {
+        return "HDD".equalsIgnoreCase(target == null ? "" : target.trim());
+    }
+
+    public static String hddFolder(String selectedPath) {
+        return PathUtil.normalize(selectedPath == null ? "/" : selectedPath);
+    }
+
+    public static String hddConfirmLabel() {
+        return "Bu klasöre gönder";
     }
 }
