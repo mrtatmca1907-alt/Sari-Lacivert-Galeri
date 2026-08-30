@@ -21,34 +21,36 @@ jobs:
         run: |
           from pathlib import Path
           import re
-
           p = Path("ATMACA-WIFI/app/src/main/java/com/atmaca/files/MainActivity.java")
           s = p.read_text(encoding="utf-8")
-          replacement = '''    private void backupFolderToCloud(Uri source, Uri dest) {
-              status.setText("Bulut yedeği taranıyor...");
-              io.execute(() -> {
-                  try {
-                      final int[] totalSeen = {0};
-                      int count = SafTreeCopier.copyTree(this, source, dest, (done, total, currentName) -> {
-                          totalSeen[0] = total;
-                          runOnUiThread(() -> status.setText(BackupProgress.text(done, total, currentName)));
-                      });
-                      int total = totalSeen[0] == 0 ? count : totalSeen[0];
-                      backupSourceTree = null;
-                      runOnUiThread(() -> {
-                          status.setText(BackupProgress.completed(count, total));
-                          toast("Klasör ve alt klasörler Bulut'a yedeklendi");
-                      });
-                  } catch (Exception e) {
-                      runOnUiThread(() -> {
-                          status.setText("Bulut yedekleme hatası: " + safe(e.getMessage()));
-                          toast("Klasör yedekleme tamamlanamadı");
-                      });
-                  }
-              });
-          }
-
-'''
+          lines = [
+              "    private void backupFolderToCloud(Uri source, Uri dest) {",
+              "        status.setText(\"Bulut yedeği taranıyor...\");",
+              "        io.execute(() -> {",
+              "            try {",
+              "                final int[] totalSeen = {0};",
+              "                int count = SafTreeCopier.copyTree(this, source, dest, (done, total, currentName) -> {",
+              "                    totalSeen[0] = total;",
+              "                    runOnUiThread(() -> status.setText(BackupProgress.text(done, total, currentName)));",
+              "                });",
+              "                int total = totalSeen[0] == 0 ? count : totalSeen[0];",
+              "                backupSourceTree = null;",
+              "                runOnUiThread(() -> {",
+              "                    status.setText(BackupProgress.completed(count, total));",
+              "                    toast(\"Klasör ve alt klasörler Bulut'a yedeklendi\");",
+              "                });",
+              "            } catch (Exception e) {",
+              "                runOnUiThread(() -> {",
+              "                    status.setText(\"Bulut yedekleme hatası: \" + safe(e.getMessage()));",
+              "                    toast(\"Klasör yedekleme tamamlanamadı\");",
+              "                });",
+              "            }",
+              "        });",
+              "    }",
+              "",
+              ""
+          ]
+          replacement = "\n".join(lines)
           pattern = r"    private void backupFolderToCloud\(Uri source, Uri dest\) \{\n.*?\n    \}\n\n(?=    private void copyCloudFilesToPhone)"
           s2, n = re.subn(pattern, replacement, s, count=1, flags=re.S)
           if n != 1:
