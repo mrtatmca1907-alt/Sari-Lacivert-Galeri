@@ -55,6 +55,7 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
     private static final int REQ_CLOUD_FILES = 4106;
     private static final int REQ_PHONE_DEST = 4107;
     private static final int REQ_VIDEO_PERMISSION = 4108;
+    private static final int REQ_CLOUD_HDD_SOURCE = 4109;
     private static final String PREF_CLOUD_TREE = "cloud_tree_uri";
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -82,7 +83,7 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
 
     @Override protected void onResume() {
         super.onResume();
-        if (db != null && (db.pendingUploadCount() > 0 || !db.pendingQueue().isEmpty())) SyncScheduler.scheduleNow(this);
+        if (db != null) autoSyncNow();
     }
 
     private LinearLayout buildUi() {
@@ -128,8 +129,8 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         mkdir.setText("+ Yeni Klasör");
         mkdir.setOnClickListener(v -> askMkdir());
         Button send = new Button(this);
-        send.setText("Kuyruğu Gönder");
-        send.setOnClickListener(v -> syncNow());
+        send.setText("Kuyruk / Gönder");
+        send.setOnClickListener(v -> showQueueDialog());
         tools.addView(back);
         tools.addView(mkdir);
         tools.addView(send);
@@ -164,6 +165,14 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         cloudRow.addView(folderBackup, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         cloudRow.addView(cloudDownload, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         root.addView(cloudRow);
+
+        Button cloudToHdd = new Button(this);
+        cloudToHdd.setText("Bulut → Telefon → HDD");
+        cloudToHdd.setOnClickListener(v -> startCloudToHdd());
+        LinearLayout.LayoutParams cloudHddParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cloudHddParams.setMargins(12, 0, 12, 6);
+        root.addView(cloudToHdd, cloudHddParams);
 
         pathView = new TextView(this);
         pathView.setTextSize(16);
@@ -342,6 +351,15 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
             if (dest == null || cloudDownloadItems.isEmpty()) return;
             persistTreePermission(data, dest);
             copyCloudFilesToPhone(dest);
+            return;
+        }
+
+        if (requestCode == REQ_CLOUD_HDD_SOURCE) {
+            Uri tree = data.getData();
+            if (tree == null) return;
+            persistTreePermission(data, tree);
+            prefs.edit().putString(PREF_CLOUD_TREE, tree.toString()).apply();
+            runCloudToHdd(tree);
         }
     }
 
@@ -482,6 +500,107 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
                     toast("Buluttan telefona aktarım tamamlanamadı");
                 });
             }
+        });
+    }
+
+    private void startCloudToHdd() {
+        String saved = prefs.getString(PREF_CLOUD_TREE, "");
+        if (saved == null || saved.trim().isEmpty()) {
+            status.setText("Bulut yedek klasörünü seç");
+            toast("Yedeklenen Bulut klasörünü seç");
+            pickDestinationTree(REQ_CLOUD_HDD_SOURCE);
+            return;
+        }
+        runCloudToHdd(Uri.parse(saved));
+    }
+
+    private void runCloudToHdd(Uri cloudTree) {
+        String host = hostInput.getText().toString().trim();
+        prefs.edit().putString("host", host).apply();
+        status.setText("Bulut taranıyor • Telefon → HDD hazırlanıyor...");
+        io.execute(() -> {
+            try {
+                CloudHddTransfer.Result result = CloudHddTransfer.transfer(
+                        this, db, cloudTree, host,
+                        (done, total, uploaded, queued, failed, currentName) -> runOnUiThread(() -> {
+                            String text = "Bulut → Telefon → HDD: " + done + " / " + total
+                                    + " • HDD " + uploaded + " • bekleyen " + queued;
+                            if (failed > 0) text += " • hata " + failed;
+                            if (currentName != null && !currentName.isEmpty()) text += " • " + currentName;
+                            status.setText(text);
+                        }));
+
+                if (result.queued > 0) SyncScheduler.scheduleNow(this);
+                runOnUiThread(() -> {
+                    refreshList();
+                    String text = "Bulut → HDD: " + result.processed + " / " + result.total
+                            + " • HDD " + result.uploaded + " • bekleyen " + result.queued;
+                    if (result.failed > 0) text += " • hata " + result.failed;
+                    status.setText(text);
+                    if (result.failed == 0 && result.queued == 0) {
+                        toast("Bulut yedekleri HDD'ye aktarıldı");
+                    } else if (result.queued > 0) {
+                        toast(result.queued + " dosya telefonda güvenli HDD kuyruğunda");
+                    } else {
+                        toast(result.failed + " dosya alınamadı; Bulut'taki kaynaklar silinmedi");
+                    }
+                });
+            } catch (SecurityException e) {
+                prefs.edit().remove(PREF_CLOUD_TREE).apply();
+                runOnUiThread(() -> {
+                    status.setText("Bulut klasör izni yenilenmeli");
+                    toast("Yedeklenen Bulut klasörünü tekrar seç");
+                    pickDestinationTree(REQ_CLOUD_HDD_SOURCE);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    status.setText("Bulut → HDD hatası: " + safe(e.getMessage()));
+                    toast("Alınmış dosyalar kuyrukta korunuyor; Bulut kaynakları silinmedi");
+                    refreshList();
+                });
+            }
+        });
+    }
+
+    private void showQueueDialog() {
+        io.execute(() -> {
+            List<PendingUpload> uploads = db.pendingUploads();
+            List<String> operations = db.pendingQueue();
+            StringBuilder text = new StringBuilder();
+            int shown = Math.min(uploads.size(), 100);
+            for (int i = 0; i < shown; i++) {
+                PendingUpload p = uploads.get(i);
+                text.append("• ").append(p.name).append("\n  → ").append(p.remotePath()).append("\n");
+            }
+            if (uploads.size() > shown) {
+                text.append("\n+").append(uploads.size() - shown).append(" dosya daha");
+            }
+            if (!operations.isEmpty()) {
+                text.append("\n\n").append(operations.size()).append(" dosya işlemi de bekliyor.");
+            }
+            String body = text.length() == 0 ? "Kuyruk boş." : text.toString();
+            String title = "HDD Kuyruğu • " + uploads.size() + " dosya • " + operations.size() + " işlem";
+            runOnUiThread(() -> new AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setMessage(body)
+                    .setNegativeButton("Kapat", null)
+                    .setPositiveButton("Şimdi Gönder", (d, which) -> syncNow())
+                    .show());
+        });
+    }
+
+    private void autoSyncNow() {
+        String host = hostInput.getText().toString().trim();
+        prefs.edit().putString("host", host).apply();
+        io.execute(() -> {
+            try {
+                SyncEngine.run(this, db, host);
+            } catch (Exception ignored) {
+                if (db.pendingUploadCount() > 0 || !db.pendingQueue().isEmpty()) {
+                    SyncScheduler.scheduleNow(this);
+                }
+            }
+            runOnUiThread(this::refreshList);
         });
     }
 
