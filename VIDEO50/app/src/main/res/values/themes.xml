@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Video50" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#001E62</item>
+        <item name="colorPrimaryVariant">#001E62</item>
+        <item name="colorSecondary">#FEDB00</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#001E62</item>
+    </style>
+</resources>
