@@ -25,6 +25,21 @@ public final class SyncEngine {
         AtmacaApi api = new AtmacaApi(host);
         if (!api.health()) throw new IllegalStateException("PC servisi yanıt vermedi");
 
+        int uploaded = uploadPending(db, api);
+
+        List<String> pending = db.pendingQueue();
+        int metadataOps = pending.size();
+        if (!pending.isEmpty()) {
+            api.sendQueue(pending);
+            db.clearQueue();
+        }
+
+        List<CatalogEntry> rows = api.fetchCatalog();
+        db.replaceAll(rows);
+        return new Result(uploaded, metadataOps, rows.size());
+    }
+
+    static int uploadPending(CatalogDb db, AtmacaApi api) throws Exception {
         int uploaded = 0;
         List<PendingUpload> uploads = db.pendingUploads();
         for (PendingUpload item : uploads) {
@@ -37,20 +52,10 @@ public final class SyncEngine {
             }
             db.deleteUpload(item.id);
             if (!file.delete() && file.exists()) {
-                // Payload is already confirmed on the PC. A leftover local file is harmless and can be cleaned later.
+                // HDD upload was confirmed. A leftover local payload can be cleaned later.
             }
             uploaded++;
         }
-
-        List<String> pending = db.pendingQueue();
-        int metadataOps = pending.size();
-        if (!pending.isEmpty()) {
-            api.sendQueue(pending);
-            db.clearQueue();
-        }
-
-        List<CatalogEntry> rows = api.fetchCatalog();
-        db.replaceAll(rows);
-        return new Result(uploaded, metadataOps, rows.size());
+        return uploaded;
     }
 }
