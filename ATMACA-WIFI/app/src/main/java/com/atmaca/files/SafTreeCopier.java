@@ -14,11 +14,21 @@ import java.util.List;
 public final class SafTreeCopier {
     private SafTreeCopier() {}
 
+    public interface ProgressListener {
+        void onProgress(int completed, int total, String currentName);
+    }
+
     public static int copyTree(Context context, Uri sourceTree, Uri destTree) throws Exception {
+        return copyTree(context, sourceTree, destTree, null);
+    }
+
+    public static int copyTree(Context context, Uri sourceTree, Uri destTree, ProgressListener listener) throws Exception {
         ContentResolver r = context.getContentResolver();
         Uri sourceRoot = DocumentsContract.buildDocumentUriUsingTree(sourceTree, DocumentsContract.getTreeDocumentId(sourceTree));
         Uri destRoot = DocumentsContract.buildDocumentUriUsingTree(destTree, DocumentsContract.getTreeDocumentId(destTree));
-        return copyChildren(r, sourceTree, sourceRoot, destRoot);
+        int total = countFiles(r, sourceTree, sourceRoot);
+        int[] completed = {0};
+        return copyChildren(r, sourceTree, sourceRoot, destRoot, total, completed, listener);
     }
 
     public static int copyFilesToTree(Context context, List<Uri> files, Uri destTree) throws Exception {
@@ -40,7 +50,26 @@ public final class SafTreeCopier {
         return count;
     }
 
-    private static int copyChildren(ContentResolver r, Uri sourceTree, Uri sourceParent, Uri destParent) throws Exception {
+    private static int countFiles(ContentResolver r, Uri sourceTree, Uri sourceParent) throws Exception {
+        int count = 0;
+        String sourceId = DocumentsContract.getDocumentId(sourceParent);
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(sourceTree, sourceId);
+        String[] cols = {DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_MIME_TYPE};
+        try (Cursor c = r.query(children, cols, null, null, null)) {
+            if (c == null) return 0;
+            while (c.moveToNext()) {
+                String id = c.getString(0);
+                String mime = c.getString(1);
+                Uri src = DocumentsContract.buildDocumentUriUsingTree(sourceTree, id);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) count += countFiles(r, sourceTree, src);
+                else count++;
+            }
+        }
+        return count;
+    }
+
+    private static int copyChildren(ContentResolver r, Uri sourceTree, Uri sourceParent, Uri destParent,
+                                    int total, int[] completed, ProgressListener listener) throws Exception {
         int count = 0;
         String sourceId = DocumentsContract.getDocumentId(sourceParent);
         Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(sourceTree, sourceId);
@@ -57,14 +86,17 @@ public final class SafTreeCopier {
                     Uri destDir = existing;
                     if (destDir == null) destDir = DocumentsContract.createDocument(r, destParent, DocumentsContract.Document.MIME_TYPE_DIR, name);
                     if (destDir == null) throw new IllegalStateException("Hedef klasör oluşturulamadı: " + name);
-                    count += copyChildren(r, sourceTree, src, destDir);
+                    count += copyChildren(r, sourceTree, src, destDir, total, completed, listener);
                 } else {
+                    if (listener != null) listener.onProgress(completed[0], total, name);
                     if (existing == null) {
                         Uri dest = DocumentsContract.createDocument(r, destParent, mime == null ? "application/octet-stream" : mime, name);
                         if (dest == null) throw new IllegalStateException("Hedef dosya oluşturulamadı: " + name);
                         copyStream(r, src, dest);
                     }
                     count++;
+                    completed[0]++;
+                    if (listener != null) listener.onProgress(completed[0], total, name);
                 }
             }
         }
