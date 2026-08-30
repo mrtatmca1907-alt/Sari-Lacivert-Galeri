@@ -1,0 +1,89 @@
+name: Patch ATMACA File Picker
+
+on:
+  push:
+    branches: ["atmaca-offline-sync-impl"]
+    paths:
+      - ".github/workflows/patch-atmaca-picker.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: atmaca-offline-sync-impl
+      - name: Patch phone file picker
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path("ATMACA-WIFI/app/src/main/java/com/atmaca/files/MainActivity.java")
+          s = p.read_text(encoding="utf-8")
+
+          old_files = '''    private void pickFiles() {
+                  Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                  i.addCategory(Intent.CATEGORY_OPENABLE);
+                  i.setType("*/*");
+                  i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                  i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                  startActivityForResult(i, REQ_FILES);
+              }
+          '''
+          # Normalize indentation-independent exact block instead.
+          old_files = '''    private void pickFiles() {
+              Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+              i.addCategory(Intent.CATEGORY_OPENABLE);
+              i.setType("*/*");
+              i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+              i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+              startActivityForResult(i, REQ_FILES);
+          }
+          '''
+          new_files = '''    private void pickFiles() {
+              Intent i = new Intent(FilePickerPolicy.action());
+              i.addCategory(Intent.CATEGORY_OPENABLE);
+              i.setType(FilePickerPolicy.mimeType());
+              i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+              i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+              startActivityForResult(Intent.createChooser(i, "Telefondan dosya seç"), REQ_FILES);
+          }
+          '''
+
+          old_cloud = '''    private void pickCloudFiles() {
+              Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+              i.addCategory(Intent.CATEGORY_OPENABLE);
+              i.setType("*/*");
+              i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+              i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+              startActivityForResult(i, REQ_CLOUD_FILES);
+          }
+          '''
+          new_cloud = '''    private void pickCloudFiles() {
+              Intent i = new Intent(FilePickerPolicy.action());
+              i.addCategory(Intent.CATEGORY_OPENABLE);
+              i.setType(FilePickerPolicy.mimeType());
+              i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+              i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+              startActivityForResult(Intent.createChooser(i, "Buluttan dosya seç"), REQ_CLOUD_FILES);
+          }
+          '''
+
+          if old_files not in s:
+              raise SystemExit("pickFiles block not found")
+          if old_cloud not in s:
+              raise SystemExit("pickCloudFiles block not found")
+
+          s = s.replace(old_files, new_files, 1)
+          s = s.replace(old_cloud, new_cloud, 1)
+          s = s.replace('fileButton.setText("Dosya Seç → Kart / Bulut / HDD");', 'fileButton.setText("Dosya Yükle / Gönder → Kart / Bulut / HDD");')
+          p.write_text(s, encoding="utf-8")
+      - name: Commit picker fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ATMACA-WIFI/app/src/main/java/com/atmaca/files/MainActivity.java
+          git commit -m "fix: make phone files selectable on OEM picker"
+          git push origin HEAD:atmaca-offline-sync-impl
