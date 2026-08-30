@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -31,6 +32,22 @@ public final class AtmacaApi {
         try {
             if (c.getResponseCode() != 200) throw new IllegalStateException("HTTP " + c.getResponseCode());
             return CsvCatalogParser.parse(new InputStreamReader(new BufferedInputStream(c.getInputStream()), StandardCharsets.UTF_8));
+        } finally { c.disconnect(); }
+    }
+
+    public void download(String remotePath, OutputStream out) throws Exception {
+        String encoded = URLEncoder.encode(PathUtil.normalize(remotePath), StandardCharsets.UTF_8.toString());
+        HttpURLConnection c = open("/download?path=" + encoded, "GET");
+        c.setReadTimeout(120000);
+        try {
+            int code = c.getResponseCode();
+            if (code != 200) throw new IllegalStateException("HTTP " + code);
+            try (BufferedInputStream in = new BufferedInputStream(c.getInputStream())) {
+                byte[] buf = new byte[1024 * 1024];
+                int n;
+                while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
+                out.flush();
+            }
         } finally { c.disconnect(); }
     }
 
