@@ -3,6 +3,7 @@ package com.atmaca.files;
 public final class BackupProgress {
     private BackupProgress() {}
 
+    // Human-readable status shown while a cloud folder backup is running.
     public static String text(int done, int total, String currentName) {
         String name = currentName == null || currentName.trim().isEmpty() ? "dosya" : currentName;
         return done + " / " + total + " dosya • " + name;
