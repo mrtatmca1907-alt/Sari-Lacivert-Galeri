@@ -43,9 +43,7 @@ public final class CatalogDb extends SQLiteOpenHelper {
         try {
             db.delete("entries", null, null);
             for (CatalogEntry e : entries) put(db, e);
-            for (PendingUpload p : pendingUploads(db)) {
-                put(db, stagedCatalogEntry(p));
-            }
+            for (PendingUpload p : pendingUploads(db)) put(db, stagedCatalogEntry(p));
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
@@ -148,5 +146,45 @@ public final class CatalogDb extends SQLiteOpenHelper {
 
     public void deleteUpload(long id) {
         getWritableDatabase().delete("upload_queue", "id=?", new String[]{String.valueOf(id)});
+    }
+
+    public void applyLocalMkdir(String path) {
+        String p = PathUtil.normalize(path);
+        String name = p.substring(p.lastIndexOf('/') + 1);
+        upsertEntry(new CatalogEntry("KLASOR", name, p, 0L, "BEKLIYOR", ""));
+    }
+
+    public void applyLocalDelete(String path) {
+        String p = PathUtil.normalize(path);
+        getWritableDatabase().delete("entries", "path=? OR path LIKE ?", new String[]{p, p + "/%"});
+    }
+
+    public void applyLocalRename(String path, String newName) {
+        String p = PathUtil.normalize(path);
+        String newRoot = PathUtil.child(PathUtil.parent(p), newName);
+        rewriteSubtree(p, newRoot, newName);
+    }
+
+    public void applyLocalMove(String path, String destDir) {
+        String p = PathUtil.normalize(path);
+        String name = p.substring(p.lastIndexOf('/') + 1);
+        String newRoot = PathUtil.child(destDir, name);
+        rewriteSubtree(p, newRoot, name);
+    }
+
+    private void rewriteSubtree(String oldRoot, String newRoot, String rootName) {
+        SQLiteDatabase db = getWritableDatabase();
+        List<CatalogEntry> rows = read("SELECT type,name,path,size,date,ext FROM entries WHERE path=? OR path LIKE ? ORDER BY LENGTH(path)", new String[]{oldRoot, oldRoot + "/%"});
+        db.beginTransaction();
+        try {
+            db.delete("entries", "path=? OR path LIKE ?", new String[]{oldRoot, oldRoot + "/%"});
+            for (CatalogEntry e : rows) {
+                String suffix = e.path.length() == oldRoot.length() ? "" : e.path.substring(oldRoot.length());
+                String path = newRoot + suffix;
+                String name = suffix.isEmpty() ? rootName : e.name;
+                put(db, new CatalogEntry(e.type, name, path, e.size, e.date, e.extension));
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
     }
 }
