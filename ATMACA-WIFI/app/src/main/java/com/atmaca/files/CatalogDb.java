@@ -10,15 +10,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class CatalogDb extends SQLiteOpenHelper {
-    public CatalogDb(Context context) { super(context, "atmaca.db", null, 1); }
+    private static final int DB_VERSION = 2;
+
+    public CatalogDb(Context context) { super(context, "atmaca.db", null, DB_VERSION); }
 
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE entries(path TEXT PRIMARY KEY,type TEXT NOT NULL,name TEXT NOT NULL,size INTEGER NOT NULL,date TEXT,ext TEXT)");
         db.execSQL("CREATE INDEX idx_entries_path ON entries(path)");
         db.execSQL("CREATE TABLE queue(id INTEGER PRIMARY KEY AUTOINCREMENT,json TEXT NOT NULL)");
+        createUploadQueue(db);
     }
 
-    @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {}
+    private static void createUploadQueue(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS upload_queue(" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "local_path TEXT NOT NULL," +
+                "remote_dir TEXT NOT NULL," +
+                "name TEXT NOT NULL," +
+                "mime TEXT NOT NULL," +
+                "size INTEGER NOT NULL," +
+                "created_at INTEGER NOT NULL)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_upload_created ON upload_queue(created_at,id)");
+    }
+
+    @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        if (oldVersion < 2) createUploadQueue(db);
+    }
 
     public void replaceAll(List<CatalogEntry> entries) {
         SQLiteDatabase db = getWritableDatabase();
@@ -26,8 +43,20 @@ public final class CatalogDb extends SQLiteOpenHelper {
         try {
             db.delete("entries", null, null);
             for (CatalogEntry e : entries) put(db, e);
+            for (PendingUpload p : pendingUploads(db)) {
+                put(db, stagedCatalogEntry(p));
+            }
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
+    }
+
+    public void upsertEntry(CatalogEntry e) { put(getWritableDatabase(), e); }
+
+    private static CatalogEntry stagedCatalogEntry(PendingUpload p) {
+        String ext = "";
+        int dot = p.name.lastIndexOf('.');
+        if (dot >= 0 && dot + 1 < p.name.length()) ext = p.name.substring(dot + 1);
+        return new CatalogEntry("DOSYA", p.name, p.remotePath(), p.size, "BEKLIYOR", ext);
     }
 
     private static void put(SQLiteDatabase db, CatalogEntry e) {
@@ -84,4 +113,40 @@ public final class CatalogDb extends SQLiteOpenHelper {
     }
 
     public void clearQueue() { getWritableDatabase().delete("queue", null, null); }
+
+    public long addUpload(String localPath, String remoteDir, String name, String mime, long size) {
+        ContentValues v = new ContentValues();
+        v.put("local_path", localPath);
+        v.put("remote_dir", PathUtil.normalize(remoteDir));
+        v.put("name", name);
+        v.put("mime", mime == null ? "application/octet-stream" : mime);
+        v.put("size", Math.max(0L, size));
+        v.put("created_at", System.currentTimeMillis());
+        long id = getWritableDatabase().insertOrThrow("upload_queue", null, v);
+        PendingUpload p = new PendingUpload(id, localPath, remoteDir, name, mime, size, System.currentTimeMillis());
+        upsertEntry(stagedCatalogEntry(p));
+        return id;
+    }
+
+    public List<PendingUpload> pendingUploads() { return pendingUploads(getReadableDatabase()); }
+
+    private static List<PendingUpload> pendingUploads(SQLiteDatabase db) {
+        ArrayList<PendingUpload> out = new ArrayList<>();
+        try (Cursor c = db.rawQuery("SELECT id,local_path,remote_dir,name,mime,size,created_at FROM upload_queue ORDER BY created_at,id", null)) {
+            while (c.moveToNext()) {
+                out.add(new PendingUpload(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getLong(5), c.getLong(6)));
+            }
+        }
+        return out;
+    }
+
+    public int pendingUploadCount() {
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT COUNT(*) FROM upload_queue", null)) {
+            return c.moveToFirst() ? c.getInt(0) : 0;
+        }
+    }
+
+    public void deleteUpload(long id) {
+        getWritableDatabase().delete("upload_queue", "id=?", new String[]{String.valueOf(id)});
+    }
 }
