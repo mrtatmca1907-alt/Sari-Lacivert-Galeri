@@ -43,27 +43,40 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainActivity extends AppCompatActivity implements EntryAdapter.Listener {
-    private static final int REQ_VIDEOS = 4101;
+    private static final int REQ_FILES = 4101;
     private static final int REQ_CARD_FOLDER = 4102;
     private static final int REQ_CLOUD_FOLDER = 4103;
+    private static final int REQ_BACKUP_SOURCE = 4104;
+    private static final int REQ_BACKUP_CLOUD_DEST = 4105;
+    private static final int REQ_CLOUD_FILES = 4106;
+    private static final int REQ_PHONE_DEST = 4107;
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private final ArrayList<Uri> selectedVideos = new ArrayList<>();
+    private final ArrayList<Uri> selectedItems = new ArrayList<>();
+    private final ArrayList<Uri> cloudDownloadItems = new ArrayList<>();
     private CatalogDb db;
     private EntryAdapter adapter;
     private TextView status, pathView;
     private EditText hostInput, searchInput;
-    private Button videoButton, cancelHddButton;
+    private Button fileButton, cancelHddButton;
     private String currentPath = "/";
     private SharedPreferences prefs;
     private boolean hddFolderMode = false;
+    private Uri backupSourceTree;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         db = new CatalogDb(this);
         prefs = getSharedPreferences("atmaca", MODE_PRIVATE);
         setContentView(buildUi());
+        SyncScheduler.ensurePeriodic(this);
+        if (db.pendingUploadCount() > 0 || !db.pendingQueue().isEmpty()) SyncScheduler.scheduleNow(this);
         refreshList();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (db != null && (db.pendingUploadCount() > 0 || !db.pendingQueue().isEmpty())) SyncScheduler.scheduleNow(this);
     }
 
     private LinearLayout buildUi() {
@@ -110,28 +123,41 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         mkdir.setOnClickListener(v -> askMkdir());
         Button send = new Button(this);
         send.setText("Kuyruğu Gönder");
-        send.setOnClickListener(v -> sendPending());
+        send.setOnClickListener(v -> syncNow());
         tools.addView(back);
         tools.addView(mkdir);
         tools.addView(send);
         root.addView(tools);
 
-        LinearLayout videoRow = new LinearLayout(this);
-        videoRow.setOrientation(LinearLayout.HORIZONTAL);
-        videoRow.setPadding(12,0,12,6);
-        videoButton = new Button(this);
-        videoButton.setText("Video Seç → Kart / Bulut / HDD");
-        videoButton.setOnClickListener(v -> {
-            if (hddFolderMode) uploadVideosToHdd();
-            else pickVideos();
+        LinearLayout fileRow = new LinearLayout(this);
+        fileRow.setOrientation(LinearLayout.HORIZONTAL);
+        fileRow.setPadding(12,0,12,4);
+        fileButton = new Button(this);
+        fileButton.setText("Dosya Seç → Kart / Bulut / HDD");
+        fileButton.setOnClickListener(v -> {
+            if (hddFolderMode) stageFilesToHdd();
+            else pickFiles();
         });
-        videoRow.addView(videoButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        fileRow.addView(fileButton, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         cancelHddButton = new Button(this);
         cancelHddButton.setText("Vazgeç");
         cancelHddButton.setVisibility(View.GONE);
         cancelHddButton.setOnClickListener(v -> cancelHddSelection());
-        videoRow.addView(cancelHddButton);
-        root.addView(videoRow);
+        fileRow.addView(cancelHddButton);
+        root.addView(fileRow);
+
+        LinearLayout cloudRow = new LinearLayout(this);
+        cloudRow.setOrientation(LinearLayout.HORIZONTAL);
+        cloudRow.setPadding(12,0,12,6);
+        Button folderBackup = new Button(this);
+        folderBackup.setText("Klasör Yedekle → Bulut");
+        folderBackup.setOnClickListener(v -> pickBackupSource());
+        Button cloudDownload = new Button(this);
+        cloudDownload.setText("Buluttan Telefona");
+        cloudDownload.setOnClickListener(v -> pickCloudFiles());
+        cloudRow.addView(folderBackup, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        cloudRow.addView(cloudDownload, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        root.addView(cloudRow);
 
         pathView = new TextView(this);
         pathView.setTextSize(16);
@@ -158,18 +184,19 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         return root;
     }
 
-    private void pickVideos() {
+    private void pickFiles() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.setType("video/*");
+        i.setType("*/*");
         i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        startActivityForResult(i, REQ_VIDEOS);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(i, REQ_FILES);
     }
 
     private void chooseTarget() {
         String[] items = StorageTargetPolicy.targets();
         new AlertDialog.Builder(this)
-                .setTitle(selectedVideos.size() + " video nereye kaydedilsin?")
+                .setTitle(selectedItems.size() + " dosya nereye kaydedilsin?")
                 .setItems(items, (d, which) -> {
                     if (which == 0) pickDestinationTree(REQ_CARD_FOLDER);
                     else if (which == 1) pickDestinationTree(REQ_CLOUD_FOLDER);
@@ -181,20 +208,20 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         hddFolderMode = true;
         currentPath = "/";
         if (searchInput != null) searchInput.setText("");
-        videoButton.setText(StorageTargetPolicy.hddConfirmLabel());
+        fileButton.setText(StorageTargetPolicy.hddConfirmLabel());
         cancelHddButton.setVisibility(View.VISIBLE);
         refreshList();
-        toast("HDD'de hedef klasörü aç, sonra Bu klasöre gönder'e bas");
+        toast("HDD hedef klasörünü açıp Bu klasöre gönder'e bas");
     }
 
     private void finishHddFolderSelection() {
         hddFolderMode = false;
-        videoButton.setText("Video Seç → Kart / Bulut / HDD");
+        fileButton.setText("Dosya Seç → Kart / Bulut / HDD");
         cancelHddButton.setVisibility(View.GONE);
     }
 
     private void cancelHddSelection() {
-        selectedVideos.clear();
+        selectedItems.clear();
         finishHddFolderSelection();
         refreshList();
         toast("HDD hedef seçimi iptal edildi");
@@ -206,20 +233,31 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         startActivityForResult(i, requestCode);
     }
 
+    private void pickBackupSource() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(i, REQ_BACKUP_SOURCE);
+    }
+
+    private void pickCloudFiles() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(i, REQ_CLOUD_FILES);
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null) return;
 
-        if (requestCode == REQ_VIDEOS) {
-            selectedVideos.clear();
-            ClipData clips = data.getClipData();
-            if (clips != null) {
-                for (int x = 0; x < clips.getItemCount(); x++) selectedVideos.add(clips.getItemAt(x).getUri());
-            } else if (data.getData() != null) {
-                selectedVideos.add(data.getData());
-            }
-            if (selectedVideos.isEmpty()) {
-                toast("Video seçilmedi");
+        if (requestCode == REQ_FILES) {
+            selectedItems.clear();
+            collectUris(data, selectedItems);
+            persistReadPermissions(data, selectedItems);
+            if (selectedItems.isEmpty()) {
+                toast("Dosya seçilmedi");
                 return;
             }
             chooseTarget();
@@ -229,96 +267,165 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         if (requestCode == REQ_CARD_FOLDER || requestCode == REQ_CLOUD_FOLDER) {
             Uri tree = data.getData();
             if (tree == null) return;
-            try {
-                getContentResolver().takePersistableUriPermission(
-                        tree,
-                        data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                );
-            } catch (Exception ignored) {}
-            copyVideosToTree(tree, requestCode == REQ_CARD_FOLDER ? "Kart" : "Bulut");
+            persistTreePermission(data, tree);
+            copySelectedFilesToTree(tree, requestCode == REQ_CARD_FOLDER ? "Kart" : "Bulut");
+            return;
+        }
+
+        if (requestCode == REQ_BACKUP_SOURCE) {
+            backupSourceTree = data.getData();
+            if (backupSourceTree == null) return;
+            persistTreePermission(data, backupSourceTree);
+            toast("Şimdi Bulut hedef klasörünü seç");
+            pickDestinationTree(REQ_BACKUP_CLOUD_DEST);
+            return;
+        }
+
+        if (requestCode == REQ_BACKUP_CLOUD_DEST) {
+            Uri dest = data.getData();
+            if (dest == null || backupSourceTree == null) return;
+            persistTreePermission(data, dest);
+            backupFolderToCloud(backupSourceTree, dest);
+            return;
+        }
+
+        if (requestCode == REQ_CLOUD_FILES) {
+            cloudDownloadItems.clear();
+            collectUris(data, cloudDownloadItems);
+            persistReadPermissions(data, cloudDownloadItems);
+            if (cloudDownloadItems.isEmpty()) {
+                toast("Buluttan dosya seçilmedi");
+                return;
+            }
+            toast("Telefonda hedef klasörü seç");
+            pickDestinationTree(REQ_PHONE_DEST);
+            return;
+        }
+
+        if (requestCode == REQ_PHONE_DEST) {
+            Uri dest = data.getData();
+            if (dest == null || cloudDownloadItems.isEmpty()) return;
+            persistTreePermission(data, dest);
+            copyCloudFilesToPhone(dest);
         }
     }
 
-    private void copyVideosToTree(Uri tree, String label) {
-        ArrayList<Uri> items = new ArrayList<>(selectedVideos);
+    private void collectUris(Intent data, ArrayList<Uri> target) {
+        ClipData clips = data.getClipData();
+        if (clips != null) {
+            for (int x = 0; x < clips.getItemCount(); x++) target.add(clips.getItemAt(x).getUri());
+        } else if (data.getData() != null) {
+            target.add(data.getData());
+        }
+    }
+
+    private void persistReadPermissions(Intent data, List<Uri> uris) {
+        int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+        if (flags == 0) return;
+        for (Uri uri : uris) {
+            try { getContentResolver().takePersistableUriPermission(uri, flags); } catch (Exception ignored) {}
+        }
+    }
+
+    private void persistTreePermission(Intent data, Uri tree) {
+        try {
+            getContentResolver().takePersistableUriPermission(
+                    tree,
+                    data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            );
+        } catch (Exception ignored) {}
+    }
+
+    private void copySelectedFilesToTree(Uri tree, String label) {
+        ArrayList<Uri> items = new ArrayList<>(selectedItems);
         status.setText(label + " klasörüne kopyalanıyor...");
         io.execute(() -> {
             int done = 0;
             try {
-                Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
-                for (Uri src : items) {
-                    String name = displayName(src);
-                    String mime = getContentResolver().getType(src);
-                    if (mime == null) mime = mimeFor(name);
-                    Uri dest = DocumentsContract.createDocument(getContentResolver(), parent, mime, name);
-                    if (dest == null) throw new IllegalStateException("Hedef dosya oluşturulamadı");
-                    try (InputStream in = getContentResolver().openInputStream(src);
-                         OutputStream out = getContentResolver().openOutputStream(dest)) {
-                        if (in == null || out == null) throw new IllegalStateException("Dosya açılamadı");
-                        copy(in, out);
-                    }
-                    done++;
-                    int n = done;
-                    runOnUiThread(() -> status.setText(label + ": " + n + "/" + items.size()));
-                }
-                selectedVideos.clear();
+                done = SafTreeCopier.copyFilesToTree(this, items, tree);
+                selectedItems.clear();
+                int n = done;
                 runOnUiThread(() -> {
-                    status.setText(label + " aktarımı tamamlandı: " + items.size());
-                    toast("Videolar hedef klasöre kaydedildi");
+                    status.setText(label + " aktarımı tamamlandı: " + n);
+                    toast(n + " dosya hedef klasöre kaydedildi");
                 });
             } catch (Exception e) {
                 int n = done;
                 runOnUiThread(() -> {
                     status.setText(label + " aktarım hatası: " + safe(e.getMessage()));
-                    toast(n + " video tamamlandı, aktarım kesildi");
+                    toast(n + " dosya tamamlandı, aktarım kesildi");
                 });
             }
         });
     }
 
-    private void uploadVideosToHdd() {
-        if (!hddFolderMode || selectedVideos.isEmpty()) {
-            toast("Önce video ve HDD hedef klasörü seç");
+    private void stageFilesToHdd() {
+        if (!hddFolderMode || selectedItems.isEmpty()) {
+            toast("Önce dosya ve HDD hedef klasörü seç");
             return;
         }
-
-        ArrayList<Uri> items = new ArrayList<>(selectedVideos);
-        String host = hostInput.getText().toString().trim();
+        ArrayList<Uri> items = new ArrayList<>(selectedItems);
         String folder = StorageTargetPolicy.hddFolder(currentPath);
-        status.setText("HDD " + folder + " klasörüne gönderiliyor...");
-        videoButton.setEnabled(false);
+        status.setText("Dosyalar telefonda HDD kuyruğuna hazırlanıyor...");
+        fileButton.setEnabled(false);
         cancelHddButton.setEnabled(false);
-
         io.execute(() -> {
-            int done = 0;
             try {
-                AtmacaApi api = new AtmacaApi(host);
-                if (!api.health()) throw new IllegalStateException("PC servisi yanıt vermedi");
-                for (Uri src : items) {
-                    String name = displayName(src);
-                    try (InputStream in = getContentResolver().openInputStream(src)) {
-                        if (in == null) throw new IllegalStateException("Video açılamadı");
-                        api.upload(folder, name, in);
-                    }
-                    done++;
-                    int n = done;
-                    runOnUiThread(() -> status.setText("HDD: " + n + "/" + items.size() + " → " + folder));
-                }
-                selectedVideos.clear();
+                int done = HddStager.stage(this, db, items, folder);
+                selectedItems.clear();
+                SyncScheduler.scheduleNow(this);
                 runOnUiThread(() -> {
                     finishHddFolderSelection();
-                    videoButton.setEnabled(true);
+                    fileButton.setEnabled(true);
                     cancelHddButton.setEnabled(true);
-                    toast("Videolar seçtiğin HDD klasörüne gönderildi");
-                    syncNow();
+                    toast(done + " dosya HDD kuyruğuna alındı");
+                    refreshList();
                 });
             } catch (Exception e) {
-                int n = done;
                 runOnUiThread(() -> {
-                    videoButton.setEnabled(true);
+                    fileButton.setEnabled(true);
                     cancelHddButton.setEnabled(true);
-                    status.setText("HDD aktarım hatası: " + safe(e.getMessage()));
-                    toast(n + " video gönderildi, aktarım kesildi");
+                    status.setText("HDD kuyruğu hatası: " + safe(e.getMessage()));
+                    toast("Dosyalar güvenli bekleme alanına alınamadı");
+                });
+            }
+        });
+    }
+
+    private void backupFolderToCloud(Uri source, Uri dest) {
+        status.setText("Klasör Bulut'a yedekleniyor...");
+        io.execute(() -> {
+            try {
+                int count = SafTreeCopier.copyTree(this, source, dest);
+                backupSourceTree = null;
+                runOnUiThread(() -> {
+                    status.setText("Bulut yedekleme tamamlandı: " + count + " dosya");
+                    toast("Klasör ve alt klasörler Bulut'a yedeklendi");
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    status.setText("Bulut yedekleme hatası: " + safe(e.getMessage()));
+                    toast("Klasör yedekleme tamamlanamadı");
+                });
+            }
+        });
+    }
+
+    private void copyCloudFilesToPhone(Uri dest) {
+        ArrayList<Uri> items = new ArrayList<>(cloudDownloadItems);
+        status.setText("Buluttan telefona kopyalanıyor...");
+        io.execute(() -> {
+            try {
+                int count = SafTreeCopier.copyFilesToTree(this, items, dest);
+                cloudDownloadItems.clear();
+                runOnUiThread(() -> {
+                    status.setText("Buluttan telefona tamamlandı: " + count + " dosya");
+                    toast(count + " dosya telefona indirildi");
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    status.setText("Buluttan indirme hatası: " + safe(e.getMessage()));
+                    toast("Buluttan telefona aktarım tamamlanamadı");
                 });
             }
         });
@@ -332,13 +439,14 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
                     ? db.listChildren(currentPath, "", 1000, 0)
                     : db.search(q, 1000);
             int count = db.count();
-            int pending = db.pendingQueue().size();
+            int metadataPending = db.pendingQueue().size();
+            int uploadPending = db.pendingUploadCount();
             runOnUiThread(() -> {
                 adapter.setItems(rows);
                 if (hddFolderMode) {
                     status.setText("Hedef klasörü aç → " + currentPath + " → Bu klasöre gönder");
                 } else {
-                    status.setText(count + " kayıt • " + pending + " bekleyen işlem • " + rows.size() + " gösteriliyor");
+                    status.setText(count + " kayıt • " + metadataPending + " işlem • " + uploadPending + " dosya HDD bekliyor");
                 }
             });
         });
@@ -365,49 +473,21 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
     private void syncNow() {
         String host = hostInput.getText().toString().trim();
         prefs.edit().putString("host", host).apply();
-        status.setText("PC'ye bağlanıyor...");
+        status.setText("PC'ye bağlanıyor ve kuyruk eşitleniyor...");
         io.execute(() -> {
             try {
-                AtmacaApi api = new AtmacaApi(host);
-                if (!api.health()) throw new IllegalStateException("PC servisi yanıt vermedi");
-                List<String> pending = db.pendingQueue();
-                if (!pending.isEmpty()) {
-                    api.sendQueue(pending);
-                    db.clearQueue();
-                }
-                List<CatalogEntry> rows = api.fetchCatalog();
-                db.replaceAll(rows);
+                SyncEngine.Result result = SyncEngine.run(this, db, host);
                 runOnUiThread(() -> {
-                    toast("Wi‑Fi eşitleme tamam");
+                    toast("Eşitleme tamam: " + result.uploaded + " dosya, " + result.metadataOps + " işlem");
                     refreshList();
                 });
             } catch (Exception e) {
+                SyncScheduler.scheduleNow(this);
                 runOnUiThread(() -> {
                     status.setText("Offline mod: " + safe(e.getMessage()));
-                    toast("PC yok; offline katalog açık");
+                    toast("PC yok; dosyalar ve işlemler telefonda korunuyor");
                     refreshList();
                 });
-            }
-        });
-    }
-
-    private void sendPending() {
-        String host = hostInput.getText().toString().trim();
-        io.execute(() -> {
-            try {
-                List<String> pending = db.pendingQueue();
-                if (pending.isEmpty()) {
-                    runOnUiThread(() -> toast("Bekleyen işlem yok"));
-                    return;
-                }
-                new AtmacaApi(host).sendQueue(pending);
-                db.clearQueue();
-                runOnUiThread(() -> {
-                    toast("Kuyruk gönderildi");
-                    syncNow();
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> toast("PC'ye ulaşılamadı; kuyruk korunuyor"));
             }
         });
     }
@@ -574,34 +654,16 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
             if (newName != null) o.put("newName", newName);
             o.put("createdAt", System.currentTimeMillis());
             db.addQueue(o.toString());
+            SyncScheduler.scheduleNow(this);
             toast("İşlem kuyruğa alındı");
             refreshList();
-            sendPending();
         } catch (Exception e) {
             toast("İşlem kaydedilemedi");
         }
     }
 
-    private String displayName(Uri uri) {
-        try (Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
-            if (c != null && c.moveToFirst()) {
-                int i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                if (i >= 0) return safeName(c.getString(i));
-            }
-        } catch (Exception ignored) {}
-        String last = uri == null ? null : uri.getLastPathSegment();
-        return safeName(last);
-    }
-
-    private static void copy(InputStream in, OutputStream out) throws Exception {
-        byte[] buf = new byte[1024 * 1024];
-        int n;
-        while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
-        out.flush();
-    }
-
     private static String safeName(String name) {
-        return (name == null || name.trim().isEmpty()) ? "video" : name.replace('/', '_').replace('\\', '_');
+        return (name == null || name.trim().isEmpty()) ? "dosya" : name.replace('/', '_').replace('\\', '_');
     }
 
     private static String mimeFor(String name) {
