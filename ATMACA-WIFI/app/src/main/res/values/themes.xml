@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.ATMACA" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#001E62</item>
+        <item name="colorSecondary">#FEDB00</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:statusBarColor">#001E62</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
