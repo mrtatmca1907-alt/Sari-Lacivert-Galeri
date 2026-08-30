@@ -133,7 +133,7 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         fileRow.setOrientation(LinearLayout.HORIZONTAL);
         fileRow.setPadding(12,0,12,4);
         fileButton = new Button(this);
-        fileButton.setText("Dosya Seç → Kart / Bulut / HDD");
+        fileButton.setText("Dosya Yükle / Gönder → Kart / Bulut / HDD");
         fileButton.setOnClickListener(v -> {
             if (hddFolderMode) stageFilesToHdd();
             else pickFiles();
@@ -185,12 +185,12 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
     }
 
     private void pickFiles() {
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        Intent i = new Intent(FilePickerPolicy.action());
         i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.setType("*/*");
+        i.setType(FilePickerPolicy.mimeType());
         i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        startActivityForResult(i, REQ_FILES);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivityForResult(Intent.createChooser(i, "Telefondan dosya seç"), REQ_FILES);
     }
 
     private void chooseTarget() {
@@ -216,7 +216,7 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
 
     private void finishHddFolderSelection() {
         hddFolderMode = false;
-        fileButton.setText("Dosya Seç → Kart / Bulut / HDD");
+        fileButton.setText("Dosya Yükle / Gönder → Kart / Bulut / HDD");
         cancelHddButton.setVisibility(View.GONE);
     }
 
@@ -240,12 +240,12 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
     }
 
     private void pickCloudFiles() {
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        Intent i = new Intent(FilePickerPolicy.action());
         i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.setType("*/*");
+        i.setType(FilePickerPolicy.mimeType());
         i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        startActivityForResult(i, REQ_CLOUD_FILES);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivityForResult(Intent.createChooser(i, "Buluttan dosya seç"), REQ_CLOUD_FILES);
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
