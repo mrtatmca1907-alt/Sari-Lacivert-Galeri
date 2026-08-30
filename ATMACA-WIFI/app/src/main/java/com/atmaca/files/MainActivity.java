@@ -393,13 +393,18 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
     }
 
     private void backupFolderToCloud(Uri source, Uri dest) {
-        status.setText("Klasör Bulut'a yedekleniyor...");
+        status.setText("Bulut yedeği taranıyor...");
         io.execute(() -> {
             try {
-                int count = SafTreeCopier.copyTree(this, source, dest);
+                final int[] totalSeen = {0};
+                int count = SafTreeCopier.copyTree(this, source, dest, (done, total, currentName) -> {
+                    totalSeen[0] = total;
+                    runOnUiThread(() -> status.setText(BackupProgress.text(done, total, currentName)));
+                });
+                int total = totalSeen[0] == 0 ? count : totalSeen[0];
                 backupSourceTree = null;
                 runOnUiThread(() -> {
-                    status.setText("Bulut yedekleme tamamlandı: " + count + " dosya");
+                    status.setText(BackupProgress.completed(count, total));
                     toast("Klasör ve alt klasörler Bulut'a yedeklendi");
                 });
             } catch (Exception e) {
