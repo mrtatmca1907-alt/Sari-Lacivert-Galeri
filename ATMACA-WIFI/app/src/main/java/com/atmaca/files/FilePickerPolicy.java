@@ -1,5 +1,6 @@
 package com.atmaca.files;
 
+/** Uses the broad Android content picker for better OEM file-manager compatibility. */
 public final class FilePickerPolicy {
     private FilePickerPolicy() {}
 
