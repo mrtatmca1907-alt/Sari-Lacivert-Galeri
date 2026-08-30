@@ -38,6 +38,7 @@ public final class CloudHddTransfer {
         int uploaded;
         int failed;
         boolean online;
+        boolean stop;
     }
 
     public static Result transfer(Context context, CatalogDb db, Uri cloudTree, String host,
@@ -54,16 +55,13 @@ public final class CloudHddTransfer {
         } catch (Exception ignored) {
             state.online = false;
         }
-
-        // If there is an older safe queue, clear it first while the PC is reachable.
-        // A failure simply switches this transfer to offline staging; nothing is deleted.
-        if (state.online) {
-            try {
-                SyncEngine.uploadPending(db, api);
-            } catch (Exception ignored) {
-                state.online = false;
-            }
+        if (!state.online) {
+            throw new IllegalStateException("PC/HDD servisi ulaşılamıyor; aktarım başlatılmadı");
         }
+
+        // Flush any older durable phone queue first. If that cannot be sent, do not start
+        // downloading a large cloud tree and risk filling the phone.
+        SyncEngine.uploadPending(db, api);
 
         transferChildren(context, db, resolver, cloudTree, root, "", api, state, total, listener);
 
@@ -106,6 +104,7 @@ public final class CloudHddTransfer {
                                          Uri tree, Uri parent, String relativeDir,
                                          AtmacaApi api, State state, int total,
                                          ProgressListener listener) throws Exception {
+        if (state.stop) return;
         String parentId = DocumentsContract.getDocumentId(parent);
         Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId);
         String[] cols = {
@@ -116,7 +115,7 @@ public final class CloudHddTransfer {
 
         try (Cursor c = resolver.query(children, cols, null, null, null)) {
             if (c == null) throw new IllegalStateException("Bulut klasörü okunamadı");
-            while (c.moveToNext()) {
+            while (c.moveToNext() && !state.stop) {
                 String id = c.getString(0);
                 String name = safeName(c.getString(1));
                 String mime = c.getString(2);
@@ -136,14 +135,13 @@ public final class CloudHddTransfer {
                 try {
                     HddStager.stage(context, db, Collections.singletonList(child),
                             CloudHddPathPolicy.remoteDir(relativeDir));
-
-                    if (state.online) {
-                        try {
-                            state.uploaded += SyncEngine.uploadPending(db, api);
-                        } catch (Exception ignored) {
-                            // The durable phone copy and DB queue entry remain intact.
-                            state.online = false;
-                        }
+                    try {
+                        state.uploaded += SyncEngine.uploadPending(db, api);
+                    } catch (Exception ignored) {
+                        // The current file remains durably staged on the phone. Stop here so
+                        // a large cloud backup cannot silently consume all phone storage.
+                        state.online = false;
+                        state.stop = true;
                     }
                 } catch (Exception e) {
                     state.failed++;
