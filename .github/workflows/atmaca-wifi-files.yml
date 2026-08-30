@@ -6,6 +6,11 @@ on:
     paths:
       - "ATMACA-WIFI/**"
       - ".github/workflows/atmaca-wifi-files.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "ATMACA-WIFI/**"
+      - ".github/workflows/atmaca-wifi-files.yml"
   workflow_dispatch:
 
 jobs:
