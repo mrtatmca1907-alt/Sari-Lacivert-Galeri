@@ -115,7 +115,7 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         }).show();
     }
 
-    private void askMkdir() { askText("Yeni klasör", "Klasör adı", "", text -> queueOp("mkdir", null, PathUtil.child(currentPath, text), null)); }
+    private void askMkdir() { askText("Yeni klasör", "Klasör adı", "", text -> queueOp("mkdir", PathUtil.child(currentPath, text), null, null)); }
     private void askRename(CatalogEntry e) { askText("Yeniden adlandır", "Yeni ad", e.name, text -> queueOp("rename", e.path, null, text)); }
     private void askMove(CatalogEntry e) { askText("Taşı", "Hedef klasör yolu", currentPath, text -> queueOp("move", e.path, PathUtil.normalize(text), null)); }
     private void queueDelete(CatalogEntry e) { new AlertDialog.Builder(this).setTitle("Silinsin mi?").setMessage(e.path).setPositiveButton("Sil", (d,w) -> queueOp("delete", e.path, null, null)).setNegativeButton("Vazgeç", null).show(); }
@@ -128,9 +128,9 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         }).setNegativeButton("Vazgeç", null).show();
     }
 
-    private void queueOp(String op, String path, String target, String newName) {
+    private void queueOp(String op, String path, String dest, String newName) {
         try {
-            JSONObject o = new JSONObject(); o.put("op", op); if (path != null) o.put("path", path); if (target != null) o.put("target", target); if (newName != null) o.put("newName", newName);
+            JSONObject o = new JSONObject(); o.put("op", op); if (path != null) o.put("path", path); if (dest != null) o.put("dest", dest); if (newName != null) o.put("newName", newName);
             o.put("createdAt", System.currentTimeMillis()); db.addQueue(o.toString()); toast("İşlem kuyruğa alındı"); refreshList();
         } catch (Exception e) { toast("İşlem kaydedilemedi"); }
     }
