@@ -6,6 +6,8 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -99,7 +101,16 @@ public final class CatalogDb extends SQLiteOpenHelper {
 
     public void addQueue(String json) {
         ContentValues v = new ContentValues(); v.put("json", json);
-        getWritableDatabase().insert("queue", null, v);
+        getWritableDatabase().insertOrThrow("queue", null, v);
+        try {
+            JSONObject o = new JSONObject(json);
+            String op = o.optString("op", "");
+            String path = o.optString("path", "/");
+            if ("mkdir".equals(op)) applyLocalMkdir(path);
+            else if ("delete".equals(op)) applyLocalDelete(path);
+            else if ("rename".equals(op)) applyLocalRename(path, o.optString("newName", ""));
+            else if ("move".equals(op)) applyLocalMove(path, o.optString("dest", "/"));
+        } catch (Exception ignored) {}
     }
 
     public List<String> pendingQueue() {
@@ -131,9 +142,7 @@ public final class CatalogDb extends SQLiteOpenHelper {
     private static List<PendingUpload> pendingUploads(SQLiteDatabase db) {
         ArrayList<PendingUpload> out = new ArrayList<>();
         try (Cursor c = db.rawQuery("SELECT id,local_path,remote_dir,name,mime,size,created_at FROM upload_queue ORDER BY created_at,id", null)) {
-            while (c.moveToNext()) {
-                out.add(new PendingUpload(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getLong(5), c.getLong(6)));
-            }
+            while (c.moveToNext()) out.add(new PendingUpload(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getLong(5), c.getLong(6)));
         }
         return out;
     }
@@ -160,6 +169,7 @@ public final class CatalogDb extends SQLiteOpenHelper {
     }
 
     public void applyLocalRename(String path, String newName) {
+        if (newName == null || newName.trim().isEmpty()) return;
         String p = PathUtil.normalize(path);
         String newRoot = PathUtil.child(PathUtil.parent(p), newName);
         rewriteSubtree(p, newRoot, newName);
