@@ -46,19 +46,20 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         root.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout conn = new LinearLayout(this); conn.setOrientation(LinearLayout.HORIZONTAL); conn.setPadding(14,10,14,6);
-        hostInput = new EditText(this); hostInput.setSingleLine(true); hostInput.setHint("PC IP (örn. 192.168.1.104)"); hostInput.setText(prefs.getString("host", "192.168.1.104"));
+        hostInput = new EditText(this); hostInput.setSingleLine(true); hostInput.setHint("PC IP"); hostInput.setText(prefs.getString("host", "192.168.1.104"));
         Button sync = new Button(this); sync.setText("Wi‑Fi Eşitle"); sync.setOnClickListener(v -> syncNow());
         conn.addView(hostInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1)); conn.addView(sync);
         root.addView(conn);
 
         status = new TextView(this); status.setPadding(20,4,20,8); status.setTextColor(Color.DKGRAY); root.addView(status);
-        pathView = new TextView(this); pathView.setTextSize(16); pathView.setPadding(20,10,20,10); pathView.setBackgroundColor(Color.rgb(254,219,0)); root.addView(pathView);
 
         LinearLayout tools = new LinearLayout(this); tools.setOrientation(LinearLayout.HORIZONTAL); tools.setPadding(12,6,12,6);
-        Button up = new Button(this); up.setText("↑ Üst"); up.setOnClickListener(v -> { currentPath = PathUtil.parent(currentPath); refreshList(); });
-        Button mkdir = new Button(this); mkdir.setText("+ Klasör"); mkdir.setOnClickListener(v -> askMkdir());
+        Button back = new Button(this); back.setText("← Geri"); back.setOnClickListener(v -> goBack(false));
+        Button mkdir = new Button(this); mkdir.setText("+ Yeni Klasör"); mkdir.setOnClickListener(v -> askMkdir());
         Button send = new Button(this); send.setText("Kuyruğu Gönder"); send.setOnClickListener(v -> sendPending());
-        tools.addView(up); tools.addView(mkdir); tools.addView(send); root.addView(tools);
+        tools.addView(back); tools.addView(mkdir); tools.addView(send); root.addView(tools);
+
+        pathView = new TextView(this); pathView.setTextSize(16); pathView.setPadding(20,10,20,10); pathView.setBackgroundColor(Color.rgb(254,219,0)); root.addView(pathView);
 
         searchInput = new EditText(this); searchInput.setHint("Ara..."); searchInput.setSingleLine(true); searchInput.setPadding(20,8,20,8);
         searchInput.addTextChangedListener(new TextWatcher() {
@@ -80,6 +81,20 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
             runOnUiThread(() -> { adapter.setItems(rows); status.setText(count + " kayıt • " + pending + " bekleyen işlem • " + rows.size() + " gösteriliyor"); });
         });
     }
+
+    private void goBack(boolean allowExitAtRoot) {
+        String target = NavigationPolicy.backTarget(currentPath);
+        if (target != null) {
+            currentPath = target;
+            if (searchInput != null) searchInput.setText("");
+            refreshList();
+            return;
+        }
+        if (allowExitAtRoot) super.onBackPressed();
+        else toast("Ana klasördesin");
+    }
+
+    @Override public void onBackPressed() { goBack(true); }
 
     private void syncNow() {
         String host = hostInput.getText().toString().trim(); prefs.edit().putString("host", host).apply(); status.setText("PC'ye bağlanıyor...");
@@ -107,7 +122,13 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         });
     }
 
-    @Override public void onClick(CatalogEntry e) { if (e.isFolder()) { currentPath = e.path; searchInput.setText(""); refreshList(); } }
+    @Override public void onClick(CatalogEntry e) {
+        if (!e.isFolder()) return;
+        currentPath = e.path;
+        if (searchInput != null) searchInput.setText("");
+        refreshList();
+    }
+
     @Override public void onLongClick(CatalogEntry e) {
         String[] items = {"Yeniden adlandır", "Taşı", "Sil"};
         new AlertDialog.Builder(this).setTitle(e.name).setItems(items, (d, which) -> {
@@ -115,7 +136,7 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         }).show();
     }
 
-    private void askMkdir() { askText("Yeni klasör", "Klasör adı", "", text -> queueOp("mkdir", PathUtil.child(currentPath, text), null, null)); }
+    private void askMkdir() { askText("Yeni klasör oluştur", "Klasör adı", "", text -> queueOp("mkdir", PathUtil.child(currentPath, text), null, null)); }
     private void askRename(CatalogEntry e) { askText("Yeniden adlandır", "Yeni ad", e.name, text -> queueOp("rename", e.path, null, text)); }
     private void askMove(CatalogEntry e) { askText("Taşı", "Hedef klasör yolu", currentPath, text -> queueOp("move", e.path, PathUtil.normalize(text), null)); }
     private void queueDelete(CatalogEntry e) { new AlertDialog.Builder(this).setTitle("Silinsin mi?").setMessage(e.path).setPositiveButton("Sil", (d,w) -> queueOp("delete", e.path, null, null)).setNegativeButton("Vazgeç", null).show(); }
