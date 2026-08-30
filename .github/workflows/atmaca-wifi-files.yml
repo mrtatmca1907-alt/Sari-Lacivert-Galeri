@@ -2,7 +2,7 @@ name: ATMACA WiFi Files APK
 
 on:
   push:
-    branches: ["atmaca-wifi-files"]
+    branches: ["atmaca-wifi-files", "atmaca-offline-sync-impl"]
     paths:
       - "ATMACA-WIFI/**"
       - ".github/workflows/atmaca-wifi-files.yml"
