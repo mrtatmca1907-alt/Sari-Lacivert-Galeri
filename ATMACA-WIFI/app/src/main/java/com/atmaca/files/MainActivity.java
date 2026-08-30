@@ -1,8 +1,10 @@
 package com.atmaca.files;
 
+import android.Manifest;
 import android.content.ClipData;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -27,6 +29,8 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -50,6 +54,8 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
     private static final int REQ_BACKUP_CLOUD_DEST = 4105;
     private static final int REQ_CLOUD_FILES = 4106;
     private static final int REQ_PHONE_DEST = 4107;
+    private static final int REQ_VIDEO_PERMISSION = 4108;
+    private static final String PREF_CLOUD_TREE = "cloud_tree_uri";
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ArrayList<Uri> selectedItems = new ArrayList<>();
@@ -150,10 +156,10 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         cloudRow.setOrientation(LinearLayout.HORIZONTAL);
         cloudRow.setPadding(12,0,12,6);
         Button folderBackup = new Button(this);
-        folderBackup.setText("Klasör Yedekle → Bulut");
+        folderBackup.setText("Movies → Bulut Yedekle");
         folderBackup.setOnClickListener(v -> pickBackupSource());
         Button cloudDownload = new Button(this);
-        cloudDownload.setText("Buluttan Telefona");
+        cloudDownload.setText("Bulutu Aç / Telefona İndir");
         cloudDownload.setOnClickListener(v -> pickCloudFiles());
         cloudRow.addView(folderBackup, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         cloudRow.addView(cloudDownload, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -234,18 +240,45 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
     }
 
     private void pickBackupSource() {
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        startActivityForResult(i, REQ_BACKUP_SOURCE);
+        startMoviesBackup();
+    }
+
+    private void startMoviesBackup() {
+        if (!hasVideoReadPermission()) {
+            String permission = Build.VERSION.SDK_INT >= 33
+                    ? Manifest.permission.READ_MEDIA_VIDEO
+                    : Manifest.permission.READ_EXTERNAL_STORAGE;
+            ActivityCompat.requestPermissions(this, new String[]{permission}, REQ_VIDEO_PERMISSION);
+            return;
+        }
+        String saved = prefs.getString(PREF_CLOUD_TREE, "");
+        if (saved == null || saved.trim().isEmpty()) {
+            status.setText("İlk kullanım: Bulut hedefini bir kez seç");
+            toast("Bulut hedefini bir kez seç; sonra Movies direkt yedeklenecek");
+            pickDestinationTree(REQ_BACKUP_CLOUD_DEST);
+            return;
+        }
+        backupMoviesToCloud(Uri.parse(saved));
+    }
+
+    private boolean hasVideoReadPermission() {
+        String permission = Build.VERSION.SDK_INT >= 33
+                ? Manifest.permission.READ_MEDIA_VIDEO
+                : Manifest.permission.READ_EXTERNAL_STORAGE;
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
     }
 
     private void pickCloudFiles() {
-        Intent i = new Intent(FilePickerPolicy.action());
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.setType(FilePickerPolicy.mimeType());
+        i.setType("*/*");
         i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        startActivityForResult(Intent.createChooser(i, "Buluttan dosya seç"), REQ_CLOUD_FILES);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        String saved = prefs.getString(PREF_CLOUD_TREE, "");
+        if (Build.VERSION.SDK_INT >= 26 && saved != null && !saved.trim().isEmpty()) {
+            try { i.putExtra(DocumentsContract.EXTRA_INITIAL_URI, Uri.parse(saved)); } catch (Exception ignored) {}
+        }
+        startActivityForResult(Intent.createChooser(i, "Bulutu aç / telefona indir"), REQ_CLOUD_FILES);
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -268,6 +301,7 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
             Uri tree = data.getData();
             if (tree == null) return;
             persistTreePermission(data, tree);
+            if (requestCode == REQ_CLOUD_FOLDER) prefs.edit().putString(PREF_CLOUD_TREE, tree.toString()).apply();
             copySelectedFilesToTree(tree, requestCode == REQ_CARD_FOLDER ? "Kart" : "Bulut");
             return;
         }
@@ -283,9 +317,10 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
 
         if (requestCode == REQ_BACKUP_CLOUD_DEST) {
             Uri dest = data.getData();
-            if (dest == null || backupSourceTree == null) return;
+            if (dest == null) return;
             persistTreePermission(data, dest);
-            backupFolderToCloud(backupSourceTree, dest);
+            prefs.edit().putString(PREF_CLOUD_TREE, dest.toString()).apply();
+            backupMoviesToCloud(dest);
             return;
         }
 
@@ -307,6 +342,17 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
             if (dest == null || cloudDownloadItems.isEmpty()) return;
             persistTreePermission(data, dest);
             copyCloudFilesToPhone(dest);
+        }
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_VIDEO_PERMISSION) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            startMoviesBackup();
+        } else {
+            status.setText("Movies videolarını okuyabilmek için video izni gerekli");
+            toast("Video izni verilmedi");
         }
     }
 
@@ -392,25 +438,28 @@ public final class MainActivity extends AppCompatActivity implements EntryAdapte
         });
     }
 
-    private void backupFolderToCloud(Uri source, Uri dest) {
-        status.setText("Bulut yedeği taranıyor...");
+    private void backupMoviesToCloud(Uri dest) {
+        status.setText("Movies taranıyor...");
         io.execute(() -> {
             try {
-                final int[] totalSeen = {0};
-                int count = SafTreeCopier.copyTree(this, source, dest, (done, total, currentName) -> {
-                    totalSeen[0] = total;
-                    runOnUiThread(() -> status.setText(BackupProgress.text(done, total, currentName)));
-                });
-                int total = totalSeen[0] == 0 ? count : totalSeen[0];
-                backupSourceTree = null;
+                MoviesCloudBackup.Result result = MoviesCloudBackup.backup(this, dest, (done, total, currentName) ->
+                        runOnUiThread(() -> status.setText(BackupProgress.text(done, total, currentName))));
                 runOnUiThread(() -> {
-                    status.setText(BackupProgress.completed(count, total));
-                    toast("Klasör ve alt klasörler Bulut'a yedeklendi");
+                    status.setText("Movies → Bulut tamamlandı: " + result.processed + " / " + result.total
+                            + " • yeni " + result.copied + " • zaten vardı " + result.skipped);
+                    toast(result.copied + " yeni video Bulut'a yedeklendi");
+                });
+            } catch (SecurityException e) {
+                prefs.edit().remove(PREF_CLOUD_TREE).apply();
+                runOnUiThread(() -> {
+                    status.setText("Bulut hedef izni yenilenmeli");
+                    toast("Bulut hedefini tekrar seç");
+                    pickDestinationTree(REQ_BACKUP_CLOUD_DEST);
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    status.setText("Bulut yedekleme hatası: " + safe(e.getMessage()));
-                    toast("Klasör yedekleme tamamlanamadı");
+                    status.setText("Movies yedekleme hatası: " + safe(e.getMessage()));
+                    toast("Movies yedekleme tamamlanamadı");
                 });
             }
         });
