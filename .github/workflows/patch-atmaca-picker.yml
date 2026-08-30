@@ -20,66 +20,42 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
+
           p = Path("ATMACA-WIFI/app/src/main/java/com/atmaca/files/MainActivity.java")
           s = p.read_text(encoding="utf-8")
 
-          old_files = '''    private void pickFiles() {
-                  Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                  i.addCategory(Intent.CATEGORY_OPENABLE);
-                  i.setType("*/*");
-                  i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-                  i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-                  startActivityForResult(i, REQ_FILES);
-              }
-          '''
-          # Normalize indentation-independent exact block instead.
-          old_files = '''    private void pickFiles() {
-              Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-              i.addCategory(Intent.CATEGORY_OPENABLE);
-              i.setType("*/*");
-              i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-              i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-              startActivityForResult(i, REQ_FILES);
-          }
-          '''
-          new_files = '''    private void pickFiles() {
-              Intent i = new Intent(FilePickerPolicy.action());
-              i.addCategory(Intent.CATEGORY_OPENABLE);
-              i.setType(FilePickerPolicy.mimeType());
-              i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-              i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-              startActivityForResult(Intent.createChooser(i, "Telefondan dosya seç"), REQ_FILES);
-          }
-          '''
+          new_files = "\n".join([
+              "    private void pickFiles() {",
+              "        Intent i = new Intent(FilePickerPolicy.action());",
+              "        i.addCategory(Intent.CATEGORY_OPENABLE);",
+              "        i.setType(FilePickerPolicy.mimeType());",
+              "        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);",
+              "        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);",
+              "        startActivityForResult(Intent.createChooser(i, \"Telefondan dosya seç\"), REQ_FILES);",
+              "    }",
+              ""
+          ])
+          new_cloud = "\n".join([
+              "    private void pickCloudFiles() {",
+              "        Intent i = new Intent(FilePickerPolicy.action());",
+              "        i.addCategory(Intent.CATEGORY_OPENABLE);",
+              "        i.setType(FilePickerPolicy.mimeType());",
+              "        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);",
+              "        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);",
+              "        startActivityForResult(Intent.createChooser(i, \"Buluttan dosya seç\"), REQ_CLOUD_FILES);",
+              "    }",
+              ""
+          ])
 
-          old_cloud = '''    private void pickCloudFiles() {
-              Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-              i.addCategory(Intent.CATEGORY_OPENABLE);
-              i.setType("*/*");
-              i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-              i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-              startActivityForResult(i, REQ_CLOUD_FILES);
-          }
-          '''
-          new_cloud = '''    private void pickCloudFiles() {
-              Intent i = new Intent(FilePickerPolicy.action());
-              i.addCategory(Intent.CATEGORY_OPENABLE);
-              i.setType(FilePickerPolicy.mimeType());
-              i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-              i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-              startActivityForResult(Intent.createChooser(i, "Buluttan dosya seç"), REQ_CLOUD_FILES);
-          }
-          '''
+          s, n1 = re.subn(r"    private void pickFiles\(\) \{\n.*?\n    \}\n", new_files, s, count=1, flags=re.S)
+          s, n2 = re.subn(r"    private void pickCloudFiles\(\) \{\n.*?\n    \}\n", new_cloud, s, count=1, flags=re.S)
+          if n1 != 1 or n2 != 1:
+              raise SystemExit(f"picker methods not patched: files={n1}, cloud={n2}")
 
-          if old_files not in s:
-              raise SystemExit("pickFiles block not found")
-          if old_cloud not in s:
-              raise SystemExit("pickCloudFiles block not found")
-
-          s = s.replace(old_files, new_files, 1)
-          s = s.replace(old_cloud, new_cloud, 1)
           s = s.replace('fileButton.setText("Dosya Seç → Kart / Bulut / HDD");', 'fileButton.setText("Dosya Yükle / Gönder → Kart / Bulut / HDD");')
           p.write_text(s, encoding="utf-8")
+
       - name: Commit picker fix
         run: |
           git config user.name "github-actions[bot]"
