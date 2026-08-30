@@ -8,8 +8,10 @@ public class StorageTargetPolicyTest {
         assertArrayEquals(new String[]{"Kart", "Bulut", "HDD"}, StorageTargetPolicy.targets());
     }
 
-    @Test public void hddUsesCurrentFolder() {
-        assertEquals("/Videolar", StorageTargetPolicy.hddFolder("/Videolar"));
-        assertEquals("/", StorageTargetPolicy.hddFolder(null));
+    @Test public void hddUsesExplicitlyConfirmedFolder() {
+        assertTrue(StorageTargetPolicy.requiresFolderSelection("HDD"));
+        assertFalse(StorageTargetPolicy.requiresFolderSelection("Kart"));
+        assertEquals("/Videolar/2026", StorageTargetPolicy.hddFolder("/Videolar/2026"));
+        assertEquals("Bu klasöre gönder", StorageTargetPolicy.hddConfirmLabel());
     }
 }
