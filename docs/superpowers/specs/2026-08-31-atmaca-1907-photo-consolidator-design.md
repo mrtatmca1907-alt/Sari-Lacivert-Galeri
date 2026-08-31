@@ -1,104 +1,89 @@
 # ATMACA 1907 Fotoğraf Toplayıcı — Tasarım
 
 ## Amaç
-Telefondaki MediaStore tarafından görülebilen tüm fotoğrafları tek bir güvenli akışta toparlamak, gerçekten aynı olan kopyaları kaldırmak ve kalan benzersiz fotoğrafları `Pictures/1907` altında 50'şerli klasörlere taşımak.
+Telefondaki MediaStore tarafından görülebilen tüm fotoğrafları tek bir güvenli akışta toparlamak, birebir aynı kopyaları kaldırmak ve kalan benzersiz fotoğrafların tamamını doğrudan `Pictures/1907` klasörüne taşımak.
 
 ## Kapsam
 - Sadece fotoğraflar; videolar bu sürümün dışında.
 - Android 13 hedef cihazda çalışacak.
 - Kaynaklar: MediaStore'un gördüğü tüm cihaz fotoğrafları (Camera/DCIM, Pictures, Screenshots, Download, WhatsApp vb. erişilebilir medya klasörleri).
 - `Android/data` gibi Android tarafından erişimi kısıtlanan özel alanlar kapsam dışı.
-- Hedef kök: `Pictures/1907`.
-- Son klasörler: `001`, `002`, `003` ...; her klasörde en fazla 50 benzersiz fotoğraf.
+- Tek hedef klasör: `Pictures/1907`.
+- Alt klasör, 50'li paketleme veya yeniden bölme yapılmayacak.
 
 ## Temel Akış
 1. **Tarama**
    - Tüm erişilebilir fotoğraflar MediaStore üzerinden listelenir.
-   - `Pictures/1907` içindeki mevcut fotoğraflar da taramaya dahil edilir; böylece uygulama yeniden çalıştırıldığında kopya üretmez.
-   - Her kayıt için URI, mevcut yol/relative path, dosya adı, boyut, MIME türü ve tarih bilgisi tutulur.
+   - `Pictures/1907` içindeki mevcut fotoğraflar da taramaya dahil edilir; böylece uygulama tekrar çalıştırıldığında aynı dosyaları yeniden üretmez.
+   - Her kayıt için URI, mevcut relative path, dosya adı, boyut, MIME türü ve tarih bilgisi tutulur.
 
-2. **Kopya adayı bulma**
-   - Dosya adları normalize edilir; `(1)`, `_copy`, `copy`, `-kopya` gibi çoğalma ekleri arayüzde kopya adaylarını açıklamak için kullanılır.
-   - Ancak isim tek başına silme kararı vermez ve yalnızca isim eşleşmesine güvenilmez.
-   - Bütün fotoğraflar önce dosya boyutuna göre gruplanır. Aynı boyutta yalnızca bir dosya varsa pahalı hash hesabına gerek yoktur; aynı boyutta birden fazla dosya varsa kesin doğrulama aşamasına geçilir.
+2. **Kesin kopya doğrulama**
+   - Bütün fotoğraflar önce dosya boyutuna göre gruplanır.
+   - Aynı boyutta birden fazla dosya bulunan gruplarda SHA-256 stream üzerinden hesaplanır.
+   - SHA-256 aynıysa dosya adları farklı olsa bile birebir aynı kopya kabul edilir.
+   - SHA-256 farklıysa dosya adları aynı olsa bile iki fotoğraf da korunur.
+   - `(1)`, `_copy`, `copy`, `-kopya` gibi ad ekleri kullanıcıya kopya adayını açıklamak için kullanılabilir; isim tek başına silme kararı vermez.
 
-3. **Kesin kopya doğrulama**
-   - Aynı boyut grubundaki dosyaların SHA-256 değeri stream üzerinden hesaplanır.
-   - SHA-256 aynıysa, dosya adları farklı olsa bile içerikler birebir aynı kabul edilir.
-   - SHA farklıysa, isimleri aynı olsa bile iki dosya da korunur.
-   - Böylece hem `IMG_1.jpg` / `IMG_1 (1).jpg` gibi açık kopyalar hem de sonradan yeniden adlandırılmış birebir kopyalar yakalanır.
+3. **Kopya temizliği**
+   - Her SHA-256 grubundan tek bir survivor bırakılır.
+   - Tercih sırası: zaten `Pictures/1907` içinde bulunan doğrulanmış kopya > daha eski/orijinal görünen ad > diğerleri.
+   - Fazla kopyalar survivor dosyasının hâlâ erişilebilir olduğu doğrulanmadan kaldırılmaz.
+   - Başka uygulamalara ait medyada Android kullanıcı onayı gerekiyorsa resmi MediaStore onay akışları kullanılır.
 
-4. **Kopya temizliği**
-   - Her birebir kopya grubundan tek bir survivor seçilir.
-   - Tercih sırası: zaten `Pictures/1907` içinde olan doğrulanmış örnek > daha eski/orijinal görünen ad > diğerleri.
-   - Fazla kopyalar ancak survivor dosyasının erişilebilir ve doğrulanmış olduğu teyit edildikten sonra silinir.
-   - Android'in gerekli sistem silme/yazma onayları kullanılır; uygulama izin modelini atlamaz.
-
-5. **Taşıma ve yeniden paketleme**
-   - Kalan benzersiz fotoğraflar deterministik olarak dosya adına göre sıralanır.
-   - `Pictures/1907/001`, `002`, `003` ... klasörleri oluşturulur.
-   - Her klasöre en fazla 50 fotoğraf taşınır.
-   - Son klasör 50'den az dosya içerebilir.
-   - Aynı dosya adına sahip fakat içeriği farklı iki fotoğraf varsa veri kaybını önlemek için ikinci dosyaya çakışmasız ad verilir; dosya atlanmaz ve üzerine körlemesine yazılmaz.
-   - Android sürümü veya dosyanın sahipliği doğrudan yol güncellemesine izin vermiyorsa taşıma semantiği `hedefe yaz → hedefi doğrula → kaynağı sil` olarak uygulanır.
+4. **Tek klasöre taşıma**
+   - Kopya temizliği bittikten sonra bütün survivor fotoğraflar `Pictures/1907` içine taşınır.
+   - `Pictures/1907` içinde zaten bulunan survivor tekrar taşınmaz.
+   - Aynı dosya adına sahip fakat içeriği farklı iki fotoğraf varsa veri kaybını önlemek için ikinci dosyaya çakışmasız bir ad verilir; körlemesine üzerine yazılmaz.
+   - Android doğrudan relative path güncellemesine izin veriyorsa MediaStore `RELATIVE_PATH` güncellemesi tercih edilir.
+   - Doğrudan taşıma mümkün değilse semantik `hedefe yaz → hedefi doğrula → kaynağı kaldır` olur.
 
 ## Veri Kaybını Önleme
-- Taşıma, `hedef oluşturuldu/doğrulandı → kaynak kaldırıldı` sırasıyla yapılır.
-- Uygulama hiçbir benzersiz fotoğrafı doğrulanmış hedef olmadan silmez.
-- Aynı dosya adı, tek başına üzerine yazma nedeni değildir.
 - Kopya silme yalnızca SHA-256 eşleşmesinden sonra yapılır.
-- İşlem sırasında uygulama kapanırsa tekrar çalıştırıldığında `Pictures/1907` yeniden taranır ve mevcut hedefler hesaba katılır; aynı fotoğraf yeniden çoğaltılmaz.
-- Kaynak klasörler otomatik olarak topluca silinmez; yalnızca fotoğraf dosyaları taşınır. Böylece başka uygulamaların kullandığı klasör yapıları bozulmaz.
+- Aynı isim tek başına silme veya üzerine yazma nedeni değildir.
+- Benzersiz bir fotoğraf doğrulanmış hedef oluşmadan kaynaktan kaldırılmaz.
+- Kaynak klasörlerin kendisi topluca silinmez; yalnızca fotoğraf dosyaları taşınır.
+- Uygulama yarıda kapanırsa yeniden açıldığında gerçek MediaStore durumu tekrar taranır ve `Pictures/1907` içindeki mevcut dosyalar hesaba katılır.
 
 ## Durum Kaydı ve Devam Etme
-- İşlem oturumu yerel veritabanında tutulur.
-- Her dosya için durum: `BEKLIYOR`, `HASH_OK`, `KOPYA`, `TASINDI`, `SILINDI`, `HATA`.
-- Uygulama/telefon kapanırsa tamamlanan dosyalar yeniden işlenmez.
-- Hata alan dosyalar ayrı listelenir ve işlem sonunda tekrar denenebilir.
-- Yeniden başlatmada önce gerçek MediaStore durumu ile kayıtlar uzlaştırılır; yalnızca veritabanındaki eski duruma körlemesine güvenilmez.
+- İşlem oturumu uygulamanın yerel durum dosyasında tutulur; ağır bir veritabanı bağımlılığı eklenmez.
+- Durum alanları: `phase`, `scanned`, `duplicates`, `moved`, `failed`, `currentName`, `updatedAt`.
+- Yeniden başlatmada önce gerçek MediaStore durumu ile kayıt uzlaştırılır; yalnızca eski oturum kaydına güvenilmez.
+- Hata alan dosyalar sonraki çalıştırmada yeniden denenebilir.
 
 ## Kullanıcı Arayüzü
-Tek ana ekran yeterli:
-- `Taramayı Başlat`
-- Sayaçlar: `Tarandı`, `Benzersiz`, `Kopya`, `Taşındı`, `Kalan`, `Hata`
-- Aktif dosya adı ve mevcut işlem
-- `Başlat / Devam Et`
-- `Hataları Göster`
-
-İşlem başlamadan önce özet gösterilir:
-- toplam bulunan fotoğraf
-- kesin kopya sayısı
-- kalacak benzersiz fotoğraf sayısı
-- oluşturulacak yaklaşık 50'lik klasör sayısı
+Tek bir sade ekran yeterli:
+- `Tara ve Toparla` düğmesi.
+- Sayaçlar: `Tarandı`, `Kopya`, `Taşındı`, `Kalan`, `Hata`.
+- Aktif işlem: `Taranıyor`, `Kopyalar doğrulanıyor`, `Kopyalar temizleniyor`, `1907'ye taşınıyor`, `Tamamlandı`.
+- Aktif dosya adı.
+- İşlem tamamlanınca `Pictures/1907` içindeki toplam benzersiz fotoğraf sayısı gösterilir.
 
 ## Android Depolama Modeli
 - Tarama için MediaStore kullanılacak.
 - Android 13 için `READ_MEDIA_IMAGES` izni kullanılacak.
 - Hedef `Pictures/1907` MediaStore/Scoped Storage uyumlu biçimde yönetilecek.
-- Başka uygulamalara ait medya üzerinde Android sisteminin kullanıcı onayı gerektirdiği durumlarda resmi MediaStore onay akışları kullanılacak.
+- Başka uygulamalara ait medyada değişiklik için gereken kullanıcı onayları resmi MediaStore akışıyla alınacak.
 - `MANAGE_EXTERNAL_STORAGE` zorunlu tutulmayacak.
 
 ## Performans
-- Hash hesapları arka plan işçisi üzerinde yapılacak.
-- Dosyalar topluca RAM'e alınmayacak; stream ile işlenecek.
-- SHA-256 yalnızca aynı boyuta sahip birden fazla dosya bulunan gruplarda hesaplanacak.
-- Büyük arşivlerde arayüz ana iş parçacığında bloklanmayacak.
-- Uzun işlemlerde ilerleme kalıcı olarak kaydedilecek ve uygulama tekrar açıldığında kaldığı yerden devam edilecek.
+- Dosyalar RAM'e topluca yüklenmeyecek.
+- SHA-256 yalnızca aynı boyutta birden fazla dosya bulunan gruplarda hesaplanacak.
+- Hash hesapları ve taşıma işleri `Dispatchers.IO` / WorkManager üzerinde çalışacak.
+- Arayüz ana iş parçacığını bloklamayacak.
+- İlerleme WorkManager progress verisiyle ekrana aktarılacak.
 
 ## Test Stratejisi
-- İsim normalizasyonu için birim testleri.
-- 50'li klasör dağıtımı için birim testleri.
-- Aynı ad/farklı hash dosyalarının ikisinin de korunduğunu doğrulayan test.
-- Farklı ad/aynı hash senaryosunda tek survivor kaldığını doğrulayan test.
-- Aynı boyut/farklı hash senaryosunda hiçbir dosyanın yanlışlıkla silinmediğini doğrulayan test.
-- Yarım kalmış taşıma sonrası yeniden başlatmada çoğalma olmadığını doğrulayan test.
-- 49/50/51/100/101 dosyalık paketleme sınır testleri.
-- Android CI derlemesi ve mümkün olan MediaStore entegrasyon testleri.
+- Aynı boyut + aynı hash grubundan tek survivor seçildiğini doğrulayan birim test.
+- Aynı isim + farklı hash senaryosunda iki dosyanın da korunduğunu doğrulayan test.
+- `Pictures/1907` içinde olan kopyanın survivor olarak tercih edildiğini doğrulayan test.
+- Çakışan farklı dosya adlarında güvenli yeni isim üretildiğini doğrulayan test.
+- Hedefte bulunan fotoğrafın ikinci kez taşınmadığını doğrulayan test.
+- Yeniden başlatma/yarım kalmış işlem için idempotent plan üretimi testi.
+- GitHub Actions üzerinde `:app:testDebugUnitTest` ve `:app:assembleDebug` doğrulaması.
 
 ## Başarı Kriterleri
-- İşlem sonunda erişilebilir fotoğrafların her benzersiz içeriği yalnızca bir kez kalır.
-- Hiçbir farklı içerik yalnızca adı aynı diye silinmez.
-- Tüm benzersiz fotoğraflar `Pictures/1907/NNN` altında bulunur.
-- Her `NNN` klasöründe en fazla 50 dosya vardır.
-- Uygulama yeniden çalıştırıldığında yeni kopya üretmez.
-- İşlem yarıda kesilse bile daha önce güvenle taşınmış dosyalar kaybolmaz veya tekrar çoğalmaz.
+- İşlem sonunda erişilebilir her benzersiz fotoğraf içeriği yalnızca bir kez kalır.
+- Bütün survivor fotoğraflar doğrudan `Pictures/1907` içindedir; alt klasör oluşturulmaz.
+- Hiçbir farklı içerik yalnızca adı aynı diye silinmez veya üzerine yazılmaz.
+- Uygulama yeniden çalıştırıldığında yeni kopya oluşturmaz.
+- İşlem yarıda kesilse bile daha önce güvenle taşınmış fotoğraflar kaybolmaz veya tekrar çoğalmaz.
