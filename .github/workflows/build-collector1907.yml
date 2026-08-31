@@ -1,0 +1,48 @@
+name: Build ATMACA 1907 Photo Collector
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ atmaca-1907-toplayici ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v5
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: API 37 kur
+        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+
+      - name: Gradle 9.5 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Unit testleri calistir
+        run: gradle :collector1907:testDebugUnitTest --stacktrace
+
+      - name: Debug APK derle
+        run: gradle :collector1907:assembleDebug --stacktrace
+
+      - name: APK adini duzelt
+        run: cp collector1907/build/outputs/apk/debug/collector1907-debug.apk ATMACA-1907-Fotograf-Toplayici.apk
+
+      - name: APK artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-1907-Fotograf-Toplayici-APK
+          path: ATMACA-1907-Fotograf-Toplayici.apk
+          if-no-files-found: error
