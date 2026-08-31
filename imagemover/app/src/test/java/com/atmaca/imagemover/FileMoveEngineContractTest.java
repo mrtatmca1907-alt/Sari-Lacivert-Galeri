@@ -27,6 +27,10 @@ public class FileMoveEngineContractTest {
         return (Boolean) method.invoke(engine, source, targetDir);
     }
 
+    private String read(Path path) throws Exception {
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+    }
+
     @Test
     public void movesSourceIntoTargetDirectory() throws Exception {
         Path root = temporaryFolder.newFolder("basic").toPath();
@@ -36,7 +40,7 @@ public class FileMoveEngineContractTest {
 
         assertTrue(move(engine(), source, target));
         assertFalse(Files.exists(source));
-        assertEquals("yeni-goruntu", Files.readString(target.resolve("foto.jpg")));
+        assertEquals("yeni-goruntu", read(target.resolve("foto.jpg")));
     }
 
     @Test
@@ -49,7 +53,7 @@ public class FileMoveEngineContractTest {
 
         assertTrue(move(engine(), source, target));
         assertFalse(Files.exists(source));
-        assertEquals("kaynak", Files.readString(target.resolve("aynı.jpg")));
+        assertEquals("kaynak", read(target.resolve("aynı.jpg")));
     }
 
     @Test
@@ -62,6 +66,6 @@ public class FileMoveEngineContractTest {
 
         assertFalse(move(engine(), source, notADirectory));
         assertTrue(Files.exists(source));
-        assertEquals("dokunma", Files.readString(source));
+        assertEquals("dokunma", read(source));
     }
 }
