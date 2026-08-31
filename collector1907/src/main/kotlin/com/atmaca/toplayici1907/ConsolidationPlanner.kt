@@ -1,10 +1,18 @@
 package com.atmaca.toplayici1907
 
+data class ExactDuplicateGroup(
+    val survivor: PhotoRecord,
+    val duplicates: List<PhotoRecord>
+)
+
 data class ConsolidationPlan(
     val survivors: List<PhotoRecord>,
-    val duplicates: List<PhotoRecord>,
+    val duplicateGroups: List<ExactDuplicateGroup>,
     val hashFailures: List<PhotoRecord>
-)
+) {
+    val duplicates: List<PhotoRecord>
+        get() = duplicateGroups.flatMap { it.duplicates }.sortedBy { it.id }
+}
 
 object ConsolidationPlanner {
     fun plan(
@@ -12,7 +20,7 @@ object ConsolidationPlanner {
         hashProvider: (PhotoRecord) -> String?
     ): ConsolidationPlan {
         val survivors = mutableListOf<PhotoRecord>()
-        val duplicates = mutableListOf<PhotoRecord>()
+        val duplicateGroups = mutableListOf<ExactDuplicateGroup>()
         val hashFailures = mutableListOf<PhotoRecord>()
 
         val bySize = photos.groupBy { it.size }
@@ -38,15 +46,16 @@ object ConsolidationPlanner {
                     survivors += exactGroup.single()
                 } else {
                     val survivor = CollectorPolicy.chooseSurvivor(exactGroup)
+                    val duplicates = exactGroup.filterNot { it.id == survivor.id }.sortedBy { it.id }
                     survivors += survivor
-                    duplicates += exactGroup.filterNot { it.id == survivor.id }
+                    duplicateGroups += ExactDuplicateGroup(survivor, duplicates)
                 }
             }
         }
 
         return ConsolidationPlan(
             survivors = survivors.sortedBy { it.id },
-            duplicates = duplicates.sortedBy { it.id },
+            duplicateGroups = duplicateGroups.sortedBy { it.survivor.id },
             hashFailures = hashFailures.sortedBy { it.id }
         )
     }
