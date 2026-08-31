@@ -8,6 +8,12 @@ on:
     paths:
       - 'imagemover/**'
       - '.github/workflows/build-imagemover.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'imagemover/**'
+      - '.github/workflows/build-imagemover.yml'
 
 concurrency:
   group: imagemover-build-${{ github.ref }}
