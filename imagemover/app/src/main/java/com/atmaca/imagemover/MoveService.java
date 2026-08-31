@@ -66,12 +66,12 @@ public final class MoveService extends Service {
         }
 
         if (running.compareAndSet(false, true)) {
-            executor.execute(() -> runMove(startId));
+            executor.execute(this::runMove);
         }
         return START_NOT_STICKY;
     }
 
-    private void runMove(int startId) {
+    private void runMove() {
         AtomicLong found = new AtomicLong();
         AtomicLong moved = new AtomicLong();
         AtomicLong failed = new AtomicLong();
@@ -138,7 +138,7 @@ public final class MoveService extends Service {
             } else {
                 stopForeground(false);
             }
-            stopSelf(startId);
+            stopSelf();
         }
     }
 
@@ -218,7 +218,7 @@ public final class MoveService extends Service {
                 "Android süre sınırı nedeniyle durdu. Uygulamayı yeniden açınca devam eder.",
                 false
         );
-        stopSelf(startId);
+        stopSelf();
     }
 
     @Override
