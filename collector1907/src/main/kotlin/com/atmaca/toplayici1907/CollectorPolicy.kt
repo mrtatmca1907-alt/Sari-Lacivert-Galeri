@@ -33,6 +33,22 @@ object CollectorPolicy {
         }
     }
 
+    fun targetNames(photos: List<PhotoRecord>): Map<Long, String> {
+        val targetPhotos = photos.filter(::isTarget).sortedBy { it.id }
+        val incomingPhotos = photos.filterNot(::isTarget).sortedBy { it.id }
+        val reserved = mutableSetOf<String>()
+        val result = linkedMapOf<Long, String>()
+
+        targetPhotos.forEach { photo ->
+            reserved += photo.name.lowercase(Locale.ROOT)
+            result[photo.id] = photo.name
+        }
+        incomingPhotos.forEach { photo ->
+            result[photo.id] = uniqueName(photo.name, reserved)
+        }
+        return result
+    }
+
     private fun copySuffixScore(name: String): Int {
         val dot = name.lastIndexOf('.')
         val stem = (if (dot > 0) name.substring(0, dot) else name).trim().lowercase(Locale.ROOT)
