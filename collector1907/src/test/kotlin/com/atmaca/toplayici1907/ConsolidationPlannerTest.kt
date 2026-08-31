@@ -27,6 +27,9 @@ class ConsolidationPlannerTest {
         val plan = ConsolidationPlanner.plan(listOf(a, b)) { "same" }
         assertEquals(1, plan.survivors.size)
         assertEquals(1, plan.duplicates.size)
+        assertEquals(1, plan.duplicateGroups.size)
+        assertEquals(a, plan.duplicateGroups.single().survivor)
+        assertEquals(listOf(b), plan.duplicateGroups.single().duplicates)
     }
 
     @Test
@@ -36,6 +39,7 @@ class ConsolidationPlannerTest {
         val plan = ConsolidationPlanner.plan(listOf(a, b)) { if (it.id == 1L) "x" else "y" }
         assertEquals(2, plan.survivors.size)
         assertTrue(plan.duplicates.isEmpty())
+        assertTrue(plan.duplicateGroups.isEmpty())
     }
 
     @Test
@@ -45,6 +49,7 @@ class ConsolidationPlannerTest {
         val plan = ConsolidationPlanner.plan(listOf(outside, target)) { "same" }
         assertEquals(listOf(target), plan.survivors)
         assertEquals(listOf(outside), plan.duplicates)
+        assertEquals(target, plan.duplicateGroups.single().survivor)
     }
 
     @Test
@@ -57,6 +62,7 @@ class ConsolidationPlannerTest {
         assertTrue(plan.survivors.contains(unreadable))
         assertTrue(plan.duplicates.isEmpty())
         assertEquals(listOf(unreadable), plan.hashFailures)
+        assertTrue(plan.duplicateGroups.isEmpty())
     }
 
     @Test
