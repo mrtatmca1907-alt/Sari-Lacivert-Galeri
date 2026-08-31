@@ -1,0 +1,34 @@
+name: Test ATMACA 1907 ImageMover
+
+on:
+  push:
+    branches:
+      - feature/imagemover-1907
+    paths:
+      - 'imagemover/**'
+      - '.github/workflows/test-imagemover.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v5
+      - name: Java 17 kur
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+      - name: API 35 kur
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Gradle 8.10.2 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Unit testleri calistir
+        working-directory: imagemover
+        run: gradle :app:testDebugUnitTest --stacktrace
