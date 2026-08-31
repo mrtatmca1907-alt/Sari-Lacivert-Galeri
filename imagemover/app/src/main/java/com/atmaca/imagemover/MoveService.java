@@ -27,17 +27,33 @@ public final class MoveService extends Service {
     private static final String CHANNEL_ID = "atmaca_1907_move";
     private static final int NOTIFICATION_ID = 1907;
     private static final int MEDIA_SCAN_BATCH = 128;
-    private static final long NOTIFICATION_STEP = 500L;
+    private static final long NOTIFICATION_STEP = 100L;
+
+    private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
+    private static final AtomicLong FOUND = new AtomicLong();
+    private static final AtomicLong MOVED = new AtomicLong();
+    private static final AtomicLong FAILED = new AtomicLong();
+    private static volatile String PHASE = "Bekliyor";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "ATMACA-1907-Mover");
         t.setPriority(Thread.NORM_PRIORITY);
         return t;
     });
-    private final AtomicBoolean running = new AtomicBoolean(false);
 
     private NotificationManager notificationManager;
     private PowerManager.WakeLock wakeLock;
+
+    public static boolean isRunning() {
+        return RUNNING.get();
+    }
+
+    public static String getStatusText() {
+        return PHASE + "\n"
+                + "Bulunan: " + FOUND.get() + "\n"
+                + "Taşınan: " + MOVED.get() + "\n"
+                + "Hata: " + FAILED.get();
+    }
 
     @Override
     public void onCreate() {
@@ -65,17 +81,18 @@ public final class MoveService extends Service {
             startForeground(NOTIFICATION_ID, notification);
         }
 
-        if (running.compareAndSet(false, true)) {
+        if (RUNNING.compareAndSet(false, true)) {
             executor.execute(this::runMove);
         }
         return START_NOT_STICKY;
     }
 
     private void runMove() {
-        AtomicLong found = new AtomicLong();
-        AtomicLong moved = new AtomicLong();
-        AtomicLong failed = new AtomicLong();
-        List<String> mediaScanBatch = new ArrayList<>(MEDIA_SCAN_BATCH);
+        FOUND.set(0);
+        MOVED.set(0);
+        FAILED.set(0);
+        PHASE = "Hazırlanıyor";
+        List<String> mediaScanBatch = new ArrayList<>(MEDIA_SCAN_BATCH * 2);
 
         acquireWakeLock();
         try {
@@ -87,52 +104,33 @@ public final class MoveService extends Service {
             Files.createDirectories(target);
 
             FileMoveEngine moveEngine = new FileMoveEngine();
-            ImageWalker walker = new ImageWalker();
 
-            updateNotification("Taşıma başladı • Pictures/1907", true);
+            PHASE = "Galeri listesinden taşıyor";
+            updateNotification(statusLine(), true);
+            MediaStoreImageWalker mediaStoreWalker = new MediaStoreImageWalker();
+            mediaStoreWalker.walk(this, target, source -> processOne(source, target, moveEngine, mediaScanBatch));
 
-            walker.walk(root, target, source -> {
-                if (Thread.currentThread().isInterrupted()) {
-                    throw new StopRequestedException();
-                }
-
-                long processed = found.incrementAndGet();
-                Path destination = target.resolve(source.getFileName().toString());
-                if (moveEngine.move(source, target)) {
-                    moved.incrementAndGet();
-                    mediaScanBatch.add(destination.toString());
-                    if (mediaScanBatch.size() >= MEDIA_SCAN_BATCH) {
-                        scanMediaBatch(mediaScanBatch);
-                    }
-                } else {
-                    failed.incrementAndGet();
-                }
-
-                if (processed % NOTIFICATION_STEP == 0L) {
-                    updateNotification(
-                            processed + " bulundu • " + moved.get() + " taşındı • " + failed.get() + " hata",
-                            true
-                    );
-                }
-            });
+            // MediaStore'a hiç girmemiş/indekslenmemiş görselleri de kaybetmemek için yedek geçiş.
+            PHASE = "Kalan görseller kontrol ediliyor";
+            updateNotification(statusLine(), true);
+            ImageWalker fileWalker = new ImageWalker();
+            fileWalker.walk(root, target, source -> processOne(source, target, moveEngine, mediaScanBatch));
 
             scanMediaBatch(mediaScanBatch);
-            updateNotification(
-                    "Tamamlandı • " + moved.get() + " taşındı • " + failed.get() + " hata",
-                    false
-            );
+            PHASE = "Tamamlandı";
+            updateNotification(statusLine(), false);
         } catch (StopRequestedException stopped) {
             scanMediaBatch(mediaScanBatch);
-            updateNotification("İşlem durduruldu. Uygulamayı açınca kaldığı yerden devam eder.", false);
+            PHASE = "Durduruldu";
+            updateNotification(statusLine(), false);
         } catch (Throwable error) {
             scanMediaBatch(mediaScanBatch);
-            updateNotification(
-                    "İşlem durdu • " + moved.get() + " taşındı • " + failed.get() + " hata",
-                    false
-            );
+            PHASE = "İşlem durdu";
+            FAILED.incrementAndGet();
+            updateNotification(statusLine(), false);
         } finally {
             releaseWakeLock();
-            running.set(false);
+            RUNNING.set(false);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 stopForeground(STOP_FOREGROUND_DETACH);
             } else {
@@ -140,6 +138,41 @@ public final class MoveService extends Service {
             }
             stopSelf();
         }
+    }
+
+    private void processOne(
+            Path source,
+            Path target,
+            FileMoveEngine moveEngine,
+            List<String> mediaScanBatch
+    ) {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new StopRequestedException();
+        }
+
+        long processed = FOUND.incrementAndGet();
+        Path destination = target.resolve(source.getFileName().toString());
+        String oldPath = source.toString();
+
+        if (moveEngine.move(source, target)) {
+            MOVED.incrementAndGet();
+            mediaScanBatch.add(oldPath);
+            mediaScanBatch.add(destination.toString());
+            if (mediaScanBatch.size() >= MEDIA_SCAN_BATCH * 2) {
+                scanMediaBatch(mediaScanBatch);
+            }
+        } else {
+            FAILED.incrementAndGet();
+        }
+
+        if (processed <= 10L || processed % NOTIFICATION_STEP == 0L) {
+            updateNotification(statusLine(), true);
+        }
+    }
+
+    private String statusLine() {
+        return PHASE + " • " + FOUND.get() + " bulundu • "
+                + MOVED.get() + " taşındı • " + FAILED.get() + " hata";
     }
 
     private void scanMediaBatch(List<String> batch) {
@@ -151,7 +184,7 @@ public final class MoveService extends Service {
         try {
             MediaScannerConnection.scanFile(this, paths, null, null);
         } catch (Throwable ignored) {
-            // Dosya taşıma zaten tamamlandı; medya indeksleme hatası dosyayı geri almamalı.
+            // Dosya taşıma tamamlandıysa indeks hatası kaynağı geri getirmemeli.
         }
     }
 
@@ -207,17 +240,15 @@ public final class MoveService extends Service {
         try {
             notificationManager.notify(NOTIFICATION_ID, buildNotification(text, ongoing));
         } catch (Throwable ignored) {
-            // Bildirim güncellenemese de taşıma motoru çalışmaya devam eder.
+            // Bildirim güncellenemese de taşıma motoru devam eder.
         }
     }
 
     @Override
     public void onTimeout(int startId, int fgsType) {
         executor.shutdownNow();
-        updateNotification(
-                "Android süre sınırı nedeniyle durdu. Uygulamayı yeniden açınca devam eder.",
-                false
-        );
+        PHASE = "Android süre sınırı nedeniyle durdu";
+        updateNotification(statusLine(), false);
         stopSelf();
     }
 
