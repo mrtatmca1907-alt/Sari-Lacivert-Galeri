@@ -10,6 +10,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
@@ -20,8 +22,23 @@ import android.widget.TextView;
 public final class MainActivity extends Activity {
     private static final int STORAGE_REQUEST = 1907;
 
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable statusTicker = new Runnable() {
+        @Override
+        public void run() {
+            if (hasStorageAccess()) {
+                statusView.setText(MoveService.getStatusText());
+                startButton.setText(MoveService.isRunning() ? "ÇALIŞIYOR" : "TEKRAR ÇALIŞTIR");
+                startButton.setEnabled(!MoveService.isRunning());
+            }
+            handler.postDelayed(this, 350L);
+        }
+    };
+
     private TextView statusView;
+    private TextView targetView;
     private Button permissionButton;
+    private Button startButton;
     private boolean settingsOpened;
 
     @Override
@@ -43,14 +60,26 @@ public final class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT
         ));
 
+        targetView = new TextView(this);
+        targetView.setText("HEDEF: Pictures/1907\nAynı isimli görsel varsa yenisi onun üzerine yazılır.");
+        targetView.setTextSize(15f);
+        targetView.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams targetParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        targetParams.topMargin = dp(18);
+        root.addView(targetView, targetParams);
+
         statusView = new TextView(this);
-        statusView.setTextSize(17f);
+        statusView.setTextSize(20f);
+        statusView.setTypeface(Typeface.MONOSPACE);
         statusView.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        statusParams.topMargin = dp(22);
+        statusParams.topMargin = dp(26);
         root.addView(statusView, statusParams);
 
         permissionButton = new Button(this);
@@ -60,8 +89,18 @@ public final class MainActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        buttonParams.topMargin = dp(22);
+        buttonParams.topMargin = dp(24);
         root.addView(permissionButton, buttonParams);
+
+        startButton = new Button(this);
+        startButton.setText("TEKRAR ÇALIŞTIR");
+        startButton.setOnClickListener(v -> startMover());
+        LinearLayout.LayoutParams startParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        startParams.topMargin = dp(12);
+        root.addView(startButton, startParams);
 
         setContentView(root);
     }
@@ -70,27 +109,43 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         ensureAccessAndStart();
+        handler.removeCallbacks(statusTicker);
+        handler.post(statusTicker);
+    }
+
+    @Override
+    protected void onPause() {
+        handler.removeCallbacks(statusTicker);
+        super.onPause();
+    }
+
+    private boolean hasStorageAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        }
+        return checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
 
     private void ensureAccessAndStart() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (Environment.isExternalStorageManager()) {
-                showRunningAndStart();
-            } else {
-                statusView.setText("İlk çalıştırmada Android'in ‘Tüm dosyalara erişim’ iznini bir kez aç.\nİzin verince taşıma otomatik başlayacak.");
-                permissionButton.setVisibility(View.VISIBLE);
-                if (!settingsOpened) {
-                    settingsOpened = true;
-                    openStorageAccessSettings();
-                }
+        if (hasStorageAccess()) {
+            permissionButton.setVisibility(View.GONE);
+            startButton.setVisibility(View.VISIBLE);
+            if (!MoveService.isRunning()) {
+                startMover();
             }
             return;
         }
 
-        if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-            showRunningAndStart();
+        startButton.setVisibility(View.GONE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            statusView.setText("İzin bekleniyor\n\nTüm dosyalara erişimi aç.");
+            permissionButton.setVisibility(View.VISIBLE);
+            if (!settingsOpened) {
+                settingsOpened = true;
+                openStorageAccessSettings();
+            }
         } else {
-            statusView.setText("Depolama izni gerekiyor. İzin verince taşıma otomatik başlayacak.");
+            statusView.setText("Depolama izni bekleniyor");
             permissionButton.setVisibility(View.GONE);
             requestPermissions(new String[]{
                     Manifest.permission.READ_EXTERNAL_STORAGE,
@@ -119,9 +174,12 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void showRunningAndStart() {
-        permissionButton.setVisibility(View.GONE);
-        statusView.setText("Görseller bulunur bulunmaz Pictures/1907 klasörüne taşınıyor.\nAynı isimli dosyalar tek dosyada birleşir.");
+    private void startMover() {
+        if (!hasStorageAccess()) {
+            ensureAccessAndStart();
+            return;
+        }
+        statusView.setText("Başlatılıyor…");
         Intent serviceIntent = new Intent(this, MoveService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent);
