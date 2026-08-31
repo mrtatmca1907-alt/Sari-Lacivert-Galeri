@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SariLacivertGaleriV2"
 include(":app")
+include(":collector1907")
