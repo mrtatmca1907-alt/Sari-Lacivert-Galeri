@@ -1,0 +1,60 @@
+name: Build ATMACA File Manager
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - atmaca-file-manager
+    paths:
+      - 'filemanager/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/build-atmaca-file-manager.yml'
+
+concurrency:
+  group: atmaca-file-manager-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v5
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android API 37 kur
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Cekirdek testleri
+        run: gradle :filemanager:testDebugUnitTest --stacktrace
+
+      - name: Debug APK derle
+        run: gradle :filemanager:assembleDebug --stacktrace
+
+      - name: APK adini duzelt
+        run: cp filemanager/build/outputs/apk/debug/filemanager-debug.apk ATMACA-Dosya-Yoneticisi-debug.apk
+
+      - name: APK artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Dosya-Yoneticisi-APK
+          path: ATMACA-Dosya-Yoneticisi-debug.apk
+          if-no-files-found: error
+          retention-days: 30
