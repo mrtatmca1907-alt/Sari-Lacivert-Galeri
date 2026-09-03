@@ -26,6 +26,12 @@ fun shouldPhotoConsumeGesture(pointerCount:Int,scale:Float,rotation:Float):Boole
 /** Parent state is deliberately published once at gesture end, never on every pointer frame. */
 fun shouldCommitViewerTransform(gestureEnded:Boolean):Boolean=gestureEnded
 
+fun viewerMenuEntries(isVideo:Boolean,screenshotMode:Boolean):List<String> =
+    if(isVideo) listOf("Ad değiştir","Çöpe taşı / sil")
+    else listOf("Kırp",if(screenshotMode)"Screenshot modunu kapat" else "Screenshot modu","Ad değiştir","Çöpe taşı / sil")
+
+fun viewerBottomActions(isVideo:Boolean):List<String> = listOf("Paylaş","Geri")
+
 fun shouldEnablePager(scale:Float)=scale<=1.001f
 fun shouldEnablePager(scale:Float,rotation:Float)=scale<=1.001f&&(normalizeViewerRotation(rotation)<0.5f||normalizeViewerRotation(rotation)>359.5f)
 fun shouldShowViewerControls(scale:Float,gestureActive:Boolean)=!gestureActive&&scale<=1.001f
