@@ -38,6 +38,9 @@ jobs:
       - name: Apply complete gallery home patch
         run: python3 coreapp/patch_complete_gallery.py
 
+      - name: Wire complete tools and bulk features
+        run: python3 coreapp/patch_complete_features.py
+
       - name: Apply stable photo performance patch
         run: python3 coreapp/patch_stable_photo_perf.py
 
