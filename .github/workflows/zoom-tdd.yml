@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  test-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -22,3 +22,11 @@ jobs:
           gradle-version: '9.5.0'
       - name: Unit tests
         run: gradle :coreapp:testDebugUnitTest --stacktrace
+      - name: Build debug APK
+        run: gradle :coreapp:assembleDebug --stacktrace
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Galeri-Eagle-Zoom-APK
+          path: coreapp/build/outputs/apk/debug/coreapp-debug.apk
+          if-no-files-found: error
