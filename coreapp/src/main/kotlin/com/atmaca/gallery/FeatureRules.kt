@@ -23,6 +23,17 @@ fun mediaFilterAccepts(isVideo:Boolean,filter:MediaFilter):Boolean = when(filter
 fun mediaFilterLabels():List<String> = listOf("Tümü","Fotoğraflar","Videolar")
 fun mediaSortLabels():List<String> = listOf("En yeni","En eski","Ada göre")
 
+fun isViewerDoubleTap(previousUpMs:Long,currentUpMs:Long,distancePx:Float,maxDelayMs:Long=300L,maxDistancePx:Float=80f):Boolean =
+    previousUpMs>0L && currentUpMs>previousUpMs && currentUpMs-previousUpMs<=maxDelayMs && distancePx<=maxDistancePx
+
+fun calculateViewerDecodeSample(sourceWidth:Int,sourceHeight:Int,viewportWidth:Int,viewportHeight:Int):Int {
+    if(sourceWidth<=0||sourceHeight<=0||viewportWidth<=0||viewportHeight<=0)return 1
+    val sourceEdge=maxOf(sourceWidth,sourceHeight).toLong()
+    val targetEdge=maxOf(viewportWidth,viewportHeight).toLong()*2L
+    if(targetEdge<=0L)return 1
+    return (sourceEdge/targetEdge).toInt().coerceAtLeast(1)
+}
+
 fun clampViewerScale(scale:Float)=scale.coerceIn(1f,4f)
 fun galleryZoomFactor(rawFactor:Float)=rawFactor.coerceIn(0.72f,1.35f)
 fun dampedZoomFactor(rawFactor:Float)=galleryZoomFactor(rawFactor)
