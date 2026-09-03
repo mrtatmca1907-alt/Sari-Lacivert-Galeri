@@ -76,9 +76,11 @@ fun StablePhotoPage(
         offsetY = clampViewerOffset(offsetY, bounds.maxY)
     }
 
-    fun resetTransform() {
-        scale = 1f; localRotation = 0f; offsetX = 0f; offsetY = 0f
-        onScaleChanged(1f); onRotationChanged(0f)
+    fun resetZoomOnly() {
+        scale = 1f
+        offsetX = 0f
+        offsetY = 0f
+        onScaleChanged(1f)
     }
 
     Box(
@@ -92,7 +94,6 @@ fun StablePhotoPage(
             contentDescription = item.name,
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
-                // One stable pointer coroutine: no scale/rotation keys, no competing tap recognizer.
                 .pointerInput(item.id) {
                     awaitEachGesture {
                         val firstDown = awaitFirstDown(requireUnconsumed = false)
@@ -135,7 +136,8 @@ fun StablePhotoPage(
                                 }
                                 if (scale > 1.001f || abs(localRotation) > 0.5f) {
                                     if (abs(pan.x) > 0.01f || abs(pan.y) > 0.01f) moved = true
-                                    offsetX += pan.x; offsetY += pan.y
+                                    offsetX += pan.x
+                                    offsetY += pan.y
                                 }
                                 clampOffsets(source)
                                 event.changes.forEach { if (it.pressed) it.consume() }
@@ -144,7 +146,6 @@ fun StablePhotoPage(
 
                         if (transformed) {
                             clampOffsets(source)
-                            // Publish expensive parent state once, after fingers leave the screen.
                             if (shouldCommitViewerTransform(true)) {
                                 onScaleChanged(scale)
                                 onRotationChanged(localRotation)
@@ -162,9 +163,17 @@ fun StablePhotoPage(
                             )
                             if (doubleTap) {
                                 lastTapTime[0] = 0L
-                                // Approved behavior: two taps toggle viewer chrome / immersive mode.
-                                // Pinch zoom and free rotation remain owned by this same gesture coroutine.
-                                onFitTap()
+                                val oldScale = scale
+                                val nextScale = nextDoubleTapScale(oldScale)
+                                if (nextScale <= 1.01f) {
+                                    resetZoomOnly()
+                                } else {
+                                    offsetX = zoomOffsetAroundFocus(offsetX, downX - viewportWidth / 2f, oldScale, nextScale)
+                                    offsetY = zoomOffsetAroundFocus(offsetY, downY - viewportHeight / 2f, oldScale, nextScale)
+                                    scale = nextScale
+                                    clampOffsets(source)
+                                    onScaleChanged(scale)
+                                }
                             } else {
                                 lastTapTime[0] = lastEventTime
                                 lastTapPosition[0] = downX
