@@ -54,7 +54,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ATMACA-Patched-Source
-          path: coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt
+          path: |
+            coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt
+            coreapp/src/main/kotlin/com/atmaca/gallery/MediaStoreRepository.kt
+            coreapp/src/main/kotlin/com/atmaca/gallery/StablePhotoPage.kt
           if-no-files-found: error
 
       - name: Unit tests
