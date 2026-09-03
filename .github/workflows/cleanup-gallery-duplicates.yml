@@ -1,0 +1,35 @@
+name: Cleanup Gallery Duplicate State
+on:
+  push:
+    branches: [atmaca-native-core]
+    paths: ['.github/workflows/cleanup-gallery-duplicates.yml']
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: atmaca-native-core
+      - name: Remove duplicate crop state declarations
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt')
+          s = p.read_text()
+          line = '    var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }\n'
+          count = s.count(line)
+          assert count >= 2, f'expected duplicate cropItem declarations, got {count}'
+          first = s.find(line)
+          s = s[:first] + line + s[first:].replace(line, '')
+          assert s.count(line) == 1
+          p.write_text(s)
+          Path('.github/workflows/cleanup-gallery-duplicates.yml').unlink()
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: remove duplicate crop viewer state"
+          git push origin HEAD:atmaca-native-core
