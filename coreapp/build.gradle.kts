@@ -11,8 +11,8 @@ android {
         applicationId = "com.atmaca.gallery"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.5.2-eagle-zoom"
+        versionCode = 10
+        versionName = "0.5.3-eagle-viewer"
     }
 
     compileOptions {
