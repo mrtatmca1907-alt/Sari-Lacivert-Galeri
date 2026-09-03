@@ -58,4 +58,18 @@ class GalleryFeatureRulesTest {
     @Test fun thumbnailNameUsesMediaDisplayName() {
         assertEquals("denizcakir_84.jpg", mediaNameOverlay("denizcakir_84.jpg"))
     }
+
+    @Test fun mediaFilterSeparatesPhotosVideosAndAll() {
+        assertTrue(mediaFilterAccepts(isVideo = false, MediaFilter.ALL))
+        assertTrue(mediaFilterAccepts(isVideo = true, MediaFilter.ALL))
+        assertTrue(mediaFilterAccepts(isVideo = false, MediaFilter.PHOTOS))
+        assertFalse(mediaFilterAccepts(isVideo = true, MediaFilter.PHOTOS))
+        assertTrue(mediaFilterAccepts(isVideo = true, MediaFilter.VIDEOS))
+        assertFalse(mediaFilterAccepts(isVideo = false, MediaFilter.VIDEOS))
+    }
+
+    @Test fun settingsExposeStableSortAndFilterChoices() {
+        assertEquals(listOf("Tümü", "Fotoğraflar", "Videolar"), mediaFilterLabels())
+        assertEquals(listOf("En yeni", "En eski", "Ada göre"), mediaSortLabels())
+    }
 }
