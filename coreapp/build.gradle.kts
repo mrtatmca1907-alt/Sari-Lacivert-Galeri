@@ -23,6 +23,7 @@ android {
     buildFeatures { compose = true }
 }
 
+// Viewer v0.3: zoom, swipe, rotate, crop, bottom back, custom icon.
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     implementation(composeBom)
