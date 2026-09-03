@@ -5,6 +5,7 @@ on:
     branches: [ atmaca-native-core ]
     paths:
       - 'coreapp/apply_visibility_picker_fix.py'
+      - '.github/workflows/apply-visibility-picker-fix.yml'
 
 permissions:
   contents: write
