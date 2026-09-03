@@ -43,6 +43,10 @@ fun completeSettingsEntries():List<String> = listOf("Geri Dönüşüm Kutusu","S
 fun clampSlideshowSeconds(seconds:Int):Int = seconds.coerceIn(1,30)
 fun packageBatchPath(batch:Int):String = "Pictures/ATMACA Paketler/Paket_${batch.coerceAtLeast(1).toString().padStart(4,'0')}/"
 fun frameIntervalMs(framesPerSecond:Int):Long = 1000L / framesPerSecond.coerceIn(1,30)
+fun totalFrameWork(durationsMs:List<Long>, intervalMs:Long):Int = durationsMs.sumOf { frameCount(it.coerceAtLeast(0L), intervalMs.coerceAtLeast(1L)) }
+fun completedFrameWork(previousVideosFrames:Int,currentFrameIndex:Int):Int = previousVideosFrames.coerceAtLeast(0) + currentFrameIndex.coerceAtLeast(0) + 1
+fun <T> albumListWhileRefreshing(current:List<T>,fresh:List<T>,refreshing:Boolean):List<T> = if(refreshing && fresh.isEmpty()) current else fresh
+fun shouldReloadPrimaryMediaAfterCamera(section:HomeSection,success:Boolean):Boolean = success && section != HomeSection.ALBUMS
 
 fun personCropBounds(sourceWidth:Int,sourceHeight:Int,faceLeft:Int,faceTop:Int,faceRight:Int,faceBottom:Int):IntCropRect {
     if(sourceWidth<=0 || sourceHeight<=0) return IntCropRect(0,0,0,0)
