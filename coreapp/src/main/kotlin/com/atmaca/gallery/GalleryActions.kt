@@ -1,6 +1,7 @@
 package com.atmaca.gallery
 
 import android.app.PendingIntent
+import android.content.ClipData
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -150,6 +151,7 @@ class GalleryActions(context: Context) {
 
     fun cameraIntent(uri: Uri): Intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
         putExtra(MediaStore.EXTRA_OUTPUT, uri)
+        clipData = ClipData.newRawUri("ATMACA camera output", uri)
         addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 
