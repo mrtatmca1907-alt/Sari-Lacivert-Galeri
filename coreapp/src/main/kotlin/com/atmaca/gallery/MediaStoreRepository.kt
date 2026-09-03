@@ -60,23 +60,28 @@ class MediaStoreRepository(context: Context) {
             selectionParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
             selectionArgs += normalizeRelativePath(it)
         }
+        queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly)
+    }
 
-        val args = Bundle().apply {
-            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selectionParts.joinToString(" AND "))
-            putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selectionArgs.toTypedArray())
-            putStringArray(
-                ContentResolver.QUERY_ARG_SORT_COLUMNS,
-                arrayOf(MediaStore.MediaColumns.DATE_ADDED, MediaStore.Files.FileColumns._ID)
-            )
-            putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
-            putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
-            putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
-            if (Build.VERSION.SDK_INT >= 30 && trashedOnly) {
-                putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
-            }
+    suspend fun loadMixedPage(
+        offset: Int,
+        limit: Int = PAGE_SIZE,
+        albumPath: String? = null,
+        trashedOnly: Boolean = false
+    ): List<GalleryMedia> = withContext(Dispatchers.IO) {
+        if (trashedOnly && Build.VERSION.SDK_INT < 30) return@withContext emptyList()
+        val selectionParts = mutableListOf(
+            "(${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?)"
+        )
+        val selectionArgs = mutableListOf(
+            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+        )
+        albumPath?.let {
+            selectionParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
+            selectionArgs += normalizeRelativePath(it)
         }
-
-        queryMedia(args, limit)
+        queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly)
     }
 
     suspend fun loadAlbums(): List<GalleryAlbum> = withContext(Dispatchers.IO) {
@@ -141,7 +146,7 @@ class MediaStoreRepository(context: Context) {
                 val sameSize = mutableListOf<GalleryMedia>()
                 var scanned = 0
 
-                fun flushSizeGroup() {
+                suspend fun flushSizeGroup() {
                     if (sameSize.size > 1) {
                         val byHash = linkedMapOf<String, MutableList<GalleryMedia>>()
                         for (item in sameSize) {
@@ -168,6 +173,30 @@ class MediaStoreRepository(context: Context) {
             }
             duplicates.sortedByDescending { group -> group.sumOf { it.size } }
         }
+
+    private fun queryPage(
+        selectionParts: List<String>,
+        selectionArgs: List<String>,
+        offset: Int,
+        limit: Int,
+        trashedOnly: Boolean
+    ): List<GalleryMedia> {
+        val args = Bundle().apply {
+            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selectionParts.joinToString(" AND "))
+            putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selectionArgs.toTypedArray())
+            putStringArray(
+                ContentResolver.QUERY_ARG_SORT_COLUMNS,
+                arrayOf(MediaStore.MediaColumns.DATE_ADDED, MediaStore.Files.FileColumns._ID)
+            )
+            putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
+            putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
+            putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
+            if (Build.VERSION.SDK_INT >= 30 && trashedOnly) {
+                putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
+            }
+        }
+        return queryMedia(args, limit)
+    }
 
     private fun sha256(uri: Uri): String? = runCatching {
         val digest = MessageDigest.getInstance("SHA-256")
