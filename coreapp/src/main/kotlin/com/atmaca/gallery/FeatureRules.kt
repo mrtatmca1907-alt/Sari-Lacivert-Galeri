@@ -36,12 +36,30 @@ enum class CropRatio(val ratio: Float) {
     SIXTEEN_NINE(16f / 9f)
 }
 
-fun clampViewerScale(scale: Float): Float = scale.coerceIn(1f, 5f)
+fun clampViewerScale(scale: Float): Float = scale.coerceIn(1f, 4f)
 
-fun dampedZoomFactor(rawFactor: Float): Float =
-    (1f + (rawFactor - 1f) * 0.55f).coerceIn(0.85f, 1.15f)
+/**
+ * Gallery-style pinch response: follow the fingers nearly 1:1, but reject
+ * pathological one-frame jumps that make the image feel springy or unstable.
+ */
+fun galleryZoomFactor(rawFactor: Float): Float = rawFactor.coerceIn(0.72f, 1.35f)
 
-fun nextDoubleTapScale(scale: Float): Float = if (scale > 1.1f) 1f else 2f
+// Kept for callers from older builds; new viewer uses galleryZoomFactor.
+fun dampedZoomFactor(rawFactor: Float): Float = galleryZoomFactor(rawFactor)
+
+fun nextDoubleTapScale(scale: Float): Float = if (scale > 1.1f) 1f else 2.25f
+
+/** Keeps the point under the pinch focus visually anchored while scaling. */
+fun zoomOffsetAroundFocus(
+    oldOffset: Float,
+    focusFromCenter: Float,
+    oldScale: Float,
+    newScale: Float
+): Float {
+    if (oldScale <= 0f) return oldOffset
+    val ratio = newScale / oldScale
+    return oldOffset + focusFromCenter * (1f - ratio)
+}
 
 fun shouldEnablePager(scale: Float): Boolean = scale <= 1.001f
 
