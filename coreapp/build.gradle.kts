@@ -11,8 +11,8 @@ android {
         applicationId = "com.atmaca.gallery"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.5.3-eagle-viewer"
+        versionCode = 11
+        versionName = "0.6.0-complete-tools"
     }
 
     compileOptions {
