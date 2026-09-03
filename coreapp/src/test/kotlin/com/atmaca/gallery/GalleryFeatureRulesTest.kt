@@ -54,4 +54,22 @@ class GalleryFeatureRulesTest {
         assertEquals(10, total)
         assertEquals(4, completedFrameWork(previousVideosFrames = 0, currentFrameIndex = 3))
     }
+
+    @Test fun albumsUseBucketIdentityWhenRelativePathIsMissing() {
+        assertEquals("bucket:4242", albumIdentityKey("", 4242L, "Camera"))
+        assertEquals("path:DCIM/Camera/", albumIdentityKey("DCIM/Camera/", 4242L, "Camera"))
+        assertEquals("name:WhatsApp Images", albumIdentityKey("", 0L, "WhatsApp Images"))
+    }
+
+    @Test fun imageToolsUseBroadPickerAndFilterAfterSelectionForOemFileManagers() {
+        assertEquals(listOf("*/*"), toolPickerMimeTypes(AtmacaToolPage.PERSON_CROP))
+        assertEquals(listOf("*/*"), toolPickerMimeTypes(AtmacaToolPage.PACKAGER))
+        assertEquals(listOf("video/*"), toolPickerMimeTypes(AtmacaToolPage.VIDEO_FRAMES))
+    }
+
+    @Test fun processedVideoMovesIntoItsOwnFrameFolderWithoutCopying() {
+        assertEquals("Pictures/ATMACA Video Kareleri/tatil/", videoFrameOutputPath("tatil.mp4"))
+        assertTrue(shouldMoveVideoAfterFrames(createdFrames = 1, failedFrames = 0))
+        assertFalse(shouldMoveVideoAfterFrames(createdFrames = 0, failedFrames = 1))
+    }
 }
