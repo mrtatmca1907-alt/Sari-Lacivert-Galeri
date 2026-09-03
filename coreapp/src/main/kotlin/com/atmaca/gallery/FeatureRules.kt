@@ -10,9 +10,18 @@ data class AlbumSummary(val relativePath:String,val count:Int)
 data class NormalizedCropRect(val left:Float,val top:Float,val right:Float,val bottom:Float){val width:Float get()=right-left; val height:Float get()=bottom-top}
 data class ViewerPanBounds(val maxX:Float,val maxY:Float)
 enum class CropRatio(val ratio:Float){FREE(0f),SQUARE(1f),FOUR_THREE(4f/3f),SIXTEEN_NINE(16f/9f)}
+enum class MediaFilter { ALL, PHOTOS, VIDEOS }
+enum class MediaSort { NEWEST, OLDEST, NAME }
 
 fun homeSections():List<HomeSection> = listOf(HomeSection.MEDIA, HomeSection.ALBUMS, HomeSection.SETTINGS)
 fun mediaNameOverlay(name:String):String = name.trim()
+fun mediaFilterAccepts(isVideo:Boolean,filter:MediaFilter):Boolean = when(filter){
+    MediaFilter.ALL -> true
+    MediaFilter.PHOTOS -> !isVideo
+    MediaFilter.VIDEOS -> isVideo
+}
+fun mediaFilterLabels():List<String> = listOf("Tümü","Fotoğraflar","Videolar")
+fun mediaSortLabels():List<String> = listOf("En yeni","En eski","Ada göre")
 
 fun clampViewerScale(scale:Float)=scale.coerceIn(1f,4f)
 fun galleryZoomFactor(rawFactor:Float)=rawFactor.coerceIn(0.72f,1.35f)
