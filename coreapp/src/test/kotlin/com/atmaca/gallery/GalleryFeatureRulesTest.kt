@@ -72,4 +72,10 @@ class GalleryFeatureRulesTest {
         assertTrue(shouldMoveVideoAfterFrames(createdFrames = 1, failedFrames = 0))
         assertFalse(shouldMoveVideoAfterFrames(createdFrames = 0, failedFrames = 1))
     }
+
+    @Test fun screenshotUsesChosenTreeWhenOneHasBeenPersisted() {
+        assertFalse(hasCustomScreenshotFolder(null))
+        assertFalse(hasCustomScreenshotFolder("   "))
+        assertTrue(hasCustomScreenshotFolder("content://com.android.externalstorage.documents/tree/primary%3APictures"))
+    }
 }
