@@ -8,8 +8,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+enum class CollectionMode { TAB, ALBUM, TRASH }
+
 data class GalleryUiState(
     val tab: GalleryTab = GalleryTab.PHOTOS,
+    val mode: CollectionMode = CollectionMode.TAB,
+    val albumPath: String? = null,
     val items: List<GalleryMedia> = emptyList(),
     val loading: Boolean = false,
     val hasMore: Boolean = true,
@@ -26,8 +30,26 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun switchTab(tab: GalleryTab) {
-        if (_state.value.tab == tab) return
-        _state.value = GalleryUiState(tab = tab)
+        val current = _state.value
+        if (current.mode == CollectionMode.TAB && current.tab == tab && current.items.isNotEmpty()) return
+        _state.value = GalleryUiState(tab = tab, mode = CollectionMode.TAB)
+        loadNextPage()
+    }
+
+    fun openAlbum(relativePath: String) {
+        _state.value = GalleryUiState(
+            tab = GalleryTab.PHOTOS,
+            mode = CollectionMode.ALBUM,
+            albumPath = normalizeRelativePath(relativePath)
+        )
+        loadNextPage()
+    }
+
+    fun openTrash() {
+        _state.value = GalleryUiState(
+            tab = GalleryTab.PHOTOS,
+            mode = CollectionMode.TRASH
+        )
         loadNextPage()
     }
 
@@ -44,23 +66,37 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val snapshot = _state.value
             runCatching {
-                repository.loadPage(
-                    tab = snapshot.tab,
-                    offset = snapshot.items.size,
-                    limit = MediaStoreRepository.PAGE_SIZE
-                )
+                when (snapshot.mode) {
+                    CollectionMode.TAB -> repository.loadPage(
+                        tab = snapshot.tab,
+                        offset = snapshot.items.size,
+                        limit = MediaStoreRepository.PAGE_SIZE
+                    )
+                    CollectionMode.ALBUM -> repository.loadMixedPage(
+                        offset = snapshot.items.size,
+                        limit = MediaStoreRepository.PAGE_SIZE,
+                        albumPath = snapshot.albumPath
+                    )
+                    CollectionMode.TRASH -> repository.loadMixedPage(
+                        offset = snapshot.items.size,
+                        limit = MediaStoreRepository.PAGE_SIZE,
+                        trashedOnly = true
+                    )
+                }
             }.onSuccess { page ->
                 val now = _state.value
-                if (now.tab != snapshot.tab) return@onSuccess
+                if (!sameCollection(now, snapshot)) return@onSuccess
+                val existing = now.items.asSequence().map { "${it.isVideo}:${it.id}" }.toHashSet()
+                val uniquePage = page.filter { existing.add("${it.isVideo}:${it.id}") }
                 _state.value = now.copy(
-                    items = now.items + page,
+                    items = now.items + uniquePage,
                     loading = false,
                     hasMore = page.size == MediaStoreRepository.PAGE_SIZE,
                     error = null
                 )
             }.onFailure { throwable ->
                 val now = _state.value
-                if (now.tab != snapshot.tab) return@onFailure
+                if (!sameCollection(now, snapshot)) return@onFailure
                 _state.value = now.copy(
                     loading = false,
                     error = throwable.message ?: "Medya okunamadı"
@@ -68,4 +104,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             }
         }
     }
+
+    private fun sameCollection(a: GalleryUiState, b: GalleryUiState): Boolean =
+        a.mode == b.mode && a.tab == b.tab && a.albumPath == b.albumPath
 }
