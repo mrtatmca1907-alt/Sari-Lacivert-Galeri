@@ -1,9 +1,16 @@
 package com.atmaca.gallery
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.Uri
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -17,6 +24,8 @@ private const val KEY_DONE = "done"
 private const val KEY_TOTAL = "total"
 private const val KEY_CREATED = "created"
 private const val KEY_FAILED = "failed"
+private const val FRAME_CHANNEL_ID = "atmaca_video_frames"
+private const val FRAME_NOTIFICATION_ID = 1907
 const val VIDEO_FRAME_WORK_TAG = "atmaca_video_frames"
 
 fun enqueueVideoFrameWork(context: Context, uris: List<Uri>, framesPerSecond: Int): UUID? {
@@ -46,6 +55,8 @@ class VideoFrameWorker(
     params: WorkerParameters
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
+        setForeground(createForegroundInfo())
+
         val queuePath = inputData.getString(KEY_QUEUE_FILE) ?: return Result.failure()
         val queue = File(queuePath)
         if (!queue.exists()) return Result.failure()
@@ -77,5 +88,36 @@ class VideoFrameWorker(
         } catch (_: Throwable) {
             Result.retry()
         }
+    }
+
+    private fun createForegroundInfo(): ForegroundInfo {
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel(
+                FRAME_CHANNEL_ID,
+                "ATMACA Video Kareleri",
+                NotificationManager.IMPORTANCE_LOW
+            )
+        )
+        val openApp = Intent(applicationContext, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            applicationContext,
+            0,
+            openApp,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = Notification.Builder(applicationContext, FRAME_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("ATMACA Video Kareleri")
+            .setContentText("Videolar arka planda işleniyor")
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        return ForegroundInfo(
+            FRAME_NOTIFICATION_ID,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
     }
 }
