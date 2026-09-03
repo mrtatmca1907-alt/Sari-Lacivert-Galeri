@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
@@ -26,6 +27,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import kotlin.math.abs
 
 @Composable
 fun StablePhotoPage(
@@ -87,41 +89,56 @@ fun StablePhotoPage(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(item.id, rotation) {
+                    .pointerInput(item.id, rotation, viewportWidth, viewportHeight) {
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
                             var handled = false
                             do {
                                 val event = awaitPointerEvent()
                                 val pressed = event.changes.count { it.pressed }
-                                val canHandle = pressed >= 2 || scale > 1.001f
+                                val zoomRaw = if (pressed >= 2) event.calculateZoom() else 1f
+                                val rotationDelta = if (pressed >= 2) event.calculateRotation() else 0f
+                                val pan = event.calculatePan()
+                                val zooming = pressed >= 2 && abs(zoomRaw - 1f) > 0.0005f
+                                val rotating = pressed >= 2 && abs(rotationDelta) > 0.02f
+                                val panning = scale > 1.001f && (abs(pan.x) > 0.01f || abs(pan.y) > 0.01f)
+                                val canHandle = pressed >= 2 || panning
+
                                 if (canHandle) {
                                     if (!handled) {
                                         handled = true
                                         onGestureActive(true)
                                     }
 
-                                    val factor = if (pressed >= 2) dampedZoomFactor(event.calculateZoom()) else 1f
-                                    val rotationDelta = if (pressed >= 2) event.calculateRotation() else 0f
-                                    val newScale = clampViewerScale(scale * factor)
-                                    val newRotation = applyViewerRotationDelta(rotation, rotationDelta)
-
-                                    if (rotationDelta != 0f) onRotationChanged(newRotation)
-
-                                    if (newScale <= 1.001f) {
-                                        scale = 1f
-                                        offsetX = 0f
-                                        offsetY = 0f
-                                        onScaleChanged(1f)
-                                    } else {
-                                        val pan = event.calculatePan()
-                                        scale = newScale
-                                        offsetX += pan.x
-                                        offsetY += pan.y
-                                        clampOffsets(source, newScale, newRotation)
-                                        onScaleChanged(newScale)
+                                    var nextRotation = rotation
+                                    if (rotating) {
+                                        nextRotation = applyViewerRotationDelta(rotation, rotationDelta)
+                                        onRotationChanged(nextRotation)
                                     }
 
+                                    if (zooming) {
+                                        val oldScale = scale
+                                        val nextScale = clampViewerScale(oldScale * galleryZoomFactor(zoomRaw))
+                                        val centroid = event.calculateCentroid(useCurrent = true)
+                                        val focusX = centroid.x - viewportWidth / 2f
+                                        val focusY = centroid.y - viewportHeight / 2f
+
+                                        offsetX = zoomOffsetAroundFocus(offsetX, focusX, oldScale, nextScale)
+                                        offsetY = zoomOffsetAroundFocus(offsetY, focusY, oldScale, nextScale)
+                                        scale = nextScale
+                                        onScaleChanged(nextScale)
+
+                                        if (nextScale <= 1.001f) {
+                                            resetTransform()
+                                        }
+                                    }
+
+                                    if (scale > 1.001f) {
+                                        offsetX += pan.x
+                                        offsetY += pan.y
+                                    }
+
+                                    clampOffsets(source, scale, nextRotation)
                                     event.changes.forEach { change ->
                                         if (change.pressed) change.consume()
                                     }
@@ -139,15 +156,20 @@ fun StablePhotoPage(
                             onTap = {
                                 if (scale > 1.001f) resetTransform() else onFitTap()
                             },
-                            onDoubleTap = {
-                                val target = nextDoubleTapScale(scale)
-                                scale = target
+                            onDoubleTap = { tap ->
+                                val oldScale = scale
+                                val target = nextDoubleTapScale(oldScale)
                                 if (target <= 1.001f) {
-                                    offsetX = 0f
-                                    offsetY = 0f
+                                    resetTransform()
+                                } else {
+                                    val focusX = tap.x - viewportWidth / 2f
+                                    val focusY = tap.y - viewportHeight / 2f
+                                    offsetX = zoomOffsetAroundFocus(offsetX, focusX, oldScale, target)
+                                    offsetY = zoomOffsetAroundFocus(offsetY, focusY, oldScale, target)
+                                    scale = target
+                                    clampOffsets(source, target)
+                                    onScaleChanged(target)
                                 }
-                                clampOffsets(source, target)
-                                onScaleChanged(target)
                             }
                         )
                     }
