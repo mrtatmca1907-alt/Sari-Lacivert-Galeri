@@ -109,33 +109,13 @@ replace_once(
                             )
                             if (doubleTap) {
                                 lastTapTime[0] = 0L
-                                if (scale > 1.1f || abs(localRotation) > 0.5f) {
-                                    resetTransform()
-                                } else {
-                                    val oldScale = scale
-                                    val nextScale = nextDoubleTapScale(scale)
-                                    offsetX = zoomOffsetAroundFocus(
-                                        offsetX,
-                                        downX - viewportWidth / 2f,
-                                        oldScale,
-                                        nextScale
-                                    )
-                                    offsetY = zoomOffsetAroundFocus(
-                                        offsetY,
-                                        downY - viewportHeight / 2f,
-                                        oldScale,
-                                        nextScale
-                                    )
-                                    scale = nextScale
-                                    clampOffsets(source)
-                                    onScaleChanged(scale)
-                                    onRotationChanged(localRotation)
-                                }
+                                // Approved behavior: two taps toggle viewer chrome / immersive mode.
+                                // Pinch zoom and free rotation remain owned by this same gesture coroutine.
+                                onFitTap()
                             } else {
                                 lastTapTime[0] = lastEventTime
                                 lastTapPosition[0] = downX
                                 lastTapPosition[1] = downY
-                                if (scale <= 1.001f && abs(localRotation) <= 0.5f) onFitTap()
                             }
                         }
 ''',
