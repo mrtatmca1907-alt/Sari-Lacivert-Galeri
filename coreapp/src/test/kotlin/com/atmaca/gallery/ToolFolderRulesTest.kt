@@ -18,4 +18,12 @@ class ToolFolderRulesTest {
         assertTrue(toolAcceptsMime(AtmacaToolPage.VIDEO_FRAMES, "video/mp4"))
         assertFalse(toolAcceptsMime(AtmacaToolPage.VIDEO_FRAMES, "image/jpeg"))
     }
+
+    @Test fun fileManagerMissingMimeFallsBackToExtension() {
+        assertTrue(toolAcceptsDocument(AtmacaToolPage.PERSON_CROP, null, "IMG_1.JPG"))
+        assertTrue(toolAcceptsDocument(AtmacaToolPage.PACKAGER, "application/octet-stream", "clip.MP4"))
+        assertTrue(toolAcceptsDocument(AtmacaToolPage.VIDEO_FRAMES, "", "video.mov"))
+        assertFalse(toolAcceptsDocument(AtmacaToolPage.VIDEO_FRAMES, null, "photo.jpg"))
+        assertFalse(toolAcceptsDocument(AtmacaToolPage.PACKAGER, null, "note.pdf"))
+    }
 }
