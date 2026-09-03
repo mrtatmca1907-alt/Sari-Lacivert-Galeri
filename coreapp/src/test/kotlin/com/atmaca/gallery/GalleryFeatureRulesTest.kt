@@ -72,4 +72,16 @@ class GalleryFeatureRulesTest {
         assertEquals(listOf("Tümü", "Fotoğraflar", "Videolar"), mediaFilterLabels())
         assertEquals(listOf("En yeni", "En eski", "Ada göre"), mediaSortLabels())
     }
+
+    @Test fun doubleTapNeedsTwoNearbyTapsInsideTheTimeWindow() {
+        assertTrue(isViewerDoubleTap(1000L, 1240L, 18f, 300L, 80f))
+        assertFalse(isViewerDoubleTap(1000L, 1400L, 18f, 300L, 80f))
+        assertFalse(isViewerDoubleTap(1000L, 1240L, 120f, 300L, 80f))
+    }
+
+    @Test fun viewportDecodeReducesHugeImagesButKeepsNormalPhotosSharp() {
+        assertEquals(3, calculateViewerDecodeSample(12000, 9000, 1080, 1920))
+        assertEquals(1, calculateViewerDecodeSample(4000, 3000, 1080, 1920))
+        assertEquals(1, calculateViewerDecodeSample(0, 0, 1080, 1920))
+    }
 }
