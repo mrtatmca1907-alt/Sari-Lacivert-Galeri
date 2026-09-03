@@ -1202,6 +1202,7 @@ private fun MediaViewer(
     var controlsVisible by remember { mutableStateOf(true) }
     var optionsExpanded by remember { mutableStateOf(false) }
     var screenshotMode by remember { mutableStateOf(false) }
+    var screenshotFolderUri by remember { mutableStateOf(prefs.getString("screenshot_tree_uri", null)) }
     var captureInProgress by remember { mutableStateOf(false) }
     var screenshotOffsetX by remember { mutableFloatStateOf(0f) }
     var screenshotOffsetY by remember { mutableFloatStateOf(0f) }
@@ -1214,6 +1215,17 @@ private fun MediaViewer(
     val slideshowSeconds = clampSlideshowSeconds(prefs.getInt("slideshow_seconds", 4))
     val slideshowLoop = prefs.getBoolean("slideshow_loop", true)
     val slideshowRandom = prefs.getBoolean("slideshow_random", false)
+
+    val screenshotFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+            screenshotFolderUri = uri.toString()
+            prefs.edit().putString("screenshot_tree_uri", uri.toString()).apply()
+            Toast.makeText(context, "Screenshot klasörü seçildi", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     DisposableEffect(activity) {
         val decor = activity?.window?.decorView
@@ -1325,7 +1337,11 @@ private fun MediaViewer(
             val saved = bitmap?.let { shot ->
                 runCatching {
                     root.draw(android.graphics.Canvas(shot))
-                    screenshotActions.saveScreenshot(shot)
+                    val selectedTree = screenshotFolderUri
+                        ?.takeIf(::hasCustomScreenshotFolder)
+                        ?.let(Uri::parse)
+                    if (selectedTree != null) saveScreenshotToTree(context, shot, selectedTree)
+                    else screenshotActions.saveScreenshot(shot)
                 }.getOrNull().also { shot.recycle() }
             }
             captureInProgress = false
@@ -1424,6 +1440,14 @@ private fun MediaViewer(
                                     onClick = {
                                         screenshotMode = !screenshotMode
                                         optionsExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Screenshot klasörü seç") },
+                                    leadingIcon = { Icon(Icons.Default.Folder, null) },
+                                    onClick = {
+                                        optionsExpanded = false
+                                        screenshotFolderPicker.launch(null)
                                     }
                                 )
                             }
