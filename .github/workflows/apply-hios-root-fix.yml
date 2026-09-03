@@ -1,0 +1,29 @@
+name: Apply HiOS Root Fix
+
+on:
+  push:
+    branches: [ atmaca-native-core ]
+    paths:
+      - 'coreapp/apply_hios_root_fix.py'
+      - '.github/workflows/apply-hios-root-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: atmaca-native-core
+      - name: Apply root fix
+        run: python3 coreapp/apply_hios_root_fix.py
+      - name: Commit root fix
+        run: |
+          git config user.name "atmaca-migration-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt coreapp/src/main/kotlin/com/atmaca/gallery/CompleteSettingsExtras.kt coreapp/src/main/kotlin/com/atmaca/gallery/MediaStoreRepository.kt
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: HiOS selection picker albums and visible frame progress"
+          git push origin HEAD:atmaca-native-core
