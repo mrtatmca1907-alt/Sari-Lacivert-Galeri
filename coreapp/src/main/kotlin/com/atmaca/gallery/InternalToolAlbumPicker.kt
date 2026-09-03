@@ -70,7 +70,7 @@ fun InternalToolAlbumPicker(
                                         opening = album.name
                                         scope.launch {
                                             val uris = runCatching {
-                                                repository.loadAllInAlbum(album)
+                                                repository.loadAllInAlbumOemSafe(album)
                                                     .filter { item -> toolAcceptsDocument(tool, item.mimeType, item.name) }
                                                     .map { it.uri }
                                             }.getOrDefault(emptyList())

@@ -155,7 +155,6 @@ class MediaStoreRepository(context: Context) {
                 add(MediaStore.MediaColumns.MIME_TYPE)
                 add(MediaStore.MediaColumns.DATE_ADDED)
                 add(MediaStore.MediaColumns.DATE_MODIFIED)
-                add(MediaStore.MediaColumns.DATE_TAKEN)
                 add(MediaStore.MediaColumns.WIDTH)
                 add(MediaStore.MediaColumns.HEIGHT)
                 add(MediaStore.Images.ImageColumns.BUCKET_ID)
@@ -173,7 +172,7 @@ class MediaStoreRepository(context: Context) {
                 val mimeI = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
                 val dateI = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
                 val modifiedI = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
-                val takenI = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
+                val takenI = -1
                 val widthI = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
                 val heightI = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
                 val bucketI = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_ID)
@@ -227,23 +226,96 @@ class MediaStoreRepository(context: Context) {
             .sortedBy { it.name.lowercase() }
     }
 
-    suspend fun loadAllInAlbum(album: GalleryAlbum): List<GalleryMedia> {
-        val all = ArrayList<GalleryMedia>()
-        var offset = 0
-        while (true) {
-            val page = loadMixedPage(
-                offset = offset,
-                limit = PAGE_SIZE,
-                albumPath = album.relativePath.ifBlank { null },
-                albumBucketId = album.bucketId,
-                albumBucketName = album.bucketName
-            )
-            if (page.isEmpty()) break
-            all += page
-            if (page.size < PAGE_SIZE) break
-            offset += page.size
+    suspend fun loadAllInAlbum(album: GalleryAlbum): List<GalleryMedia> = loadAllInAlbumOemSafe(album)
+
+    suspend fun loadAllInAlbumOemSafe(album: GalleryAlbum): List<GalleryMedia> = withContext(Dispatchers.IO) {
+        val result = ArrayList<GalleryMedia>()
+        val locator = albumLocator(
+            album.relativePath.ifBlank { null },
+            album.bucketId,
+            album.bucketName
+        )
+
+        fun scan(collection: Uri, isVideo: Boolean) {
+            val projection = buildList {
+                add(MediaStore.MediaColumns._ID)
+                add(MediaStore.MediaColumns.DISPLAY_NAME)
+                add(MediaStore.MediaColumns.MIME_TYPE)
+                add(MediaStore.MediaColumns.DATE_ADDED)
+                add(MediaStore.MediaColumns.DATE_MODIFIED)
+                add(MediaStore.MediaColumns.WIDTH)
+                add(MediaStore.MediaColumns.HEIGHT)
+                add(MediaStore.Images.ImageColumns.BUCKET_ID)
+                add(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+                if (Build.VERSION.SDK_INT >= 29) add(MediaStore.MediaColumns.RELATIVE_PATH)
+                add(MediaStore.MediaColumns.SIZE)
+                if (isVideo) add(MediaStore.Video.VideoColumns.DURATION)
+                if (Build.VERSION.SDK_INT >= 30) add(MediaStore.MediaColumns.IS_TRASHED)
+            }.toTypedArray()
+
+            val selectionParts = mutableListOf<String>()
+            val selectionArgs = mutableListOf<String>()
+            if (Build.VERSION.SDK_INT >= 30) selectionParts += "${MediaStore.MediaColumns.IS_TRASHED}=0"
+            when (locator) {
+                is AlbumLocator.Path -> {
+                    selectionParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
+                    selectionArgs += locator.path
+                }
+                is AlbumLocator.Bucket -> {
+                    selectionParts += "${MediaStore.Images.ImageColumns.BUCKET_ID}=?"
+                    selectionArgs += locator.id.toString()
+                }
+                is AlbumLocator.Name -> {
+                    selectionParts += "${MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME}=?"
+                    selectionArgs += locator.name
+                }
+                AlbumLocator.Unknown -> return
+            }
+
+            val selection = selectionParts.takeIf { it.isNotEmpty() }?.joinToString(" AND ")
+            val args = selectionArgs.takeIf { it.isNotEmpty() }?.toTypedArray()
+            val sort = "${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.MediaColumns._ID} DESC"
+            resolver.query(collection, projection, selection, args, sort)?.use { cursor ->
+                val idI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val nameI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val mimeI = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
+                val dateI = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
+                val modifiedI = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+                val widthI = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
+                val heightI = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
+                val bucketI = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_ID)
+                val bucketNameI = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+                val pathI = if (Build.VERSION.SDK_INT >= 29) cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH) else -1
+                val sizeI = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
+                val durationI = if (isVideo) cursor.getColumnIndex(MediaStore.Video.VideoColumns.DURATION) else -1
+                while (cursor.moveToNext()) {
+                    coroutineContext.ensureActive()
+                    val id = cursor.getLong(idI)
+                    result += GalleryMedia(
+                        id = id,
+                        uri = ContentUris.withAppendedId(collection, id),
+                        name = cursor.getString(nameI).orEmpty(),
+                        mimeType = if (mimeI >= 0) cursor.getString(mimeI) else null,
+                        isVideo = isVideo,
+                        dateAdded = if (dateI >= 0) cursor.getLong(dateI) else 0L,
+                        dateModified = if (modifiedI >= 0) cursor.getLong(modifiedI) else 0L,
+                        dateTaken = 0L,
+                        width = if (widthI >= 0) cursor.getInt(widthI) else 0,
+                        height = if (heightI >= 0) cursor.getInt(heightI) else 0,
+                        bucketId = if (bucketI >= 0) cursor.getLong(bucketI) else 0L,
+                        bucketName = if (bucketNameI >= 0) cursor.getString(bucketNameI) else null,
+                        relativePath = if (pathI >= 0) cursor.getString(pathI).orEmpty() else "",
+                        size = if (sizeI >= 0) cursor.getLong(sizeI) else 0L,
+                        durationMs = if (durationI >= 0) cursor.getLong(durationI) else 0L,
+                        isTrashed = false
+                    )
+                }
+            }
         }
-        return all
+
+        scan(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
+        scan(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
+        result.sortedWith(compareByDescending<GalleryMedia> { it.dateAdded }.thenByDescending { it.id })
     }
 
     suspend fun findExactDuplicates(onProgress: (Int) -> Unit = {}): List<List<GalleryMedia>> = withContext(Dispatchers.IO) {

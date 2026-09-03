@@ -77,8 +77,10 @@ class VideoFrameWorker(
                 moveSourceAfterSuccess = true
             ) { done, total ->
                 setProgressAsync(workDataOf(KEY_DONE to done, KEY_TOTAL to total))
+                setForegroundAsync(createForegroundInfo(done, total))
             }
             runCatching { queue.delete() }
+            showCompletionNotification(result.created, result.failed)
             Result.success(
                 Data.Builder()
                     .putInt(KEY_CREATED, result.created)
@@ -90,7 +92,7 @@ class VideoFrameWorker(
         }
     }
 
-    private fun createForegroundInfo(): ForegroundInfo {
+    private fun createForegroundInfo(done: Int = 0, total: Int = 0): ForegroundInfo {
         val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(
             NotificationChannel(
@@ -109,7 +111,8 @@ class VideoFrameWorker(
         val notification = Notification.Builder(applicationContext, FRAME_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("ATMACA Video Kareleri")
-            .setContentText("Videolar arka planda işleniyor")
+            .setContentText(videoFrameProgressText(done, total))
+            .setProgress(total.coerceAtLeast(0), done.coerceIn(0, total.coerceAtLeast(0)), total <= 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(pendingIntent)
@@ -119,5 +122,16 @@ class VideoFrameWorker(
             notification,
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         )
+    }
+
+    private fun showCompletionNotification(created: Int, failed: Int) {
+        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notification = Notification.Builder(applicationContext, FRAME_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("ATMACA Video Kareleri tamamlandı")
+            .setContentText("$created kare oluşturuldu${if (failed > 0) " • $failed hata" else ""}")
+            .setAutoCancel(true)
+            .build()
+        manager.notify(FRAME_NOTIFICATION_ID + 1, notification)
     }
 }

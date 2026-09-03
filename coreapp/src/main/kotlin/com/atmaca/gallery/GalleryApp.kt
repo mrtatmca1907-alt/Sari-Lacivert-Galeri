@@ -1209,6 +1209,7 @@ private fun MediaViewer(
     var controlsVisible by remember { mutableStateOf(true) }
     var optionsExpanded by remember { mutableStateOf(false) }
     var screenshotMode by remember { mutableStateOf(false) }
+    var screenshotSourceItem by remember { mutableStateOf<GalleryMedia?>(null) }
     var screenshotFolderUri by remember { mutableStateOf(prefs.getString("screenshot_tree_uri", null)) }
     var captureInProgress by remember { mutableStateOf(false) }
     var screenshotOffsetX by remember { mutableFloatStateOf(0f) }
@@ -1222,6 +1223,45 @@ private fun MediaViewer(
     val slideshowSeconds = clampSlideshowSeconds(prefs.getInt("slideshow_seconds", 4))
     val slideshowLoop = prefs.getBoolean("slideshow_loop", true)
     val slideshowRandom = prefs.getBoolean("slideshow_random", false)
+
+    val screenshotSourcePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val displayName = runCatching {
+                context.contentResolver.query(
+                    uri,
+                    arrayOf(MediaStore.MediaColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
+                }.orEmpty()
+            }.getOrDefault("").ifBlank { "Screenshot kaynağı" }
+            screenshotSourceItem = GalleryMedia(
+                id = Long.MIN_VALUE,
+                uri = uri,
+                name = displayName,
+                mimeType = context.contentResolver.getType(uri),
+                isVideo = false,
+                dateAdded = 0L,
+                dateModified = 0L,
+                dateTaken = 0L,
+                width = 0,
+                height = 0,
+                bucketId = 0L,
+                bucketName = null,
+                relativePath = "",
+                size = 0L,
+                durationMs = 0L,
+                isTrashed = false
+            )
+            screenshotMode = true
+            Toast.makeText(context, "Screenshot için fotoğraf seçildi", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val screenshotFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -1331,7 +1371,7 @@ private fun MediaViewer(
     }
 
     fun captureCleanScreenshot() {
-        if (captureInProgress || currentItem?.isVideo != false) return
+        if (captureInProgress || (screenshotSourceItem == null && currentItem?.isVideo != false)) return
         val host = activity ?: return
         scope.launch {
             captureInProgress = true
@@ -1380,24 +1420,37 @@ private fun MediaViewer(
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.34f)))
         }
 
-        HorizontalPager(
-            state = pager,
-            userScrollEnabled = shouldEnablePager(currentScale, currentRotation),
-            modifier = Modifier.fillMaxSize()
-        ) { page ->
-            val item = items[page]
-            val rotation = rotations[item.id] ?: 0f
-            if (item.isVideo) {
-                VideoPage(item, rotation)
-            } else {
-                StablePhotoPage(
-                    item = item,
-                    rotation = rotation,
-                    onRotationChanged = { rotations[item.id] = it },
-                    onScaleChanged = { zooms[item.id] = it },
-                    onGestureActive = { gestureActive = it },
-                    onFitTap = { controlsVisible = !controlsVisible }
-                )
+        val explicitScreenshotSource = screenshotSourceItem
+        if (screenshotMode && explicitScreenshotSource != null) {
+            val rotation = rotations[explicitScreenshotSource.id] ?: 0f
+            StablePhotoPage(
+                item = explicitScreenshotSource,
+                rotation = rotation,
+                onRotationChanged = { rotations[explicitScreenshotSource.id] = it },
+                onScaleChanged = { zooms[explicitScreenshotSource.id] = it },
+                onGestureActive = { gestureActive = it },
+                onFitTap = { controlsVisible = !controlsVisible }
+            )
+        } else {
+            HorizontalPager(
+                state = pager,
+                userScrollEnabled = shouldEnablePager(currentScale, currentRotation),
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                val item = items[page]
+                val rotation = rotations[item.id] ?: 0f
+                if (item.isVideo) {
+                    VideoPage(item, rotation)
+                } else {
+                    StablePhotoPage(
+                        item = item,
+                        rotation = rotation,
+                        onRotationChanged = { rotations[item.id] = it },
+                        onScaleChanged = { zooms[item.id] = it },
+                        onGestureActive = { gestureActive = it },
+                        onFitTap = { controlsVisible = !controlsVisible }
+                    )
+                }
             }
         }
 
@@ -1447,6 +1500,14 @@ private fun MediaViewer(
                                     onClick = {
                                         screenshotMode = !screenshotMode
                                         optionsExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Screenshot için fotoğraf seç") },
+                                    leadingIcon = { Icon(Icons.Default.PhotoCamera, null) },
+                                    onClick = {
+                                        optionsExpanded = false
+                                        screenshotSourcePicker.launch(arrayOf("image/*"))
                                     }
                                 )
                                 DropdownMenuItem(
