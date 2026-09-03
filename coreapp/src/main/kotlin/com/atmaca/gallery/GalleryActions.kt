@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -40,61 +41,37 @@ class GalleryActions(context: Context) {
 
     fun writeRequest(items: List<GalleryMedia>): IntentSenderRequest? {
         if (Build.VERSION.SDK_INT < 30 || items.isEmpty()) return null
-        return MediaStore.createWriteRequest(resolver, items.map { it.uri })
-            .toRequest()
+        return MediaStore.createWriteRequest(resolver, items.map { it.uri }).toRequest()
     }
 
     fun trashRequest(items: List<GalleryMedia>, trashed: Boolean): IntentSenderRequest? {
         if (Build.VERSION.SDK_INT < 30 || items.isEmpty()) return null
-        return MediaStore.createTrashRequest(resolver, items.map { it.uri }, trashed)
-            .toRequest()
+        return MediaStore.createTrashRequest(resolver, items.map { it.uri }, trashed).toRequest()
     }
 
     fun deleteRequest(items: List<GalleryMedia>): IntentSenderRequest? {
         if (Build.VERSION.SDK_INT < 30 || items.isEmpty()) return null
-        return MediaStore.createDeleteRequest(resolver, items.map { it.uri })
-            .toRequest()
+        return MediaStore.createDeleteRequest(resolver, items.map { it.uri }).toRequest()
     }
 
     suspend fun rename(item: GalleryMedia, requestedName: String): Boolean = withContext(Dispatchers.IO) {
         val name = finalDisplayName(item.name, requestedName)
         if (name.isBlank()) return@withContext false
-        runCatching {
-            resolver.update(
-                item.uri,
-                ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, name) },
-                null,
-                null
-            ) > 0
-        }.getOrDefault(false)
+        runCatching { resolver.update(item.uri, ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, name) }, null, null) > 0 }.getOrDefault(false)
     }
 
     suspend fun move(items: List<GalleryMedia>, targetRelativePath: String): Int = withContext(Dispatchers.IO) {
         val target = normalizeRelativePath(targetRelativePath)
-        var changed = 0
-        for (item in items) {
-            val ok = runCatching {
-                resolver.update(
-                    item.uri,
-                    ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, target) },
-                    null,
-                    null
-                ) > 0
-            }.getOrDefault(false)
-            if (ok) changed++
+        items.count { item ->
+            runCatching { resolver.update(item.uri, ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, target) }, null, null) > 0 }.getOrDefault(false)
         }
-        changed
     }
 
     suspend fun copy(items: List<GalleryMedia>, targetRelativePath: String): Int = withContext(Dispatchers.IO) {
         val target = normalizeRelativePath(targetRelativePath)
         var copied = 0
         for (item in items) {
-            val collection = if (item.isVideo) {
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-            } else {
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-            }
+            val collection = if (item.isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, item.name)
                 put(MediaStore.MediaColumns.MIME_TYPE, item.mimeType)
@@ -106,18 +83,10 @@ class GalleryActions(context: Context) {
             val destination = runCatching { resolver.insert(collection, values) }.getOrNull() ?: continue
             val success = runCatching {
                 resolver.openInputStream(item.uri)?.use { input ->
-                    resolver.openOutputStream(destination, "w")?.use { output ->
-                        input.copyTo(output, DEFAULT_BUFFER_SIZE * 8)
-                    } ?: error("Hedef açılamadı")
+                    resolver.openOutputStream(destination, "w")?.use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE * 8) }
+                        ?: error("Hedef açılamadı")
                 } ?: error("Kaynak açılamadı")
-                if (Build.VERSION.SDK_INT >= 29) {
-                    resolver.update(
-                        destination,
-                        ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
-                        null,
-                        null
-                    )
-                }
+                if (Build.VERSION.SDK_INT >= 29) resolver.update(destination, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
                 true
             }.getOrElse {
                 runCatching { resolver.delete(destination, null, null) }
@@ -128,12 +97,33 @@ class GalleryActions(context: Context) {
         copied
     }
 
-    suspend fun deleteLegacy(items: List<GalleryMedia>): Int = withContext(Dispatchers.IO) {
-        var deleted = 0
-        for (item in items) {
-            if (runCatching { resolver.delete(item.uri, null, null) > 0 }.getOrDefault(false)) deleted++
+    suspend fun saveCroppedCopy(source: GalleryMedia, bitmap: Bitmap): Uri? = withContext(Dispatchers.IO) {
+        val base = source.name.substringBeforeLast('.', source.name)
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "${base}_kirp_$stamp.jpg")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= 29) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, normalizeRelativePath(source.relativePath))
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
         }
-        deleted
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return@withContext null
+        val ok = runCatching {
+            resolver.openOutputStream(uri, "w")?.use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.JPEG, 96, output))
+            } ?: error("Kırpılmış dosya açılamadı")
+            if (Build.VERSION.SDK_INT >= 29) resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            true
+        }.getOrDefault(false)
+        if (!ok) {
+            runCatching { resolver.delete(uri, null, null) }
+            null
+        } else uri
+    }
+
+    suspend fun deleteLegacy(items: List<GalleryMedia>): Int = withContext(Dispatchers.IO) {
+        items.count { runCatching { resolver.delete(it.uri, null, null) > 0 }.getOrDefault(false) }
     }
 
     fun prepareCameraImage(): Uri? {
@@ -160,20 +150,12 @@ class GalleryActions(context: Context) {
             runCatching { resolver.delete(uri, null, null) }
             return
         }
-        if (Build.VERSION.SDK_INT >= 29) {
-            runCatching {
-                resolver.update(
-                    uri,
-                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
-                    null,
-                    null
-                )
-            }
+        if (Build.VERSION.SDK_INT >= 29) runCatching {
+            resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         }
     }
 
-    private fun PendingIntent.toRequest(): IntentSenderRequest =
-        IntentSenderRequest.Builder(intentSender).build()
+    private fun PendingIntent.toRequest(): IntentSenderRequest = IntentSenderRequest.Builder(intentSender).build()
 
     private fun finalDisplayName(current: String, requested: String): String {
         val clean = requested.trim().replace('/', '_').replace('\\', '_')
