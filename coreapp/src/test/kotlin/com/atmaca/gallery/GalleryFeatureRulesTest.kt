@@ -40,4 +40,33 @@ class GalleryFeatureRulesTest {
         assertEquals("DCIM/Camera/", normalizeRelativePath("DCIM/Camera/"))
         assertTrue(normalizeRelativePath("  /Movies/Test// ").endsWith('/'))
     }
+
+    @Test
+    fun viewerZoomIsClampedAndDoubleTapTogglesUsefulZoom() {
+        assertEquals(1f, clampViewerScale(0.2f))
+        assertEquals(8f, clampViewerScale(20f))
+        assertEquals(2.5f, nextDoubleTapScale(1f))
+        assertEquals(1f, nextDoubleTapScale(3f))
+    }
+
+    @Test
+    fun viewerRotationAdvancesByQuarterTurns() {
+        assertEquals(90f, nextQuarterRotation(0f))
+        assertEquals(0f, nextQuarterRotation(270f))
+    }
+
+    @Test
+    fun cropRectIsNormalizedAndClampedToImageBounds() {
+        val crop = normalizedCropRect(-0.2f, 0.1f, 1.3f, 0.9f)
+        assertEquals(NormalizedCropRect(0f, 0.1f, 1f, 0.9f), crop)
+        assertTrue(crop.width > 0f)
+        assertTrue(crop.height > 0f)
+    }
+
+    @Test
+    fun cropAspectRatiosAreStable() {
+        assertEquals(1f, CropRatio.SQUARE.ratio, 0.0001f)
+        assertEquals(4f / 3f, CropRatio.FOUR_THREE.ratio, 0.0001f)
+        assertEquals(16f / 9f, CropRatio.SIXTEEN_NINE.ratio, 0.0001f)
+    }
 }
