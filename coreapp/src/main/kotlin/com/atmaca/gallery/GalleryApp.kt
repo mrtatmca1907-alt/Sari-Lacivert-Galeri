@@ -183,9 +183,6 @@ private fun GalleryHome(vm: GalleryViewModel) {
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
-    var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
-    var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
-    var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
 
     val selected = remember(selectedIds, state.items) {
         state.items.filter { it.id in selectedIds }
