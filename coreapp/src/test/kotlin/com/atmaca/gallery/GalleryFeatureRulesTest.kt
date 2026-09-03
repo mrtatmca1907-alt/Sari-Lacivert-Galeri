@@ -1,6 +1,7 @@
 package com.atmaca.gallery
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,9 +13,7 @@ class GalleryFeatureRulesTest {
             MediaMeta(2, "Pictures/B/", 20, "image/jpeg"),
             MediaMeta(3, "Pictures/A/", 30, "video/mp4")
         )
-
         val albums = groupAlbums(items)
-
         assertEquals(listOf("Pictures/A/", "Pictures/B/"), albums.map { it.relativePath })
         assertEquals(2, albums.first().count)
     }
@@ -27,9 +26,7 @@ class GalleryFeatureRulesTest {
             MediaMeta(3, "DCIM/", 200, "image/jpeg"),
             MediaMeta(4, "Movies/", 0, "video/mp4")
         )
-
         val groups = duplicateCandidateGroups(items)
-
         assertEquals(1, groups.size)
         assertEquals(listOf(1L, 2L), groups.single().map { it.id })
     }
@@ -42,11 +39,48 @@ class GalleryFeatureRulesTest {
     }
 
     @Test
-    fun viewerZoomIsClampedAndDoubleTapTogglesUsefulZoom() {
+    fun viewerZoomNeverShrinksBelowFitAndHasCalmerUpperBound() {
         assertEquals(1f, clampViewerScale(0.2f))
-        assertEquals(8f, clampViewerScale(20f))
-        assertEquals(2.5f, nextDoubleTapScale(1f))
-        assertEquals(1f, nextDoubleTapScale(3f))
+        assertEquals(5f, clampViewerScale(20f))
+        assertEquals(2f, nextDoubleTapScale(1f))
+        assertEquals(1f, nextDoubleTapScale(2.5f))
+    }
+
+    @Test
+    fun pinchDeltaIsDampedSoOneGestureCannotJumpWildly() {
+        assertEquals(1.15f, dampedZoomFactor(2f), 0.0001f)
+        assertEquals(0.85f, dampedZoomFactor(0.2f), 0.0001f)
+        assertEquals(1f, dampedZoomFactor(1f), 0.0001f)
+    }
+
+    @Test
+    fun panIsClampedSoPhotoCannotBeDraggedPastViewport() {
+        val bounds = viewerPanBounds(
+            viewportWidth = 1080f,
+            viewportHeight = 1920f,
+            imageWidth = 1080f,
+            imageHeight = 1080f,
+            scale = 2f,
+            rotation = 0f
+        )
+        assertEquals(540f, bounds.maxX, 0.001f)
+        assertEquals(120f, bounds.maxY, 0.001f)
+        assertEquals(540f, clampViewerOffset(900f, bounds.maxX), 0.001f)
+        assertEquals(-120f, clampViewerOffset(-400f, bounds.maxY), 0.001f)
+    }
+
+    @Test
+    fun viewerControlsHideWheneverPhotoIsTransformed() {
+        assertTrue(shouldShowViewerControls(scale = 1f, gestureActive = false))
+        assertFalse(shouldShowViewerControls(scale = 1.2f, gestureActive = false))
+        assertFalse(shouldShowViewerControls(scale = 1f, gestureActive = true))
+    }
+
+    @Test
+    fun pagerIsEnabledOnlyAtFitScale() {
+        assertTrue(shouldEnablePager(1f))
+        assertFalse(shouldEnablePager(1.01f))
+        assertFalse(shouldEnablePager(2f))
     }
 
     @Test
