@@ -97,3 +97,10 @@ fun groupAlbums(items:List<MediaMeta>)=items.groupBy{normalizeRelativePath(it.re
 fun duplicateCandidateGroups(items:List<MediaMeta>)=items.asSequence().filter{it.size>0L}.groupBy{it.size}.values.asSequence().filter{it.size>1}.map{it.sortedBy(MediaMeta::id)}.sortedBy{it.first().size}.toList()
 fun normalizeRelativePath(raw:String):String{val parts=raw.trim().replace('\\','/').split('/').map(String::trim).filter(String::isNotEmpty);val n=if(parts.isEmpty())"Pictures/ATMACA" else parts.joinToString("/");return "$n/"}
 fun albumDisplayName(relativePath:String)=normalizeRelativePath(relativePath).trimEnd('/').substringAfterLast('/').ifBlank{"Depolama"}
+fun albumIdentityKey(relativePath:String?, bucketId:Long, bucketName:String?):String {
+    val cleanPath = relativePath?.trim().orEmpty()
+    if(cleanPath.isNotEmpty()) return "path:${normalizeRelativePath(cleanPath)}"
+    if(bucketId != 0L) return "bucket:$bucketId"
+    val cleanName = bucketName?.trim().orEmpty()
+    return if(cleanName.isNotEmpty()) "name:$cleanName" else "unknown"
+}
