@@ -1,5 +1,7 @@
 package com.atmaca.gallery
 
+import kotlin.math.abs
+
 data class MediaMeta(
     val id: Long,
     val relativePath: String,
@@ -22,6 +24,8 @@ data class NormalizedCropRect(
     val height: Float get() = bottom - top
 }
 
+data class ViewerPanBounds(val maxX: Float, val maxY: Float)
+
 enum class CropRatio(val ratio: Float) {
     FREE(0f),
     SQUARE(1f),
@@ -29,9 +33,44 @@ enum class CropRatio(val ratio: Float) {
     SIXTEEN_NINE(16f / 9f)
 }
 
-fun clampViewerScale(scale: Float): Float = scale.coerceIn(1f, 8f)
+fun clampViewerScale(scale: Float): Float = scale.coerceIn(1f, 5f)
 
-fun nextDoubleTapScale(scale: Float): Float = if (scale > 1.1f) 1f else 2.5f
+fun dampedZoomFactor(rawFactor: Float): Float =
+    (1f + (rawFactor - 1f) * 0.55f).coerceIn(0.85f, 1.15f)
+
+fun nextDoubleTapScale(scale: Float): Float = if (scale > 1.1f) 1f else 2f
+
+fun shouldEnablePager(scale: Float): Boolean = scale <= 1.001f
+
+fun shouldShowViewerControls(scale: Float, gestureActive: Boolean): Boolean =
+    !gestureActive && scale <= 1.001f
+
+fun viewerPanBounds(
+    viewportWidth: Float,
+    viewportHeight: Float,
+    imageWidth: Float,
+    imageHeight: Float,
+    scale: Float,
+    rotation: Float
+): ViewerPanBounds {
+    if (viewportWidth <= 0f || viewportHeight <= 0f || imageWidth <= 0f || imageHeight <= 0f) {
+        return ViewerPanBounds(0f, 0f)
+    }
+    val quarterTurn = ((abs(rotation.toInt()) / 90) % 2) == 1
+    val sourceWidth = if (quarterTurn) imageHeight else imageWidth
+    val sourceHeight = if (quarterTurn) imageWidth else imageHeight
+    val fit = minOf(viewportWidth / sourceWidth, viewportHeight / sourceHeight)
+    val fittedWidth = sourceWidth * fit
+    val fittedHeight = sourceHeight * fit
+    val safeScale = clampViewerScale(scale)
+    return ViewerPanBounds(
+        maxX = ((fittedWidth * safeScale - viewportWidth) / 2f).coerceAtLeast(0f),
+        maxY = ((fittedHeight * safeScale - viewportHeight) / 2f).coerceAtLeast(0f)
+    )
+}
+
+fun clampViewerOffset(offset: Float, maxOffset: Float): Float =
+    offset.coerceIn(-maxOffset.coerceAtLeast(0f), maxOffset.coerceAtLeast(0f))
 
 fun nextQuarterRotation(rotation: Float): Float = (rotation + 90f) % 360f
 
