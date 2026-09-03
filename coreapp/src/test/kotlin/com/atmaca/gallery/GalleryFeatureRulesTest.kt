@@ -84,4 +84,27 @@ class GalleryFeatureRulesTest {
         assertEquals(1, calculateViewerDecodeSample(4000, 3000, 1080, 1920))
         assertEquals(1, calculateViewerDecodeSample(0, 0, 1080, 1920))
     }
+
+    @Test fun completeSettingsContainRecycleSlideshowAndAllThreeTools() {
+        assertEquals(
+            listOf("Geri Dönüşüm Kutusu", "Slayt gösterisi", "Akıllı Kişi Kırpma", "Görsel Paketleyici", "Video Kareleri"),
+            completeSettingsEntries()
+        )
+    }
+
+    @Test fun slideshowIntervalIsAlwaysSafe() {
+        assertEquals(1, clampSlideshowSeconds(0))
+        assertEquals(5, clampSlideshowSeconds(5))
+        assertEquals(30, clampSlideshowSeconds(80))
+    }
+
+    @Test fun packagerCreatesStableBatchFolders() {
+        assertEquals("Pictures/ATMACA Paketler/Paket_0001/", packageBatchPath(1))
+        assertEquals("Pictures/ATMACA Paketler/Paket_0012/", packageBatchPath(12))
+    }
+
+    @Test fun videoFramesUseOneSecondDefaultCadence() {
+        assertEquals(1000L, frameIntervalMs(1))
+        assertEquals(500L, frameIntervalMs(2))
+    }
 }
