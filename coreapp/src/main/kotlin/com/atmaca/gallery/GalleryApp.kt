@@ -12,6 +12,7 @@ import android.provider.MediaStore
 import android.util.LruCache
 import android.util.Size
 import android.view.View
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +21,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +33,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,9 +51,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.Crop
-import androidx.compose.material.icons.filled.Crop
-import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -107,16 +107,19 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 enum class HomeSection { PHOTOS, VIDEOS, ALBUMS, DUPLICATES, TRASH }
 private enum class PathAction { COPY, MOVE }
@@ -306,39 +309,6 @@ private fun GalleryHome(vm: GalleryViewModel) {
         return
     }
 
-    cropItem?.let { item ->
-        CropEditor(
-            item = item,
-            actions = actions,
-            onCancel = { cropItem = null },
-            onSaved = { cropItem = null; refreshToken++; albumsRefresh++; vm.reload() },
-            onMessage = { message = it }
-        )
-        return
-    }
-
-    cropItem?.let { item ->
-        CropEditor(
-            item = item,
-            actions = actions,
-            onCancel = { cropItem = null },
-            onSaved = { cropItem = null; refreshToken++; albumsRefresh++; vm.reload() },
-            onMessage = { message = it }
-        )
-        return
-    }
-
-    cropItem?.let { item ->
-        CropEditor(
-            item = item,
-            actions = actions,
-            onCancel = { cropItem = null },
-            onSaved = { cropItem = null; refreshToken++; albumsRefresh++; vm.reload() },
-            onMessage = { message = it }
-        )
-        return
-    }
-
     viewerIndex?.let { index ->
         if (state.items.isNotEmpty()) {
             MediaViewer(
@@ -352,7 +322,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
                     else trash(listOf(item), true)
                 },
                 onRename = { renameItem = it },
-                onCrop = { cropItem = it }
+                onCrop = { item -> runAfterWriteAccess(listOf(item)) { cropItem = item } }
             )
             renameItem?.let { item ->
                 RenameDialog(
@@ -1064,11 +1034,18 @@ private fun MediaViewer(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val screenshotActions = remember { GalleryActions(context) }
+    val scope = rememberCoroutineScope()
     val pager = rememberPagerState(initialPage = initialIndex) { items.size }
     val rotations = remember { mutableStateMapOf<Long, Float>() }
     val zooms = remember { mutableStateMapOf<Long, Float>() }
     var gestureActive by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
+    var optionsExpanded by remember { mutableStateOf(false) }
+    var screenshotMode by remember { mutableStateOf(false) }
+    var captureInProgress by remember { mutableStateOf(false) }
+    var screenshotOffsetX by remember { mutableFloatStateOf(0f) }
+    var screenshotOffsetY by remember { mutableFloatStateOf(0f) }
 
     DisposableEffect(activity) {
         val decor = activity?.window?.decorView
@@ -1101,6 +1078,39 @@ private fun MediaViewer(
 
     val currentItem = items.getOrNull(pager.currentPage)
     val currentScale = currentItem?.let { zooms[it.id] } ?: 1f
+    val currentRotation = currentItem?.let { rotations[it.id] } ?: 0f
+    val renderChrome = shouldRenderViewerChrome(
+        captureInProgress = captureInProgress,
+        controlsVisible = controlsVisible,
+        scale = currentScale,
+        gestureActive = gestureActive
+    )
+
+    fun captureCleanScreenshot() {
+        if (captureInProgress || currentItem?.isVideo != false) return
+        val host = activity ?: return
+        scope.launch {
+            captureInProgress = true
+            optionsExpanded = false
+            delay(140)
+            val root = host.window.decorView.rootView
+            val bitmap = if (root.width > 0 && root.height > 0) {
+                Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888)
+            } else null
+            val saved = bitmap?.let { shot ->
+                runCatching {
+                    root.draw(android.graphics.Canvas(shot))
+                    screenshotActions.saveScreenshot(shot)
+                }.getOrNull().also { shot.recycle() }
+            }
+            captureInProgress = false
+            Toast.makeText(
+                context,
+                if (saved != null) "Screenshot kaydedildi" else "Screenshot kaydedilemedi",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
 
     Box(
         Modifier
@@ -1109,7 +1119,7 @@ private fun MediaViewer(
     ) {
         HorizontalPager(
             state = pager,
-            userScrollEnabled = shouldEnablePager(currentScale),
+            userScrollEnabled = shouldEnablePager(currentScale, currentRotation),
             modifier = Modifier.fillMaxSize()
         ) { page ->
             val item = items[page]
@@ -1120,6 +1130,7 @@ private fun MediaViewer(
                 StablePhotoPage(
                     item = item,
                     rotation = rotation,
+                    onRotationChanged = { rotations[item.id] = it },
                     onScaleChanged = { zooms[item.id] = it },
                     onGestureActive = { gestureActive = it },
                     onFitTap = { controlsVisible = !controlsVisible }
@@ -1127,7 +1138,7 @@ private fun MediaViewer(
             }
         }
 
-        if (controlsVisible && shouldShowViewerControls(currentScale, gestureActive)) {
+        if (renderChrome) {
             Row(
                 Modifier
                     .align(Alignment.TopCenter)
@@ -1137,7 +1148,7 @@ private fun MediaViewer(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    items.getOrNull(pager.currentPage)?.name.orEmpty(),
+                    currentItem?.name.orEmpty(),
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1145,38 +1156,112 @@ private fun MediaViewer(
                 )
             }
 
-            val current = items.getOrNull(pager.currentPage)
+            val current = currentItem
             if (current != null) {
                 Row(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(Color.Black.copy(alpha = 0.60f))
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White) }
-                    IconButton(onClick = { onShare(current) }) { Icon(Icons.Default.Share, "Paylaş", tint = Color.White) }
-                    IconButton(onClick = {
-                        zooms[current.id] = 1f
-                        gestureActive = false
-                        rotations[current.id] = nextQuarterRotation(rotations[current.id] ?: 0f)
-                    }) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(onClick = { onShare(current) }) {
+                        Icon(Icons.Default.Share, "Paylaş", tint = Color.White)
+                    }
+
+                    if (!current.isVideo) {
+                        IconButton(onClick = {
+                            rotations[current.id] = nextQuarterRotation(rotations[current.id] ?: 0f)
+                        }) {
                             Icon(Icons.Default.RotateRight, "90 derece döndür", tint = Color.White)
-                            Text("Döndür", color = Color.White, style = MaterialTheme.typography.labelSmall)
                         }
                     }
-                    if (!current.isVideo) IconButton(onClick = { onCrop(current) }) { Icon(Icons.Default.Crop, "Kırp", tint = Color.White) }
-                    IconButton(onClick = { onRename(current) }) { Icon(Icons.Default.Edit, "Ad değiştir", tint = Color.White) }
-                    IconButton(onClick = { onTrash(current) }) { Icon(Icons.Default.Delete, "Çöp", tint = Color.White) }
+
+                    Box {
+                        IconButton(onClick = { optionsExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, "Seçenekler", tint = Color.White)
+                        }
+                        DropdownMenu(
+                            expanded = optionsExpanded,
+                            onDismissRequest = { optionsExpanded = false }
+                        ) {
+                            if (!current.isVideo) {
+                                DropdownMenuItem(
+                                    text = { Text("Kırp") },
+                                    leadingIcon = { Icon(Icons.Default.Crop, null) },
+                                    onClick = {
+                                        optionsExpanded = false
+                                        onCrop(current)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (screenshotMode) "Screenshot modunu kapat" else "Screenshot modu") },
+                                    leadingIcon = { Icon(Icons.Default.PhotoCamera, null) },
+                                    onClick = {
+                                        screenshotMode = !screenshotMode
+                                        optionsExpanded = false
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Ad değiştir") },
+                                leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                onClick = {
+                                    optionsExpanded = false
+                                    onRename(current)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Çöpe taşı / sil") },
+                                leadingIcon = { Icon(Icons.Default.Delete, null) },
+                                onClick = {
+                                    optionsExpanded = false
+                                    onTrash(current)
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.weight(1f))
+
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White)
+                    }
+                }
+            }
+        }
+
+        if (
+            screenshotMode &&
+            currentItem?.isVideo == false &&
+            !captureInProgress
+        ) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .offset {
+                        IntOffset(
+                            screenshotOffsetX.roundToInt(),
+                            screenshotOffsetY.roundToInt()
+                        )
+                    }
+                    .background(Color.Black.copy(alpha = 0.68f), CircleShape)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            screenshotOffsetX += dragAmount.x
+                            screenshotOffsetY += dragAmount.y
+                        }
+                    }
+            ) {
+                IconButton(onClick = { captureCleanScreenshot() }) {
+                    Icon(Icons.Default.PhotoCamera, "Screenshot", tint = Color.White)
                 }
             }
         }
     }
 }
-
 @Composable
 private fun PhotoPage(item: GalleryMedia, rotation: Float) {
     val context = LocalContext.current
