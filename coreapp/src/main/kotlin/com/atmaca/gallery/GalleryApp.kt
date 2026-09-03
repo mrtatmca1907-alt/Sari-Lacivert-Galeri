@@ -213,6 +213,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
     var pathAction by remember { mutableStateOf<PathAction?>(null) }
     var pathItems by remember { mutableStateOf<List<GalleryMedia>>(emptyList()) }
     var pendingWriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var pendingMutationIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
@@ -232,13 +233,12 @@ private fun GalleryHome(vm: GalleryViewModel) {
     val mutationConsentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
+        val affectedIds = pendingMutationIds
+        pendingMutationIds = emptySet()
         if (result.resultCode == Activity.RESULT_OK) {
             selectedIds = emptySet()
             viewerIndex = null
-            refreshToken++
-            albumsRefresh++
-            duplicatesRefresh++
-            vm.reload()
+            if (affectedIds.isNotEmpty()) vm.removeItemsByIds(affectedIds)
         }
     }
 
@@ -270,8 +270,10 @@ private fun GalleryHome(vm: GalleryViewModel) {
 
     fun trash(items: List<GalleryMedia>, trashed: Boolean) {
         if (items.isEmpty()) return
+        val affectedIds = items.mapTo(mutableSetOf()) { it.id }
         val request = actions.trashRequest(items, trashed)
         if (request != null) {
+            pendingMutationIds = affectedIds
             mutationConsentLauncher.launch(request)
         } else {
             scope.launch {
@@ -279,20 +281,26 @@ private fun GalleryHome(vm: GalleryViewModel) {
                 message = if (trashed) "$count öğe silindi" else "Bu Android sürümünde geri alma desteklenmiyor"
                 selectedIds = emptySet()
                 viewerIndex = null
-                vm.reload()
+                if (trashed && count == items.size) vm.removeItemsByIds(affectedIds)
+                else if (trashed && count > 0) vm.reload()
             }
         }
     }
 
     fun permanentDelete(items: List<GalleryMedia>) {
         if (items.isEmpty()) return
+        val affectedIds = items.mapTo(mutableSetOf()) { it.id }
         val request = actions.deleteRequest(items)
-        if (request != null) mutationConsentLauncher.launch(request)
-        else scope.launch {
+        if (request != null) {
+            pendingMutationIds = affectedIds
+            mutationConsentLauncher.launch(request)
+        } else scope.launch {
             val count = actions.deleteLegacy(items)
             message = "$count öğe kalıcı silindi"
             selectedIds = emptySet()
-            vm.reload()
+            viewerIndex = null
+            if (count == items.size) vm.removeItemsByIds(affectedIds)
+            else if (count > 0) vm.reload()
         }
     }
 
@@ -320,7 +328,8 @@ private fun GalleryHome(vm: GalleryViewModel) {
             HomeSection.PHOTOS -> vm.switchTab(GalleryTab.PHOTOS)
             HomeSection.VIDEOS -> vm.switchTab(GalleryTab.VIDEOS)
             HomeSection.TRASH -> vm.openTrash()
-            HomeSection.ALBUMS, HomeSection.DUPLICATES -> Unit
+            HomeSection.ALBUMS -> albumsRefresh++
+            HomeSection.DUPLICATES -> duplicatesRefresh++
         }
     }
 
@@ -377,9 +386,11 @@ private fun GalleryHome(vm: GalleryViewModel) {
     }
 
     val albums by produceState<List<GalleryAlbum>>(
-        initialValue = emptyList(), albumsRefresh, refreshToken
+        initialValue = emptyList(), albumsRefresh, section, pathAction
     ) {
-        value = runCatching { repository.loadAlbums() }.getOrDefault(emptyList())
+        if (section == HomeSection.ALBUMS || pathAction != null) {
+            value = runCatching { repository.loadAlbums() }.getOrDefault(emptyList())
+        }
     }
 
     if (pathAction != null) {
