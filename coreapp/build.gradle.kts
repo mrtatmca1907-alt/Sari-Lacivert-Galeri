@@ -11,8 +11,8 @@ android {
         applicationId = "com.atmaca.gallery"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.5.1-photo-tools"
+        versionCode = 9
+        versionName = "0.5.2-eagle-zoom"
     }
 
     compileOptions {
