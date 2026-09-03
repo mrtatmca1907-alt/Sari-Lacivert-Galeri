@@ -15,6 +15,7 @@ data class GalleryUiState(
     val mode: CollectionMode = CollectionMode.MEDIA,
     val albumPath: String? = null,
     val albumBucketId: Long = 0L,
+    val albumBucketName: String? = null,
     val items: List<GalleryMedia> = emptyList(),
     val loading: Boolean = false,
     val hasMore: Boolean = true,
@@ -49,7 +50,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             tab = GalleryTab.PHOTOS,
             mode = CollectionMode.ALBUM,
             albumPath = album.relativePath,
-            albumBucketId = album.bucketId
+            albumBucketId = album.bucketId,
+            albumBucketName = album.bucketName ?: album.name
         )
         loadNextPage()
     }
@@ -109,7 +111,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         offset = snapshot.items.size,
                         limit = MediaStoreRepository.PAGE_SIZE,
                         albumPath = snapshot.albumPath,
-                        albumBucketId = snapshot.albumBucketId
+                        albumBucketId = snapshot.albumBucketId,
+                        albumBucketName = snapshot.albumBucketName
                     )
                     CollectionMode.TRASH -> repository.loadMixedPage(
                         offset = snapshot.items.size,
@@ -140,5 +143,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun sameCollection(a: GalleryUiState, b: GalleryUiState): Boolean =
-        a.mode == b.mode && a.tab == b.tab && a.albumPath == b.albumPath && a.albumBucketId == b.albumBucketId
+        a.mode == b.mode && a.tab == b.tab && a.albumPath == b.albumPath &&
+            a.albumBucketId == b.albumBucketId && a.albumBucketName == b.albumBucketName
 }
