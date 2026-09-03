@@ -38,6 +38,9 @@ jobs:
       - name: Apply complete gallery home patch
         run: python3 coreapp/patch_complete_gallery.py
 
+      - name: Apply stable photo performance patch
+        run: python3 coreapp/patch_stable_photo_perf.py
+
       - name: Apply stable Eagle viewer patch
         run: python3 coreapp/patch_eagle_viewer.py
 
