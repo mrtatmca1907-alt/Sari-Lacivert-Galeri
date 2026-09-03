@@ -90,6 +90,19 @@ class GalleryFeatureRulesTest {
     }
 
     @Test
+    fun freeRotationIsNormalizedAndCanMoveBothDirections() {
+        assertEquals(15f, normalizeViewerRotation(375f), 0.001f)
+        assertEquals(345f, normalizeViewerRotation(-15f), 0.001f)
+        assertEquals(42.5f, applyViewerRotationDelta(40f, 2.5f), 0.001f)
+    }
+
+    @Test
+    fun screenshotCaptureAlwaysHidesViewerChrome() {
+        assertFalse(shouldRenderViewerChrome(captureInProgress = true, controlsVisible = true, scale = 1f, gestureActive = false))
+        assertTrue(shouldRenderViewerChrome(captureInProgress = false, controlsVisible = true, scale = 1f, gestureActive = false))
+    }
+
+    @Test
     fun cropRectIsNormalizedAndClampedToImageBounds() {
         val crop = normalizedCropRect(-0.2f, 0.1f, 1.3f, 0.9f)
         assertEquals(NormalizedCropRect(0f, 0.1f, 1f, 0.9f), crop)
