@@ -1,6 +1,7 @@
 from pathlib import Path
 
 app = Path("coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt").read_text(encoding="utf-8")
+vm = Path("coreapp/src/main/kotlin/com/atmaca/gallery/GalleryViewModel.kt").read_text(encoding="utf-8")
 repo = Path("coreapp/src/main/kotlin/com/atmaca/gallery/MediaStoreRepository.kt").read_text(encoding="utf-8")
 photo = Path("coreapp/src/main/kotlin/com/atmaca/gallery/StablePhotoPage.kt").read_text(encoding="utf-8")
 settings = Path("coreapp/src/main/kotlin/com/atmaca/gallery/ModernSettingsDialog.kt").read_text(encoding="utf-8")
@@ -20,10 +21,25 @@ required_app = [
     "SortDirection",
     "slideshowPrefetchIndices(",
     "prefetchViewerBitmap(",
+    "pendingMutationIds",
+    "val affectedIds = pendingMutationIds",
+    "vm.removeItemsByIds(affectedIds)",
+    "HomeSection.ALBUMS -> albumsRefresh++",
+    "HomeSection.DUPLICATES -> duplicatesRefresh++",
+    "initialValue = emptyList(), albumsRefresh, section, pathAction",
 ]
 for marker in required_app:
     if marker not in app:
         raise SystemExit(f"DIRECT SOURCE FAIL: GalleryApp missing {marker!r}")
+
+mutation_block = app.split("val mutationConsentLauncher", 1)[1].split("val cameraLauncher", 1)[0]
+for forbidden in ["refreshToken++", "albumsRefresh++", "duplicatesRefresh++", "vm.reload()"]:
+    if forbidden in mutation_block:
+        raise SystemExit(f"DIRECT SOURCE FAIL: mutation consent still triggers expensive refresh: {forbidden}")
+
+for marker in ["fun removeItemsByIds(ids: Set<Long>)", "removeMutatedIds(current.items.map { it.id }, ids)"]:
+    if marker not in vm:
+        raise SystemExit(f"DIRECT SOURCE FAIL: GalleryViewModel missing local mutation path {marker!r}")
 
 for legacy in ['label = { Text("Foto") }', 'label = { Text("Video") }', 'label = { Text("Kopya") }', 'label = { Text("Çöp") }']:
     if legacy in app:
