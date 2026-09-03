@@ -9,6 +9,7 @@ tools = Path("coreapp/src/main/kotlin/com/atmaca/gallery/CompleteSettingsExtras.
 engine = Path("coreapp/src/main/kotlin/com/atmaca/gallery/CompleteToolEngine.kt").read_text(encoding="utf-8")
 scanner = Path("coreapp/src/main/kotlin/com/atmaca/gallery/ToolFolderScanner.kt").read_text(encoding="utf-8")
 loader = Path("coreapp/src/main/kotlin/com/atmaca/gallery/ImageLoader.kt").read_text(encoding="utf-8")
+worker = Path("coreapp/src/main/kotlin/com/atmaca/gallery/VideoFrameWorker.kt").read_text(encoding="utf-8")
 gradle = Path("coreapp/build.gradle.kts").read_text(encoding="utf-8")
 
 required_app = [
@@ -29,6 +30,7 @@ required_app = [
     "var albums by remember { mutableStateOf<List<GalleryAlbum>>(emptyList()) }",
     "LaunchedEffect(albumsRefresh, section, pathAction)",
     "shouldReloadPrimaryMediaAfterCamera(section, success = true)",
+    "vm.openAlbum(album)",
 ]
 for marker in required_app:
     if marker not in app:
@@ -46,15 +48,28 @@ camera_block = app.split("val cameraLauncher", 1)[1].split("fun runAfterWriteAcc
 if "vm.reload()" in camera_block:
     raise SystemExit("DIRECT SOURCE FAIL: camera return still performs direct full reload")
 
-for marker in ["fun removeItemsByIds(ids: Set<Long>)", "removeMutatedIds(current.items.map { it.id }, ids)"]:
+for marker in [
+    "fun removeItemsByIds(ids: Set<Long>)",
+    "removeMutatedIds(current.items.map { it.id }, ids)",
+    "val albumBucketId: Long = 0L",
+    "albumBucketId = album.bucketId",
+]:
     if marker not in vm:
-        raise SystemExit(f"DIRECT SOURCE FAIL: GalleryViewModel missing local mutation path {marker!r}")
+        raise SystemExit(f"DIRECT SOURCE FAIL: GalleryViewModel missing {marker!r}")
 
 for legacy in ['label = { Text("Foto") }', 'label = { Text("Video") }', 'label = { Text("Kopya") }', 'label = { Text("Çöp") }']:
     if legacy in app:
         raise SystemExit(f"DIRECT SOURCE FAIL: legacy bottom navigation still active: {legacy}")
 
-for marker in ["val dateModified: Long", "val dateTaken: Long", "MediaStore.MediaColumns.DATE_MODIFIED", "MediaStore.MediaColumns.DATE_TAKEN"]:
+for marker in [
+    "val dateModified: Long",
+    "val dateTaken: Long",
+    "MediaStore.MediaColumns.DATE_MODIFIED",
+    "MediaStore.MediaColumns.DATE_TAKEN",
+    "val bucketId: Long = 0L",
+    "albumIdentityKey(rawPath, item.bucketId, item.bucketName)",
+    "albumBucketId: Long = 0L",
+]:
     if marker not in repo:
         raise SystemExit(f"DIRECT SOURCE FAIL: MediaStoreRepository missing {marker!r}")
 
@@ -76,7 +91,9 @@ for marker in [
     "collectToolUrisFromTree(",
     'Text("Klasör seç ve alt klasörleri tara")',
     "takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)",
-    "selectedUris = uris.distinct()",
+    "filterToolUris(context, uris, tool)",
+    "toolPickerMimeTypes(tool).toTypedArray()",
+    "enqueueVideoFrameWork(context, selectedUris, framesPerSecond)",
 ]:
     if marker not in tools:
         raise SystemExit(f"DIRECT SOURCE FAIL: ATMACA tool UI missing {marker!r}")
@@ -86,6 +103,7 @@ for marker in [
     "DocumentsContract.buildDocumentUriUsingTree",
     "toolAcceptsMime(",
     "toolAcceptsDocument(",
+    "filterToolUris(",
     "DocumentsContract.Document.COLUMN_DISPLAY_NAME",
     "resolver.getType(documentUri)",
     "coroutineContext.ensureActive()",
@@ -93,13 +111,36 @@ for marker in [
     if marker not in scanner:
         raise SystemExit(f"DIRECT SOURCE FAIL: tool folder scanner missing {marker!r}")
 
-for marker in ["FaceDetection.getClient", "FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE", "personCropBounds(", "InputImage.fromBitmap", "doneFrames", "totalFrames", "onProgress(doneFrames, totalFrames)"]:
+for marker in [
+    "FaceDetection.getClient",
+    "FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE",
+    "personCropBounds(",
+    "InputImage.fromBitmap",
+    "doneFrames",
+    "totalFrames",
+    "onProgress(doneFrames, totalFrames)",
+    "moveSourceAfterSuccess: Boolean = false",
+    "moveVideoToOutputFolder(plan.uri, outputPath)",
+    "MediaStore.MediaColumns.RELATIVE_PATH",
+]:
     if marker not in engine:
         raise SystemExit(f"DIRECT SOURCE FAIL: tool engine missing {marker!r}")
 if "android.media.FaceDetector" in engine:
     raise SystemExit("DIRECT SOURCE FAIL: legacy android.media.FaceDetector returned")
 if 'implementation("com.google.mlkit:face-detection:16.1.7")' not in gradle:
     raise SystemExit("DIRECT SOURCE FAIL: bundled ML Kit face detection dependency missing")
+if 'implementation("androidx.work:work-runtime:2.11.2")' not in gradle:
+    raise SystemExit("DIRECT SOURCE FAIL: WorkManager dependency missing")
+
+for marker in [
+    "class VideoFrameWorker",
+    "CoroutineWorker",
+    "OneTimeWorkRequestBuilder<VideoFrameWorker>()",
+    "moveSourceAfterSuccess = true",
+    "setProgress(workDataOf(KEY_DONE to done, KEY_TOTAL to total))",
+]:
+    if marker not in worker:
+        raise SystemExit(f"DIRECT SOURCE FAIL: background video worker missing {marker!r}")
 
 for marker in ["ViewerBitmapCache", "prefetchViewerBitmap("]:
     if marker not in loader:
