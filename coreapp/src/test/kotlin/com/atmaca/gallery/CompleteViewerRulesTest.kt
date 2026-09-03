@@ -11,8 +11,10 @@ class CompleteViewerRulesTest {
         assertEquals(listOf("Favori", "Düzenle", "Paylaş", "Çöp", "Bilgi", "Slayt"), photoViewerBottomActions())
     }
 
-    @Test fun doubleTapTogglesChromeNotGestureEngine() {
-        assertEquals(ViewerTapAction.TOGGLE_CHROME, viewerDoubleTapAction())
+    @Test fun doubleTapZoomsAndSecondDoubleTapResets() {
+        assertEquals(ViewerTapAction.ZOOM_RESET, viewerDoubleTapAction())
+        assertEquals(2.25f, nextDoubleTapScale(1f), 0.0001f)
+        assertEquals(1f, nextDoubleTapScale(2.25f), 0.0001f)
     }
 
     @Test fun slideshowAdvancesAndLoopsDeterministically() {
