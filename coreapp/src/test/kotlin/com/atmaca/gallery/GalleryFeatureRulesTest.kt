@@ -20,13 +20,7 @@ class GalleryFeatureRulesTest {
     @Test fun screenshotCaptureAlwaysHidesViewerChrome() { assertFalse(shouldRenderViewerChrome(true,true,1f,false)); assertTrue(shouldRenderViewerChrome(false,true,1f,false)) }
     @Test fun cropRectIsNormalizedAndClampedToImageBounds() { val crop=normalizedCropRect(-0.2f,0.1f,1.3f,0.9f); assertEquals(NormalizedCropRect(0f,0.1f,1f,0.9f),crop); assertTrue(crop.width>0f); assertTrue(crop.height>0f) }
     @Test fun cropAspectRatiosAreStable() { assertEquals(1f,CropRatio.SQUARE.ratio,0.0001f); assertEquals(4f/3f,CropRatio.FOUR_THREE.ratio,0.0001f); assertEquals(16f/9f,CropRatio.SIXTEEN_NINE.ratio,0.0001f) }
-
-    @Test fun oneFingerSwipeAtFitIsLeftForPagerButTransformedPhotoConsumesPan() {
-        assertFalse(shouldPhotoConsumeGesture(pointerCount=1, scale=1f, rotation=0f))
-        assertTrue(shouldPhotoConsumeGesture(pointerCount=2, scale=1f, rotation=0f))
-        assertTrue(shouldPhotoConsumeGesture(pointerCount=1, scale=1.5f, rotation=0f))
-        assertTrue(shouldPhotoConsumeGesture(pointerCount=1, scale=1f, rotation=15f))
-    }
+    @Test fun oneFingerSwipeAtFitIsLeftForPagerButTransformedPhotoConsumesPan() { assertFalse(shouldPhotoConsumeGesture(pointerCount=1, scale=1f, rotation=0f)); assertTrue(shouldPhotoConsumeGesture(pointerCount=2, scale=1f, rotation=0f)); assertTrue(shouldPhotoConsumeGesture(pointerCount=1, scale=1.5f, rotation=0f)); assertTrue(shouldPhotoConsumeGesture(pointerCount=1, scale=1f, rotation=15f)) }
     @Test fun parentTransformStateIsCommittedOnlyWhenGestureEnds() { assertFalse(shouldCommitViewerTransform(false)); assertTrue(shouldCommitViewerTransform(true)) }
     @Test fun photoOptionsLiveInTopMenuAndBottomBarStaysMinimal() { assertEquals(listOf("Kırp","Screenshot modu","Ad değiştir","Çöpe taşı / sil"),viewerMenuEntries(false,false)); assertEquals(listOf("Paylaş","Geri"),viewerBottomActions(false)) }
     @Test fun videoTopMenuDoesNotExposePhotoOnlyTools() { assertEquals(listOf("Ad değiştir","Çöpe taşı / sil"),viewerMenuEntries(true,false)) }
@@ -38,6 +32,7 @@ class GalleryFeatureRulesTest {
     @Test fun viewportDecodeReducesHugeImagesButKeepsNormalPhotosSharp() { assertEquals(3,calculateViewerDecodeSample(12000,9000,1080,1920)); assertEquals(1,calculateViewerDecodeSample(4000,3000,1080,1920)); assertEquals(1,calculateViewerDecodeSample(0,0,1080,1920)) }
     @Test fun completeSettingsContainRecycleSlideshowAndAllThreeTools() { assertEquals(listOf("Geri Dönüşüm Kutusu","Slayt gösterisi","Akıllı Kişi Kırpma","Görsel Paketleyici","Video Kareleri"),completeSettingsEntries()) }
     @Test fun slideshowIntervalIsAlwaysSafe() { assertEquals(1,clampSlideshowSeconds(0)); assertEquals(5,clampSlideshowSeconds(5)); assertEquals(30,clampSlideshowSeconds(80)) }
+    @Test fun slideshowPrefetchesUpcomingPagesWithoutRepeatingCurrent() { assertEquals(listOf(4,5), slideshowPrefetchIndices(current=3,count=8,loop=true,ahead=2)); assertEquals(listOf(0,1), slideshowPrefetchIndices(current=7,count=8,loop=true,ahead=2)); assertEquals(listOf(7), slideshowPrefetchIndices(current=6,count=8,loop=false,ahead=2)); assertEquals(emptyList<Int>(), slideshowPrefetchIndices(current=0,count=1,loop=true,ahead=2)) }
     @Test fun packagerCreatesStableBatchFolders() { assertEquals("Pictures/ATMACA Paketler/Paket_0001/",packageBatchPath(1)); assertEquals("Pictures/ATMACA Paketler/Paket_0012/",packageBatchPath(12)) }
     @Test fun videoFramesUseOneSecondDefaultCadence() { assertEquals(1000L,frameIntervalMs(1)); assertEquals(500L,frameIntervalMs(2)) }
 }
