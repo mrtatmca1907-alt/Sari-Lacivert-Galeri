@@ -12,6 +12,7 @@ import android.provider.MediaStore
 import androidx.activity.result.IntentSenderRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -97,14 +98,56 @@ class GalleryActions(context: Context) {
         copied
     }
 
-    suspend fun saveCroppedCopy(source: GalleryMedia, bitmap: Bitmap): Uri? = withContext(Dispatchers.IO) {
-        val base = source.name.substringBeforeLast('.', source.name)
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+    suspend fun overwriteCropped(source: GalleryMedia, bitmap: Bitmap): Boolean = withContext(Dispatchers.IO) {
+        if (source.isVideo) return@withContext false
+
+        val isPng = source.mimeType.equals("image/png", ignoreCase = true) || source.name.endsWith(".png", ignoreCase = true)
+        val format = if (isPng) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+        val quality = if (isPng) 100 else 96
+        val temp = runCatching { File.createTempFile("atmaca_crop_", if (isPng) ".png" else ".jpg", appContext.cacheDir) }.getOrNull()
+            ?: return@withContext false
+
+        try {
+            val encoded = runCatching {
+                temp.outputStream().buffered().use { output ->
+                    check(bitmap.compress(format, quality, output))
+                }
+                true
+            }.getOrDefault(false)
+            if (!encoded) return@withContext false
+
+            val written = runCatching {
+                temp.inputStream().buffered().use { input ->
+                    resolver.openOutputStream(source.uri, "w")?.buffered()?.use { output ->
+                        input.copyTo(output, DEFAULT_BUFFER_SIZE * 8)
+                    } ?: error("Kaynak fotoğraf yazma için açılamadı")
+                }
+                true
+            }.getOrDefault(false)
+            if (!written) return@withContext false
+
+            if (!isPng && !source.name.endsWith(".jpg", true) && !source.name.endsWith(".jpeg", true)) {
+                val base = source.name.substringBeforeLast('.', source.name)
+                runCatching {
+                    resolver.update(source.uri, ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, "$base.jpg")
+                        put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                    }, null, null)
+                }
+            }
+            true
+        } finally {
+            runCatching { temp.delete() }
+        }
+    }
+
+    suspend fun saveScreenshot(bitmap: Bitmap): Uri? = withContext(Dispatchers.IO) {
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "${base}_kirp_$stamp.jpg")
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "ATMACA_SCREEN_$stamp.jpg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
             if (Build.VERSION.SDK_INT >= 29) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, normalizeRelativePath(source.relativePath))
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/ATMACA Screenshots/")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
         }
@@ -112,8 +155,10 @@ class GalleryActions(context: Context) {
         val ok = runCatching {
             resolver.openOutputStream(uri, "w")?.use { output ->
                 check(bitmap.compress(Bitmap.CompressFormat.JPEG, 96, output))
-            } ?: error("Kırpılmış dosya açılamadı")
-            if (Build.VERSION.SDK_INT >= 29) resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            } ?: error("Screenshot dosyası açılamadı")
+            if (Build.VERSION.SDK_INT >= 29) {
+                resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            }
             true
         }.getOrDefault(false)
         if (!ok) {
