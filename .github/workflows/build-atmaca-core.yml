@@ -35,6 +35,12 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
+      - name: Apply complete gallery home patch
+        run: python3 coreapp/patch_complete_gallery.py
+
+      - name: Apply stable Eagle viewer patch
+        run: python3 coreapp/patch_eagle_viewer.py
+
       - name: Unit tests
         run: gradle :coreapp:testDebugUnitTest --stacktrace
 
