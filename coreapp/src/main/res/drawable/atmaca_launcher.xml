@@ -1,17 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path android:fillColor="#071B45" android:pathData="M0,0h108v108h-108z" />
-    <path android:fillColor="#FFD800" android:pathData="M54,12A42,42 0,1 0,54 96A42,42 0,1 0,54 12" />
-    <path android:fillColor="#071B45" android:pathData="M54,20A34,34 0,1 0,54 88A34,34 0,1 0,54 20" />
-
-    <!-- Belirgin hilal: yıldızın hemen önünde -->
-    <path android:fillColor="#FFFFFF" android:pathData="M55,35A19,19 0,1 0,55 73A19,19 0,1 0,55 35" />
-    <path android:fillColor="#071B45" android:pathData="M62,39A15,15 0,1 0,62 69A15,15 0,1 0,62 39" />
-
-    <!-- Hilalin yanında/önünde yıldız -->
-    <path android:fillColor="#FFFFFF" android:pathData="M72,43l3.1,6.3l7,1l-5.1,4.9l1.2,7l-6.2,-3.3l-6.2,3.3l1.2,-7l-5.1,-4.9l7,-1z" />
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Kare sarı-lacivert çerçeve; eski yuvarlak şerit tamamen kaldırıldı. -->
+    <path android:fillColor="#FFD800" android:pathData="M0,0h108v108h-108z" />
+    <path android:fillColor="#071B45" android:pathData="M7,7h94v94h-94z" />
+    <path android:fillColor="#FFD800" android:pathData="M12,12h84v84h-84z" />
+    <path android:fillColor="#071B45" android:pathData="M17,17h74v74h-74z" />
+    <!-- Hilal yıldızdan önce/solunda. -->
+    <path android:fillColor="#FFFFFF" android:pathData="M48,33A21,21 0,1 0,48 75A21,21 0,1 0,48 33" />
+    <path android:fillColor="#071B45" android:pathData="M56,38A16,16 0,1 0,56 70A16,16 0,1 0,56 38" />
+    <path android:fillColor="#FFFFFF" android:pathData="M72,42l3.4,6.9l7.6,1.1l-5.5,5.4l1.3,7.6l-6.8,-3.6l-6.8,3.6l1.3,-7.6l-5.5,-5.4l7.6,-1.1z" />
 </vector>
