@@ -47,4 +47,15 @@ class GalleryFeatureRulesTest {
             viewerMenuEntries(isVideo = true, screenshotMode = false)
         )
     }
+
+    @Test fun homeHasOnlyMediaAlbumsSettings() {
+        assertEquals(
+            listOf(HomeSection.MEDIA, HomeSection.ALBUMS, HomeSection.SETTINGS),
+            homeSections()
+        )
+    }
+
+    @Test fun thumbnailNameUsesMediaDisplayName() {
+        assertEquals("denizcakir_84.jpg", mediaNameOverlay("denizcakir_84.jpg"))
+    }
 }
