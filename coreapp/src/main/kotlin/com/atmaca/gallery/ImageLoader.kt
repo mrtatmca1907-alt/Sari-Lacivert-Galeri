@@ -5,10 +5,28 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.os.Build
+import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 import kotlin.math.sqrt
+
+private object ViewerBitmapCache : LruCache<String, Bitmap>(96 * 1024) {
+    override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
+}
+
+private fun viewerBitmapKey(item: GalleryMedia, viewportWidth: Int, viewportHeight: Int): String =
+    "${item.uri}|${viewportWidth.coerceAtLeast(1)}x${viewportHeight.coerceAtLeast(1)}"
+
+suspend fun prefetchViewerBitmap(
+    context: Context,
+    item: GalleryMedia,
+    viewportWidth: Int,
+    viewportHeight: Int
+) {
+    if (item.isVideo) return
+    loadHighResolutionBitmap(context, item, viewportWidth = viewportWidth, viewportHeight = viewportHeight)
+}
 
 suspend fun loadHighResolutionBitmap(
     context: Context,
@@ -17,7 +35,13 @@ suspend fun loadHighResolutionBitmap(
     viewportWidth: Int = 0,
     viewportHeight: Int = 0
 ): Bitmap? = withContext(Dispatchers.IO) {
-    runCatching {
+    val key = viewerBitmapKey(item, viewportWidth, viewportHeight)
+    ViewerBitmapCache.get(key)?.let { cached ->
+        if (!cached.isRecycled) return@withContext cached
+        ViewerBitmapCache.remove(key)
+    }
+
+    val decoded = runCatching {
         if (Build.VERSION.SDK_INT >= 28) {
             val source = ImageDecoder.createSource(context.contentResolver, item.uri)
             ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
@@ -56,4 +80,7 @@ suspend fun loadHighResolutionBitmap(
             resolver.openInputStream(item.uri)?.use { BitmapFactory.decodeStream(it, null, options) }
         }
     }.getOrNull()
+
+    if (decoded != null && !decoded.isRecycled) ViewerBitmapCache.put(key, decoded)
+    decoded
 }
