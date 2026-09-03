@@ -37,7 +37,8 @@ data class GalleryAlbum(
     val name: String,
     val count: Int,
     val cover: GalleryMedia?,
-    val bucketId: Long = 0L
+    val bucketId: Long = 0L,
+    val bucketName: String? = null
 )
 
 class MediaStoreRepository(context: Context) {
@@ -50,6 +51,7 @@ class MediaStoreRepository(context: Context) {
         limit: Int = PAGE_SIZE,
         albumPath: String? = null,
         albumBucketId: Long = 0L,
+        albumBucketName: String? = null,
         trashedOnly: Boolean = false
     ): List<GalleryMedia> = withContext(Dispatchers.IO) {
         if (trashedOnly && Build.VERSION.SDK_INT < 30) return@withContext emptyList()
@@ -60,7 +62,7 @@ class MediaStoreRepository(context: Context) {
         }
         val selectionParts = mutableListOf("${MediaStore.Files.FileColumns.MEDIA_TYPE}=?")
         val selectionArgs = mutableListOf(wantedType.toString())
-        addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId)
+        addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId, albumBucketName)
         queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly)
     }
 
@@ -69,6 +71,7 @@ class MediaStoreRepository(context: Context) {
         limit: Int = PAGE_SIZE,
         albumPath: String? = null,
         albumBucketId: Long = 0L,
+        albumBucketName: String? = null,
         trashedOnly: Boolean = false
     ): List<GalleryMedia> = withContext(Dispatchers.IO) {
         if (trashedOnly && Build.VERSION.SDK_INT < 30) return@withContext emptyList()
@@ -79,7 +82,7 @@ class MediaStoreRepository(context: Context) {
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
         )
-        addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId)
+        addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId, albumBucketName)
         queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly)
     }
 
@@ -87,14 +90,23 @@ class MediaStoreRepository(context: Context) {
         selectionParts: MutableList<String>,
         selectionArgs: MutableList<String>,
         albumPath: String?,
-        albumBucketId: Long
+        albumBucketId: Long,
+        albumBucketName: String?
     ) {
-        if (albumBucketId != 0L) {
-            selectionParts += "${MediaStore.Images.ImageColumns.BUCKET_ID}=?"
-            selectionArgs += albumBucketId.toString()
-        } else if (!albumPath.isNullOrBlank()) {
-            selectionParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
-            selectionArgs += normalizeRelativePath(albumPath)
+        when (val locator = albumLocator(albumPath, albumBucketId, albumBucketName)) {
+            is AlbumLocator.Bucket -> {
+                selectionParts += "${MediaStore.Images.ImageColumns.BUCKET_ID}=?"
+                selectionArgs += locator.id.toString()
+            }
+            is AlbumLocator.Path -> {
+                selectionParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
+                selectionArgs += locator.path
+            }
+            is AlbumLocator.Name -> {
+                selectionParts += "${MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME}=?"
+                selectionArgs += locator.name
+            }
+            AlbumLocator.Unknown -> Unit
         }
     }
 
@@ -104,7 +116,8 @@ class MediaStoreRepository(context: Context) {
             var name: String,
             var count: Int,
             var cover: GalleryMedia?,
-            var bucketId: Long
+            var bucketId: Long,
+            var bucketName: String?
         )
 
         val selection = buildString {
@@ -128,8 +141,7 @@ class MediaStoreRepository(context: Context) {
                 val fallbackName = item.bucketName?.trim().orEmpty().ifBlank {
                     if (rawPath.isNotBlank()) albumDisplayName(rawPath) else "Depolama"
                 }
-                val displayPath = if (rawPath.isNotBlank()) normalizeRelativePath(rawPath)
-                else normalizeRelativePath("Pictures/$fallbackName")
+                val displayPath = if (rawPath.isNotBlank()) normalizeRelativePath(rawPath) else ""
 
                 val existing = grouped[key]
                 if (existing == null) {
@@ -138,7 +150,8 @@ class MediaStoreRepository(context: Context) {
                         name = fallbackName,
                         count = 1,
                         cover = item,
-                        bucketId = item.bucketId
+                        bucketId = item.bucketId,
+                        bucketName = item.bucketName
                     )
                 } else {
                     existing.count++
@@ -153,7 +166,8 @@ class MediaStoreRepository(context: Context) {
                 name = it.name,
                 count = it.count,
                 cover = it.cover,
-                bucketId = it.bucketId
+                bucketId = it.bucketId,
+                bucketName = it.bucketName
             )
         }.sortedBy { it.name.lowercase() }
     }
