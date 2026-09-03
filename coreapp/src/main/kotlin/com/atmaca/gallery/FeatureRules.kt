@@ -11,6 +11,7 @@ data class AlbumSummary(val relativePath:String,val count:Int)
 data class NormalizedCropRect(val left:Float,val top:Float,val right:Float,val bottom:Float){val width:Float get()=right-left; val height:Float get()=bottom-top}
 data class IntCropRect(val left:Int,val top:Int,val right:Int,val bottom:Int){val width:Int get()=right-left; val height:Int get()=bottom-top}
 data class ViewerPanBounds(val maxX:Float,val maxY:Float)
+sealed interface AlbumLocator { data class Bucket(val id:Long):AlbumLocator; data class Path(val path:String):AlbumLocator; data class Name(val name:String):AlbumLocator; data object Unknown:AlbumLocator }
 enum class CropRatio(val ratio:Float){FREE(0f),SQUARE(1f),FOUR_THREE(4f/3f),SIXTEEN_NINE(16f/9f)}
 enum class MediaFilter { ALL, PHOTOS, VIDEOS, GIF, RAW, SVG }
 enum class MediaSort { NAME, PATH, SIZE, MODIFIED, TAKEN, RANDOM }
@@ -103,4 +104,11 @@ fun albumIdentityKey(relativePath:String?, bucketId:Long, bucketName:String?):St
     if(bucketId != 0L) return "bucket:$bucketId"
     val cleanName = bucketName?.trim().orEmpty()
     return if(cleanName.isNotEmpty()) "name:$cleanName" else "unknown"
+}
+fun albumLocator(relativePath:String?,bucketId:Long,bucketName:String?):AlbumLocator {
+    if(bucketId!=0L) return AlbumLocator.Bucket(bucketId)
+    val cleanPath=relativePath?.trim().orEmpty()
+    if(cleanPath.isNotEmpty()) return AlbumLocator.Path(normalizeRelativePath(cleanPath))
+    val cleanName=bucketName?.trim().orEmpty()
+    return if(cleanName.isNotEmpty()) AlbumLocator.Name(cleanName) else AlbumLocator.Unknown
 }
