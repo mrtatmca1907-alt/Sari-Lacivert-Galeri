@@ -39,18 +39,31 @@ class GalleryFeatureRulesTest {
     }
 
     @Test
-    fun viewerZoomNeverShrinksBelowFitAndHasCalmerUpperBound() {
+    fun viewerZoomNeverShrinksBelowFitAndHasGalleryLikeUpperBound() {
         assertEquals(1f, clampViewerScale(0.2f))
-        assertEquals(5f, clampViewerScale(20f))
-        assertEquals(2f, nextDoubleTapScale(1f))
+        assertEquals(4f, clampViewerScale(20f))
+        assertEquals(2.25f, nextDoubleTapScale(1f))
         assertEquals(1f, nextDoubleTapScale(2.5f))
     }
 
     @Test
-    fun pinchDeltaIsDampedSoOneGestureCannotJumpWildly() {
-        assertEquals(1.15f, dampedZoomFactor(2f), 0.0001f)
-        assertEquals(0.85f, dampedZoomFactor(0.2f), 0.0001f)
-        assertEquals(1f, dampedZoomFactor(1f), 0.0001f)
+    fun pinchFactorTracksFingersDirectlyButRejectsSingleFrameSpikes() {
+        assertEquals(1.25f, galleryZoomFactor(1.25f), 0.0001f)
+        assertEquals(0.8f, galleryZoomFactor(0.8f), 0.0001f)
+        assertEquals(1.35f, galleryZoomFactor(3f), 0.0001f)
+        assertEquals(0.72f, galleryZoomFactor(0.1f), 0.0001f)
+    }
+
+    @Test
+    fun zoomKeepsFingerFocusAnchoredInsteadOfJumpingFromCenter() {
+        val offset = zoomOffsetAroundFocus(
+            oldOffset = 0f,
+            focusFromCenter = 200f,
+            oldScale = 1f,
+            newScale = 2f
+        )
+        assertEquals(-200f, offset, 0.001f)
+        assertEquals(50f, zoomOffsetAroundFocus(50f, 0f, 1f, 2f), 0.001f)
     }
 
     @Test
