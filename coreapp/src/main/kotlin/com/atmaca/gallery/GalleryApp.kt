@@ -493,6 +493,10 @@ private fun GalleryHome(vm: GalleryViewModel) {
         )
     }
 
+    BackHandler(enabled = selectedIds.isNotEmpty() && state.mode != CollectionMode.ALBUM) {
+        selectedIds = emptySet()
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -639,8 +643,11 @@ private fun GalleryHome(vm: GalleryViewModel) {
                 HomeSection.ALBUMS -> {
                     if (state.mode == CollectionMode.ALBUM) {
                         BackHandler {
-                            selectedIds = emptySet()
-                            vm.switchTab(GalleryTab.PHOTOS)
+                            when (galleryBackAction(selectedIds.size, inAlbum = true)) {
+                                GalleryBackAction.CLEAR_SELECTION -> selectedIds = emptySet()
+                                GalleryBackAction.CLOSE_ALBUM -> vm.switchTab(GalleryTab.PHOTOS)
+                                GalleryBackAction.EXIT -> Unit
+                            }
                         }
                         MediaCollection(
                             state = state,
@@ -750,19 +757,19 @@ private fun SelectionBar(
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("$selectedCount seçili", modifier = Modifier.weight(1f))
-        IconButton(onClick = onSelectAll) { Icon(Icons.Default.SelectAll, "Tümünü seç") }
-        IconButton(onClick = onShare) { Icon(Icons.Default.Share, "Paylaş") }
+        Text("$selectedCount seçili", maxLines = 1, modifier = Modifier.width(78.dp))
+        IconButton(onClick = onSelectAll, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.SelectAll, "Tümünü seç") }
+        IconButton(onClick = onShare, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Share, "Paylaş") }
         if (!trashMode) {
-            IconButton(onClick = onCopy) { Icon(Icons.Default.ContentCopy, "Kopyala") }
-            IconButton(onClick = onMove) { Icon(Icons.Default.DriveFileMove, "Taşı") }
-            if (canRename) IconButton(onClick = onRename) { Icon(Icons.Default.Edit, "Ad değiştir") }
+            IconButton(onClick = onCopy, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.ContentCopy, "Kopyala") }
+            IconButton(onClick = onMove, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.DriveFileMove, "Taşı") }
+            if (canRename) IconButton(onClick = onRename, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Edit, "Ad değiştir") }
         }
-        IconButton(onClick = onTrashOrRestore) {
+        IconButton(onClick = onTrashOrRestore, modifier = Modifier.size(40.dp)) {
             Icon(if (trashMode) Icons.Default.Restore else Icons.Default.Delete, if (trashMode) "Geri al" else "Çöpe taşı")
         }
         if (trashMode) {
-            IconButton(onClick = onDeleteForever) { Icon(Icons.Default.Delete, "Kalıcı sil") }
+            IconButton(onClick = onDeleteForever, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Delete, "Kalıcı sil") }
         }
         TextButton(onClick = onClear) { Text("İptal") }
     }
@@ -1046,7 +1053,7 @@ private fun AlbumGrid(albums: List<GalleryAlbum>, onOpen: (GalleryAlbum) -> Unit
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        itemsIndexed(albums, key = { _, album -> album.relativePath }) { _, album ->
+        itemsIndexed(albums, key = { _, album -> albumGridKey(album) }) { _, album ->
             Column(
                 Modifier
                     .padding(4.dp)

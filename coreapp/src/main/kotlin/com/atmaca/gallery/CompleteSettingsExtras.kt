@@ -35,8 +35,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.UUID
 
 enum class AtmacaToolPage { PERSON_CROP, PACKAGER, VIDEO_FRAMES }
 
@@ -107,6 +113,7 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     var framesPerSecond by remember(tool) { mutableIntStateOf(1) }
     var maxFaces by remember(tool) { mutableIntStateOf(12) }
     var showInternalAlbumPicker by remember(tool) { mutableStateOf(false) }
+    var backgroundWorkId by remember(tool) { mutableStateOf<UUID?>(null) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
         uris.forEach { uri ->
@@ -152,6 +159,8 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
 
     fun cancelActiveWork() {
         job?.cancel()
+        backgroundWorkId?.let { WorkManager.getInstance(context.applicationContext).cancelWorkById(it) }
+        backgroundWorkId = null
         running = false
         scanning = false
     }
@@ -161,8 +170,39 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
         if (tool == AtmacaToolPage.VIDEO_FRAMES) {
             val workId = enqueueVideoFrameWork(context, selectedUris, framesPerSecond)
             if (workId != null) {
+                backgroundWorkId = workId
+                running = true
+                done = 0
+                total = 0
                 Toast.makeText(context, "Video Kareleri arka planda başlatıldı", Toast.LENGTH_LONG).show()
-                onDismiss()
+                job = scope.launch {
+                    val manager = WorkManager.getInstance(context.applicationContext)
+                    while (true) {
+                        val info = withContext(Dispatchers.IO) { runCatching { manager.getWorkInfoById(workId).get() }.getOrNull() }
+                        if (info != null) {
+                            done = info.progress.getInt("done", done)
+                            total = info.progress.getInt("total", total)
+                            when (info.state) {
+                                WorkInfo.State.SUCCEEDED -> {
+                                    running = false
+                                    backgroundWorkId = null
+                                    val created = info.outputData.getInt("created", done)
+                                    val failed = info.outputData.getInt("failed", 0)
+                                    Toast.makeText(context, "$created kare oluşturuldu${if (failed > 0) " • $failed hata" else ""}", Toast.LENGTH_LONG).show()
+                                    break
+                                }
+                                WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
+                                    running = false
+                                    backgroundWorkId = null
+                                    Toast.makeText(context, "Video Kareleri işi tamamlanamadı", Toast.LENGTH_LONG).show()
+                                    break
+                                }
+                                else -> Unit
+                            }
+                        }
+                        delay(500)
+                    }
+                }
             } else {
                 Toast.makeText(context, "Arka plan işi başlatılamadı", Toast.LENGTH_LONG).show()
             }
@@ -195,6 +235,7 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
                 Toast.makeText(context, "Klasörden ${selectedUris.size} uygun dosya seçildi", Toast.LENGTH_SHORT).show()
             }
         )
+        if (!shouldRenderOuterToolDialog(showInternalAlbumPicker)) return
     }
 
     Dialog(
@@ -244,7 +285,7 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
                     }
 
                     if (running) {
-                        Text("İşleniyor: $done / $total")
+                        Text(if (tool == AtmacaToolPage.VIDEO_FRAMES) videoFrameProgressText(done, total) else "İşleniyor: $done / $total")
                         if (total > 0) LinearProgressIndicator(progress = { done.toFloat() / total.toFloat() }, modifier = Modifier.fillMaxWidth())
                         else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }

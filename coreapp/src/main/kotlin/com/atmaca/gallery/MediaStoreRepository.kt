@@ -149,72 +149,63 @@ class MediaStoreRepository(context: Context) {
         val grouped = linkedMapOf<String, Acc>()
 
         fun scan(collection: Uri, isVideo: Boolean) {
-            val projection = buildList {
-                add(MediaStore.MediaColumns._ID)
-                add(MediaStore.MediaColumns.DISPLAY_NAME)
-                add(MediaStore.MediaColumns.MIME_TYPE)
-                add(MediaStore.MediaColumns.DATE_ADDED)
-                add(MediaStore.MediaColumns.DATE_MODIFIED)
-                add(MediaStore.MediaColumns.WIDTH)
-                add(MediaStore.MediaColumns.HEIGHT)
-                add(MediaStore.Images.ImageColumns.BUCKET_ID)
-                add(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
-                if (Build.VERSION.SDK_INT >= 29) add(MediaStore.MediaColumns.RELATIVE_PATH)
-                add(MediaStore.MediaColumns.SIZE)
-                if (isVideo) add(MediaStore.Video.VideoColumns.DURATION)
-                if (Build.VERSION.SDK_INT >= 30) add(MediaStore.MediaColumns.IS_TRASHED)
-            }.toTypedArray()
-            val selection = if (Build.VERSION.SDK_INT >= 30) "${MediaStore.MediaColumns.IS_TRASHED}=0" else null
-            val sort = "${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.MediaColumns._ID} DESC"
-            resolver.query(collection, projection, selection, null, sort)?.use { cursor ->
-                val idI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-                val nameI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-                val mimeI = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
-                val dateI = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
-                val modifiedI = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
-                val takenI = -1
-                val widthI = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
-                val heightI = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
-                val bucketI = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_ID)
-                val bucketNameI = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
-                val pathI = if (Build.VERSION.SDK_INT >= 29) cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH) else -1
-                val sizeI = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
-                val durationI = if (isVideo) cursor.getColumnIndex(MediaStore.Video.VideoColumns.DURATION) else -1
-                while (cursor.moveToNext()) {
-                    coroutineContext.ensureActive()
-                    val id = cursor.getLong(idI)
-                    val rawPath = if (pathI >= 0) cursor.getString(pathI).orEmpty().trim() else ""
-                    val bucketId = if (bucketI >= 0) cursor.getLong(bucketI) else 0L
-                    val bucketName = if (bucketNameI >= 0) cursor.getString(bucketNameI) else null
-                    val item = GalleryMedia(
-                        id = id,
-                        uri = ContentUris.withAppendedId(collection, id),
-                        name = cursor.getString(nameI).orEmpty(),
-                        mimeType = if (mimeI >= 0) cursor.getString(mimeI) else null,
-                        isVideo = isVideo,
-                        dateAdded = if (dateI >= 0) cursor.getLong(dateI) else 0L,
-                        dateModified = if (modifiedI >= 0) cursor.getLong(modifiedI) else 0L,
-                        dateTaken = if (takenI >= 0) cursor.getLong(takenI) else 0L,
-                        width = if (widthI >= 0) cursor.getInt(widthI) else 0,
-                        height = if (heightI >= 0) cursor.getInt(heightI) else 0,
-                        bucketId = bucketId,
-                        bucketName = bucketName,
-                        relativePath = rawPath,
-                        size = if (sizeI >= 0) cursor.getLong(sizeI) else 0L,
-                        durationMs = if (durationI >= 0) cursor.getLong(durationI) else 0L,
-                        isTrashed = false
-                    )
-                    val key = albumIdentityKey(rawPath, bucketId, bucketName)
-                    val displayPath = if (rawPath.isNotBlank()) normalizeRelativePath(rawPath) else ""
-                    val displayName = bucketName?.trim().orEmpty().ifBlank {
-                        if (displayPath.isNotBlank()) albumDisplayName(displayPath) else "Depolama"
-                    }
-                    val existing = grouped[key]
-                    if (existing == null) {
-                        grouped[key] = Acc(displayPath, displayName, 1, item, bucketId, bucketName)
-                    } else {
-                        existing.count++
-                        if ((existing.cover?.dateAdded ?: Long.MIN_VALUE) < item.dateAdded) existing.cover = item
+            runCatching {
+                val projection = buildList {
+                    add(MediaStore.MediaColumns._ID)
+                    add(MediaStore.MediaColumns.DISPLAY_NAME)
+                    add(MediaStore.MediaColumns.MIME_TYPE)
+                    add(MediaStore.MediaColumns.DATE_ADDED)
+                    add(MediaStore.Images.ImageColumns.BUCKET_ID)
+                    add(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+                    if (Build.VERSION.SDK_INT >= 29) add(MediaStore.MediaColumns.RELATIVE_PATH)
+                }.toTypedArray()
+                val selection = if (Build.VERSION.SDK_INT >= 30) "${MediaStore.MediaColumns.IS_TRASHED}=0" else null
+                val sort = "${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.MediaColumns._ID} DESC"
+                resolver.query(collection, projection, selection, null, sort)?.use { cursor ->
+                    val idI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    val nameI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                    val mimeI = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
+                    val dateI = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
+                    val bucketI = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_ID)
+                    val bucketNameI = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+                    val pathI = if (Build.VERSION.SDK_INT >= 29) cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH) else -1
+                    while (cursor.moveToNext()) {
+                        coroutineContext.ensureActive()
+                        val id = cursor.getLong(idI)
+                        val rawPath = if (pathI >= 0) cursor.getString(pathI).orEmpty().trim() else ""
+                        val bucketId = if (bucketI >= 0) cursor.getLong(bucketI) else 0L
+                        val bucketName = if (bucketNameI >= 0) cursor.getString(bucketNameI) else null
+                        val dateAdded = if (dateI >= 0) cursor.getLong(dateI) else 0L
+                        val item = GalleryMedia(
+                            id = id,
+                            uri = ContentUris.withAppendedId(collection, id),
+                            name = cursor.getString(nameI).orEmpty(),
+                            mimeType = if (mimeI >= 0) cursor.getString(mimeI) else null,
+                            isVideo = isVideo,
+                            dateAdded = dateAdded,
+                            dateModified = 0L,
+                            dateTaken = 0L,
+                            width = 0,
+                            height = 0,
+                            bucketId = bucketId,
+                            bucketName = bucketName,
+                            relativePath = rawPath,
+                            size = 0L,
+                            durationMs = 0L,
+                            isTrashed = false
+                        )
+                        val key = albumIdentityKey(rawPath, bucketId, bucketName)
+                        val displayPath = if (rawPath.isNotBlank()) normalizeRelativePath(rawPath) else ""
+                        val displayName = bucketName?.trim().orEmpty().ifBlank {
+                            if (displayPath.isNotBlank()) albumDisplayName(displayPath) else "Depolama"
+                        }
+                        val existing = grouped[key]
+                        if (existing == null) {
+                            grouped[key] = Acc(displayPath, displayName, 1, item, bucketId, bucketName)
+                        } else {
+                            existing.count++
+                            if ((existing.cover?.dateAdded ?: Long.MIN_VALUE) < dateAdded) existing.cover = item
+                        }
                     }
                 }
             }
@@ -222,7 +213,8 @@ class MediaStoreRepository(context: Context) {
 
         scan(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
         scan(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
-        grouped.values.map { GalleryAlbum(it.relativePath, it.name, it.count, it.cover, it.bucketId, it.bucketName) }
+        grouped.values
+            .map { GalleryAlbum(it.relativePath, it.name, it.count, it.cover, it.bucketId, it.bucketName) }
             .sortedBy { it.name.lowercase() }
     }
 
