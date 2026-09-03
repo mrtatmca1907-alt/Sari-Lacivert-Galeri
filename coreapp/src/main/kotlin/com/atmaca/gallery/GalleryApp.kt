@@ -607,7 +607,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
                         )
                     } else {
                         AlbumGrid(
-                            albums = albums,
+                            albums = if (albums.isNotEmpty()) albums else quickAlbums(state.items),
                             onOpen = { album -> vm.openAlbum(album.relativePath) }
                         )
                     }
@@ -1069,6 +1069,8 @@ private fun MediaViewer(
     val activity = context as? Activity
     val pager = rememberPagerState(initialPage = initialIndex) { items.size }
     val rotations = remember { mutableStateMapOf<Long, Float>() }
+    val zooms = remember { mutableStateMapOf<Long, Float>() }
+    var gestureActive by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
 
     DisposableEffect(activity) {
@@ -1100,21 +1102,35 @@ private fun MediaViewer(
 
     BackHandler(onBack = onBack)
 
+    val currentItem = items.getOrNull(pager.currentPage)
+    val currentScale = currentItem?.let { zooms[it.id] } ?: 1f
+
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { controlsVisible = !controlsVisible })
-            }
     ) {
-        HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+        HorizontalPager(
+            state = pager,
+            userScrollEnabled = shouldEnablePager(currentScale),
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
             val item = items[page]
             val rotation = rotations[item.id] ?: 0f
-            if (item.isVideo) VideoPage(item, rotation) else PhotoPage(item, rotation)
+            if (item.isVideo) {
+                VideoPage(item, rotation)
+            } else {
+                StablePhotoPage(
+                    item = item,
+                    rotation = rotation,
+                    onScaleChanged = { zooms[item.id] = it },
+                    onGestureActive = { gestureActive = it },
+                    onFitTap = { controlsVisible = !controlsVisible }
+                )
+            }
         }
 
-        if (controlsVisible) {
+        if (controlsVisible && shouldShowViewerControls(currentScale, gestureActive)) {
             Row(
                 Modifier
                     .align(Alignment.TopCenter)
@@ -1146,8 +1162,15 @@ private fun MediaViewer(
                     IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White) }
                     IconButton(onClick = { onShare(current) }) { Icon(Icons.Default.Share, "Paylaş", tint = Color.White) }
                     IconButton(onClick = {
+                        zooms[current.id] = 1f
+                        gestureActive = false
                         rotations[current.id] = nextQuarterRotation(rotations[current.id] ?: 0f)
-                    }) { Icon(Icons.Default.RotateRight, "90 derece döndür", tint = Color.White) }
+                    }) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.RotateRight, "90 derece döndür", tint = Color.White)
+                            Text("Döndür", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
                     if (!current.isVideo) IconButton(onClick = { onCrop(current) }) { Icon(Icons.Default.Crop, "Kırp", tint = Color.White) }
                     IconButton(onClick = { onRename(current) }) { Icon(Icons.Default.Edit, "Ad değiştir", tint = Color.White) }
                     IconButton(onClick = { onTrash(current) }) { Icon(Icons.Default.Delete, "Çöp", tint = Color.White) }

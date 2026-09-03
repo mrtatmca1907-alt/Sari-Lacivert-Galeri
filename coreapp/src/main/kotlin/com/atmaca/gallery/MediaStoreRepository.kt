@@ -109,10 +109,9 @@ class MediaStoreRepository(context: Context) {
             val cols = Columns(cursor)
             while (cursor.moveToNext()) {
                 coroutineContext.ensureActive()
-                val item = cols.read(cursor)
-                val path = normalizeRelativePath(item.relativePath)
+                val path = normalizeRelativePath(cols.readRelativePath(cursor))
                 counts[path] = (counts[path] ?: 0) + 1
-                if (path !in covers) covers[path] = item
+                if (path !in covers) covers[path] = cols.read(cursor)
             }
         }
         counts.map { (path, count) ->
@@ -234,6 +233,9 @@ class MediaStoreRepository(context: Context) {
         private val size = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
         private val duration = cursor.getColumnIndex(MediaStore.Video.VideoColumns.DURATION)
         private val trashed = if (Build.VERSION.SDK_INT >= 30) cursor.getColumnIndex(MediaStore.MediaColumns.IS_TRASHED) else -1
+
+        fun readRelativePath(cursor: android.database.Cursor): String =
+            if (relativePath >= 0) cursor.getString(relativePath) ?: "" else ""
 
         fun read(cursor: android.database.Cursor): GalleryMedia {
             val itemId = cursor.getLong(id)
