@@ -46,6 +46,21 @@ fun completeSettingsEntries():List<String> = listOf(
     "Video Kareleri"
 )
 fun clampSlideshowSeconds(seconds:Int):Int = seconds.coerceIn(1,30)
+fun slideshowPrefetchIndices(current:Int,count:Int,loop:Boolean,ahead:Int=2):List<Int> {
+    if(count<=1 || ahead<=0) return emptyList()
+    val safeCurrent=current.coerceIn(0,count-1)
+    val result=ArrayList<Int>(ahead)
+    var candidate=safeCurrent
+    repeat(ahead){
+        candidate += 1
+        if(candidate>=count){
+            if(!loop) return@repeat
+            candidate=0
+        }
+        if(candidate!=safeCurrent && candidate in 0 until count && candidate !in result) result += candidate
+    }
+    return result
+}
 fun packageBatchPath(batch:Int):String = "Pictures/ATMACA Paketler/Paket_${batch.coerceAtLeast(1).toString().padStart(4,'0')}/"
 fun frameIntervalMs(framesPerSecond:Int):Long = 1000L / framesPerSecond.coerceIn(1,30)
 
@@ -68,17 +83,13 @@ fun zoomOffsetAroundFocus(oldOffset:Float,focusFromCenter:Float,oldScale:Float,n
 fun normalizeViewerRotation(rotation:Float)=((rotation%360f)+360f)%360f
 fun applyViewerRotationDelta(current:Float,delta:Float)=normalizeViewerRotation(current+delta)
 
-/** The photo owns multi-touch, or single-finger pan only after it is transformed. At fit, one finger belongs to the pager. */
 fun shouldPhotoConsumeGesture(pointerCount:Int,scale:Float,rotation:Float):Boolean =
     pointerCount>=2 || scale>1.001f || (normalizeViewerRotation(rotation)>0.5f && normalizeViewerRotation(rotation)<359.5f)
-
-/** Parent state is deliberately published once at gesture end, never on every pointer frame. */
 fun shouldCommitViewerTransform(gestureEnded:Boolean):Boolean=gestureEnded
 
 fun viewerMenuEntries(isVideo:Boolean,screenshotMode:Boolean):List<String> =
     if(isVideo) listOf("Ad değiştir","Çöpe taşı / sil")
     else listOf("Kırp",if(screenshotMode)"Screenshot modunu kapat" else "Screenshot modu","Ad değiştir","Çöpe taşı / sil")
-
 fun viewerBottomActions(isVideo:Boolean):List<String> = listOf("Paylaş","Geri")
 
 fun shouldEnablePager(scale:Float)=scale<=1.001f
