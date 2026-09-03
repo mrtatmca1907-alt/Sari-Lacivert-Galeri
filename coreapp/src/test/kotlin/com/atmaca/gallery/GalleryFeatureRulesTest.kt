@@ -35,4 +35,23 @@ class GalleryFeatureRulesTest {
     @Test fun slideshowPrefetchesUpcomingPagesWithoutRepeatingCurrent() { assertEquals(listOf(4,5), slideshowPrefetchIndices(current=3,count=8,loop=true,ahead=2)); assertEquals(listOf(0,1), slideshowPrefetchIndices(current=7,count=8,loop=true,ahead=2)); assertEquals(listOf(7), slideshowPrefetchIndices(current=6,count=8,loop=false,ahead=2)); assertEquals(emptyList<Int>(), slideshowPrefetchIndices(current=0,count=1,loop=true,ahead=2)) }
     @Test fun packagerCreatesStableBatchFolders() { assertEquals("Pictures/ATMACA Paketler/Paket_0001/",packageBatchPath(1)); assertEquals("Pictures/ATMACA Paketler/Paket_0012/",packageBatchPath(12)) }
     @Test fun videoFramesUseOneSecondDefaultCadence() { assertEquals(1000L,frameIntervalMs(1)); assertEquals(500L,frameIntervalMs(2)) }
+
+    @Test fun albumRefreshKeepsVisibleAlbumsUntilFreshResultArrives() {
+        val old = listOf(AlbumSummary("DCIM/Camera/", 100))
+        assertEquals(old, albumListWhileRefreshing(old, emptyList(), refreshing = true))
+        val fresh = listOf(AlbumSummary("DCIM/Camera/", 101), AlbumSummary("Pictures/New/", 4))
+        assertEquals(fresh, albumListWhileRefreshing(old, fresh, refreshing = false))
+    }
+
+    @Test fun cameraReturnDoesNotForcePrimaryReloadWhileAlbumsAreOpen() {
+        assertFalse(shouldReloadPrimaryMediaAfterCamera(HomeSection.ALBUMS, success = true))
+        assertTrue(shouldReloadPrimaryMediaAfterCamera(HomeSection.MEDIA, success = true))
+        assertFalse(shouldReloadPrimaryMediaAfterCamera(HomeSection.MEDIA, success = false))
+    }
+
+    @Test fun videoProgressAdvancesPerFrameNotOnlyPerVideo() {
+        val total = totalFrameWork(listOf(10_000L), frameIntervalMs(1))
+        assertEquals(10, total)
+        assertEquals(4, completedFrameWork(previousVideosFrames = 0, currentFrameIndex = 3))
+    }
 }
