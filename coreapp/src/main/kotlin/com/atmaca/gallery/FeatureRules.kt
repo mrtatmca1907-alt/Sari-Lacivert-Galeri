@@ -3,11 +3,13 @@ package com.atmaca.gallery
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 data class MediaMeta(val id: Long,val relativePath:String,val size:Long,val mimeType:String?)
 data class AlbumSummary(val relativePath:String,val count:Int)
 data class NormalizedCropRect(val left:Float,val top:Float,val right:Float,val bottom:Float){val width:Float get()=right-left; val height:Float get()=bottom-top}
+data class IntCropRect(val left:Int,val top:Int,val right:Int,val bottom:Int){val width:Int get()=right-left; val height:Int get()=bottom-top}
 data class ViewerPanBounds(val maxX:Float,val maxY:Float)
 enum class CropRatio(val ratio:Float){FREE(0f),SQUARE(1f),FOUR_THREE(4f/3f),SIXTEEN_NINE(16f/9f)}
 enum class MediaFilter { ALL, PHOTOS, VIDEOS, GIF, RAW, SVG }
@@ -36,30 +38,34 @@ private val RAW_MIME_TYPES = setOf(
 fun mediaFilterLabels():List<String> = listOf("Tümü","Fotoğraflar","Videolar","GIF'ler","RAW resimler","SVG'ler")
 fun mediaSortLabels():List<String> = listOf("Ad","Yol","Boyut","Son değiştirilme","Alınan tarih","Rastgele")
 fun sortDirectionLabels():List<String> = listOf("Artan","Azalan")
-fun <T> applySortDirection(items:List<T>,direction:SortDirection):List<T> =
-    if(direction==SortDirection.ASCENDING) items else items.asReversed()
-fun completeSettingsEntries():List<String> = listOf(
-    "Geri Dönüşüm Kutusu",
-    "Slayt gösterisi",
-    "Akıllı Kişi Kırpma",
-    "Görsel Paketleyici",
-    "Video Kareleri"
-)
+fun <T> applySortDirection(items:List<T>,direction:SortDirection):List<T> = if(direction==SortDirection.ASCENDING) items else items.asReversed()
+fun completeSettingsEntries():List<String> = listOf("Geri Dönüşüm Kutusu","Slayt gösterisi","Akıllı Kişi Kırpma","Görsel Paketleyici","Video Kareleri")
 fun clampSlideshowSeconds(seconds:Int):Int = seconds.coerceIn(1,30)
 fun packageBatchPath(batch:Int):String = "Pictures/ATMACA Paketler/Paket_${batch.coerceAtLeast(1).toString().padStart(4,'0')}/"
 fun frameIntervalMs(framesPerSecond:Int):Long = 1000L / framesPerSecond.coerceIn(1,30)
 
-fun isViewerDoubleTap(previousUpMs:Long,currentUpMs:Long,distancePx:Float,maxDelayMs:Long=300L,maxDistancePx:Float=80f):Boolean =
-    previousUpMs>0L && currentUpMs>previousUpMs && currentUpMs-previousUpMs<=maxDelayMs && distancePx<=maxDistancePx
+fun personCropBounds(sourceWidth:Int,sourceHeight:Int,faceLeft:Int,faceTop:Int,faceRight:Int,faceBottom:Int):IntCropRect {
+    if(sourceWidth<=0 || sourceHeight<=0) return IntCropRect(0,0,0,0)
+    val l0=minOf(faceLeft,faceRight).coerceIn(0,sourceWidth-1)
+    val r0=maxOf(faceLeft,faceRight).coerceIn(l0+1,sourceWidth)
+    val t0=minOf(faceTop,faceBottom).coerceIn(0,sourceHeight-1)
+    val b0=maxOf(faceTop,faceBottom).coerceIn(t0+1,sourceHeight)
+    val w=(r0-l0).coerceAtLeast(1)
+    val h=(b0-t0).coerceAtLeast(1)
+    val left=(l0-w*0.7f).roundToInt().coerceAtLeast(0)
+    val right=(r0+w*0.7f).roundToInt().coerceAtMost(sourceWidth)
+    val top=(t0-h*0.6f).roundToInt().coerceAtLeast(0)
+    val bottom=(b0+h*2.2f).roundToInt().coerceAtMost(sourceHeight)
+    return IntCropRect(left,top,right,bottom)
+}
 
+fun isViewerDoubleTap(previousUpMs:Long,currentUpMs:Long,distancePx:Float,maxDelayMs:Long=300L,maxDistancePx:Float=80f):Boolean = previousUpMs>0L && currentUpMs>previousUpMs && currentUpMs-previousUpMs<=maxDelayMs && distancePx<=maxDistancePx
 fun calculateViewerDecodeSample(sourceWidth:Int,sourceHeight:Int,viewportWidth:Int,viewportHeight:Int):Int {
     if(sourceWidth<=0||sourceHeight<=0||viewportWidth<=0||viewportHeight<=0)return 1
-    val sourceEdge=maxOf(sourceWidth,sourceHeight).toLong()
-    val targetEdge=maxOf(viewportWidth,viewportHeight).toLong()*2L
+    val sourceEdge=maxOf(sourceWidth,sourceHeight).toLong(); val targetEdge=maxOf(viewportWidth,viewportHeight).toLong()*2L
     if(targetEdge<=0L)return 1
     return (sourceEdge/targetEdge).toInt().coerceAtLeast(1)
 }
-
 fun clampViewerScale(scale:Float)=scale.coerceIn(1f,4f)
 fun galleryZoomFactor(rawFactor:Float)=rawFactor.coerceIn(0.72f,1.35f)
 fun dampedZoomFactor(rawFactor:Float)=galleryZoomFactor(rawFactor)
@@ -67,12 +73,9 @@ fun nextDoubleTapScale(scale:Float)=if(scale>1.1f)1f else 2.25f
 fun zoomOffsetAroundFocus(oldOffset:Float,focusFromCenter:Float,oldScale:Float,newScale:Float):Float { if(oldScale<=0f)return oldOffset; val ratio=newScale/oldScale; return oldOffset+focusFromCenter*(1f-ratio) }
 fun normalizeViewerRotation(rotation:Float)=((rotation%360f)+360f)%360f
 fun applyViewerRotationDelta(current:Float,delta:Float)=normalizeViewerRotation(current+delta)
-fun shouldPhotoConsumeGesture(pointerCount:Int,scale:Float,rotation:Float):Boolean =
-    pointerCount>=2 || scale>1.001f || (normalizeViewerRotation(rotation)>0.5f && normalizeViewerRotation(rotation)<359.5f)
+fun shouldPhotoConsumeGesture(pointerCount:Int,scale:Float,rotation:Float):Boolean = pointerCount>=2 || scale>1.001f || (normalizeViewerRotation(rotation)>0.5f && normalizeViewerRotation(rotation)<359.5f)
 fun shouldCommitViewerTransform(gestureEnded:Boolean):Boolean=gestureEnded
-fun viewerMenuEntries(isVideo:Boolean,screenshotMode:Boolean):List<String> =
-    if(isVideo) listOf("Ad değiştir","Çöpe taşı / sil")
-    else listOf("Kırp",if(screenshotMode)"Screenshot modunu kapat" else "Screenshot modu","Ad değiştir","Çöpe taşı / sil")
+fun viewerMenuEntries(isVideo:Boolean,screenshotMode:Boolean):List<String> = if(isVideo) listOf("Ad değiştir","Çöpe taşı / sil") else listOf("Kırp",if(screenshotMode)"Screenshot modunu kapat" else "Screenshot modu","Ad değiştir","Çöpe taşı / sil")
 fun viewerBottomActions(isVideo:Boolean):List<String> = listOf("Paylaş","Geri")
 fun shouldEnablePager(scale:Float)=scale<=1.001f
 fun shouldEnablePager(scale:Float,rotation:Float)=scale<=1.001f&&(normalizeViewerRotation(rotation)<0.5f||normalizeViewerRotation(rotation)>359.5f)
