@@ -10,18 +10,32 @@ data class AlbumSummary(val relativePath:String,val count:Int)
 data class NormalizedCropRect(val left:Float,val top:Float,val right:Float,val bottom:Float){val width:Float get()=right-left; val height:Float get()=bottom-top}
 data class ViewerPanBounds(val maxX:Float,val maxY:Float)
 enum class CropRatio(val ratio:Float){FREE(0f),SQUARE(1f),FOUR_THREE(4f/3f),SIXTEEN_NINE(16f/9f)}
-enum class MediaFilter { ALL, PHOTOS, VIDEOS }
-enum class MediaSort { NEWEST, OLDEST, NAME }
+enum class MediaFilter { ALL, PHOTOS, VIDEOS, GIF, RAW, SVG }
+enum class MediaSort { NAME, PATH, SIZE, MODIFIED, TAKEN, RANDOM }
+enum class SortDirection { ASCENDING, DESCENDING }
 
 fun homeSections():List<HomeSection> = listOf(HomeSection.MEDIA, HomeSection.ALBUMS, HomeSection.SETTINGS)
 fun mediaNameOverlay(name:String):String = name.trim()
-fun mediaFilterAccepts(isVideo:Boolean,filter:MediaFilter):Boolean = when(filter){
-    MediaFilter.ALL -> true
-    MediaFilter.PHOTOS -> !isVideo
-    MediaFilter.VIDEOS -> isVideo
+fun mediaFilterAccepts(isVideo:Boolean,filter:MediaFilter):Boolean = mediaFilterAccepts(isVideo,null,filter)
+fun mediaFilterAccepts(isVideo:Boolean,mimeType:String?,filter:MediaFilter):Boolean {
+    val mime = mimeType?.trim()?.lowercase().orEmpty()
+    return when(filter){
+        MediaFilter.ALL -> true
+        MediaFilter.PHOTOS -> !isVideo
+        MediaFilter.VIDEOS -> isVideo
+        MediaFilter.GIF -> !isVideo && mime == "image/gif"
+        MediaFilter.SVG -> !isVideo && mime == "image/svg+xml"
+        MediaFilter.RAW -> !isVideo && mime in RAW_MIME_TYPES
+    }
 }
-fun mediaFilterLabels():List<String> = listOf("Tümü","Fotoğraflar","Videolar")
-fun mediaSortLabels():List<String> = listOf("En yeni","En eski","Ada göre")
+private val RAW_MIME_TYPES = setOf(
+    "image/dng", "image/x-adobe-dng", "image/x-canon-cr2", "image/x-canon-cr3",
+    "image/x-nikon-nef", "image/x-sony-arw", "image/x-fuji-raf", "image/x-panasonic-rw2",
+    "image/x-olympus-orf", "image/x-pentax-pef", "image/x-samsung-srw"
+)
+fun mediaFilterLabels():List<String> = listOf("Tümü","Fotoğraflar","Videolar","GIF'ler","RAW resimler","SVG'ler")
+fun mediaSortLabels():List<String> = listOf("Ad","Yol","Boyut","Son değiştirilme","Alınan tarih","Rastgele")
+fun sortDirectionLabels():List<String> = listOf("Artan","Azalan")
 fun completeSettingsEntries():List<String> = listOf(
     "Geri Dönüşüm Kutusu",
     "Slayt gösterisi",
