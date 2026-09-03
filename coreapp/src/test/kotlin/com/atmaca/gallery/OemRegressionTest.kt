@@ -1,7 +1,6 @@
 package com.atmaca.gallery
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -13,10 +12,10 @@ class OemRegressionTest {
         )
     }
 
-    @Test fun imageToolsUseGalleryInternalAlbumPickerInsteadOfSafTree() {
+    @Test fun allToolsUseGalleryInternalAlbumPickerInsteadOfSafTree() {
         assertTrue(toolUsesInternalAlbumPicker(AtmacaToolPage.PERSON_CROP))
         assertTrue(toolUsesInternalAlbumPicker(AtmacaToolPage.PACKAGER))
-        assertFalse(toolUsesInternalAlbumPicker(AtmacaToolPage.VIDEO_FRAMES))
+        assertTrue(toolUsesInternalAlbumPicker(AtmacaToolPage.VIDEO_FRAMES))
     }
 
     @Test fun dragSelectionFillsEveryIndexCrossedEvenWhenPointerSkipsCells() {
