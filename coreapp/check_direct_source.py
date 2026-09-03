@@ -26,16 +26,25 @@ required_app = [
     "vm.removeItemsByIds(affectedIds)",
     "HomeSection.ALBUMS -> albumsRefresh++",
     "HomeSection.DUPLICATES -> duplicatesRefresh++",
-    "initialValue = emptyList(), albumsRefresh, section, pathAction",
+    "var albums by remember { mutableStateOf<List<GalleryAlbum>>(emptyList()) }",
+    "LaunchedEffect(albumsRefresh, section, pathAction)",
+    "shouldReloadPrimaryMediaAfterCamera(section, success = true)",
 ]
 for marker in required_app:
     if marker not in app:
         raise SystemExit(f"DIRECT SOURCE FAIL: GalleryApp missing {marker!r}")
 
+if "produceState<List<GalleryAlbum>>" in app:
+    raise SystemExit("DIRECT SOURCE FAIL: album list still resets through produceState")
+
 mutation_block = app.split("val mutationConsentLauncher", 1)[1].split("val cameraLauncher", 1)[0]
 for forbidden in ["refreshToken++", "albumsRefresh++", "duplicatesRefresh++", "vm.reload()"]:
     if forbidden in mutation_block:
         raise SystemExit(f"DIRECT SOURCE FAIL: mutation consent still triggers expensive refresh: {forbidden}")
+
+camera_block = app.split("val cameraLauncher", 1)[1].split("fun runAfterWriteAccess", 1)[0]
+if "vm.reload()" in camera_block:
+    raise SystemExit("DIRECT SOURCE FAIL: camera return still performs direct full reload")
 
 for marker in ["fun removeItemsByIds(ids: Set<Long>)", "removeMutatedIds(current.items.map { it.id }, ids)"]:
     if marker not in vm:
@@ -66,6 +75,8 @@ for marker in [
     "ActivityResultContracts.OpenDocumentTree()",
     "collectToolUrisFromTree(",
     'Text("Klasör seç ve alt klasörleri tara")',
+    "takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)",
+    "selectedUris = uris.distinct()",
 ]:
     if marker not in tools:
         raise SystemExit(f"DIRECT SOURCE FAIL: ATMACA tool UI missing {marker!r}")
@@ -74,14 +85,17 @@ for marker in [
     "DocumentsContract.buildChildDocumentsUriUsingTree",
     "DocumentsContract.buildDocumentUriUsingTree",
     "toolAcceptsMime(",
+    "toolAcceptsDocument(",
+    "DocumentsContract.Document.COLUMN_DISPLAY_NAME",
+    "resolver.getType(documentUri)",
     "coroutineContext.ensureActive()",
 ]:
     if marker not in scanner:
         raise SystemExit(f"DIRECT SOURCE FAIL: tool folder scanner missing {marker!r}")
 
-for marker in ["FaceDetection.getClient", "FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE", "personCropBounds(", "InputImage.fromBitmap"]:
+for marker in ["FaceDetection.getClient", "FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE", "personCropBounds(", "InputImage.fromBitmap", "doneFrames", "totalFrames", "onProgress(doneFrames, totalFrames)"]:
     if marker not in engine:
-        raise SystemExit(f"DIRECT SOURCE FAIL: ML smart crop engine missing {marker!r}")
+        raise SystemExit(f"DIRECT SOURCE FAIL: tool engine missing {marker!r}")
 if "android.media.FaceDetector" in engine:
     raise SystemExit("DIRECT SOURCE FAIL: legacy android.media.FaceDetector returned")
 if 'implementation("com.google.mlkit:face-detection:16.1.7")' not in gradle:
