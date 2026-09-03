@@ -11,14 +11,12 @@ def replace_once(old: str, new: str, label: str) -> None:
         raise RuntimeError(f"{label}: expected exactly one match, found {count}")
     text = text.replace(old, new, 1)
 
-# Imports used by the complete settings panel and drag-selection grid.
 replace_once(
     "import androidx.compose.foundation.gestures.detectDragGestures\n",
     "import androidx.compose.foundation.gestures.detectDragGestures\nimport androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress\n",
     "drag selection import",
 )
 
-# Settings entry points: recycle bin and duplicate finder are secondary tools, never bottom-nav tabs.
 replace_once(
     '''            onMediaSort = { sort ->
                 mediaSort = sort
@@ -85,7 +83,6 @@ replace_once(
     "settings extras UI",
 )
 
-# Select-all is present in selection mode.
 replace_once(
     '''                    onClear = { selectedIds = emptySet() },
                     onShare = { share(selected) },''',
@@ -113,7 +110,6 @@ replace_once(
     "selection select all button",
 )
 
-# Trash always exposes select-all / empty-trash, even before a single item is selected.
 replace_once(
     '''            if (selected.isNotEmpty()) {
                 SelectionBar(''',
@@ -137,7 +133,6 @@ replace_once(
     "trash empty actions",
 )
 
-# MediaCollection adds a non-toggling drag-selection callback.
 replace_once(
     '''                        onToggleSelection = { id ->
                             selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
@@ -162,11 +157,22 @@ replace_once(
                             onOpen = { index ->''',
     "album drag selection wiring",
 )
+
 replace_once(
-    '''    selectedIds: Set<Long>,
+    '''private fun MediaCollection(
+    state: GalleryUiState,
+    gridColumns: Int,
+    mediaFilter: MediaFilter,
+    mediaSort: MediaSort,
+    selectedIds: Set<Long>,
     onToggleSelection: (Long) -> Unit,
     onOpen: (Int) -> Unit,''',
-    '''    selectedIds: Set<Long>,
+    '''private fun MediaCollection(
+    state: GalleryUiState,
+    gridColumns: Int,
+    mediaFilter: MediaFilter,
+    mediaSort: MediaSort,
+    selectedIds: Set<Long>,
     onToggleSelection: (Long) -> Unit,
     onDragSelection: (Long) -> Unit,
     onOpen: (Int) -> Unit,''',
@@ -183,16 +189,24 @@ replace_once(
     "MediaCollection drag argument",
 )
 
-# MediaGrid owns the long-press drag gesture. We map pointer coordinates against
-# LazyGrid visible-item bounds, so dragging across thumbnails only ever adds items.
 replace_once(
-    '''    selectedIds: Set<Long>,
+    '''private fun MediaGrid(
+    items: List<GalleryMedia>,
+    loading: Boolean,
+    hasMore: Boolean,
+    columns: Int,
+    selectedIds: Set<Long>,
     onToggleSelection: (Long) -> Unit,
     onOpen: (Int) -> Unit,
     onLoadMore: () -> Unit
 ) {
     val gridState = rememberLazyGridState()''',
-    '''    selectedIds: Set<Long>,
+    '''private fun MediaGrid(
+    items: List<GalleryMedia>,
+    loading: Boolean,
+    hasMore: Boolean,
+    columns: Int,
+    selectedIds: Set<Long>,
     onToggleSelection: (Long) -> Unit,
     onDragSelection: (Long) -> Unit,
     onOpen: (Int) -> Unit,
