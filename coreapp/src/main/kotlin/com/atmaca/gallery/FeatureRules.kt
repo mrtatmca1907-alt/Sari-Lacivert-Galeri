@@ -36,6 +36,8 @@ private val RAW_MIME_TYPES = setOf(
 fun mediaFilterLabels():List<String> = listOf("Tümü","Fotoğraflar","Videolar","GIF'ler","RAW resimler","SVG'ler")
 fun mediaSortLabels():List<String> = listOf("Ad","Yol","Boyut","Son değiştirilme","Alınan tarih","Rastgele")
 fun sortDirectionLabels():List<String> = listOf("Artan","Azalan")
+fun <T> applySortDirection(items:List<T>,direction:SortDirection):List<T> =
+    if(direction==SortDirection.ASCENDING) items else items.asReversed()
 fun completeSettingsEntries():List<String> = listOf(
     "Geri Dönüşüm Kutusu",
     "Slayt gösterisi",
