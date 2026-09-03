@@ -31,4 +31,10 @@ class AdvancedMediaSettingsTest {
             MediaSort.entries
         )
     }
+
+    @Test fun sortDirectionCanReverseAnyStableOrderedResult() {
+        assertEquals(listOf("a", "b", "c"), applySortDirection(listOf("a", "b", "c"), SortDirection.ASCENDING))
+        assertEquals(listOf("c", "b", "a"), applySortDirection(listOf("a", "b", "c"), SortDirection.DESCENDING))
+        assertEquals(listOf("Artan", "Azalan"), sortDirectionLabels())
+    }
 }
