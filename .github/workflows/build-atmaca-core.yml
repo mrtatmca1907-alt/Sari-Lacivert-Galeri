@@ -35,6 +35,9 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
+      - name: Verify direct gallery source before patches
+        run: python3 coreapp/check_direct_source.py
+
       - name: Apply complete gallery home patch
         run: python3 coreapp/patch_complete_gallery.py
 
