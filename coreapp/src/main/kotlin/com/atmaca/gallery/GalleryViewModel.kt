@@ -8,11 +8,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-enum class CollectionMode { TAB, ALBUM, TRASH }
+enum class CollectionMode { MEDIA, TAB, ALBUM, TRASH }
 
 data class GalleryUiState(
     val tab: GalleryTab = GalleryTab.PHOTOS,
-    val mode: CollectionMode = CollectionMode.TAB,
+    val mode: CollectionMode = CollectionMode.MEDIA,
     val albumPath: String? = null,
     val items: List<GalleryMedia> = emptyList(),
     val loading: Boolean = false,
@@ -27,6 +27,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun start() {
         if (_state.value.items.isEmpty() && !_state.value.loading) reload()
+    }
+
+    fun openMedia() {
+        val current = _state.value
+        if (current.mode == CollectionMode.MEDIA && current.items.isNotEmpty()) return
+        _state.value = GalleryUiState(mode = CollectionMode.MEDIA)
+        loadNextPage()
     }
 
     fun switchTab(tab: GalleryTab) {
@@ -67,6 +74,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             val snapshot = _state.value
             runCatching {
                 when (snapshot.mode) {
+                    CollectionMode.MEDIA -> repository.loadMixedPage(
+                        offset = snapshot.items.size,
+                        limit = MediaStoreRepository.PAGE_SIZE
+                    )
                     CollectionMode.TAB -> repository.loadPage(
                         tab = snapshot.tab,
                         offset = snapshot.items.size,
