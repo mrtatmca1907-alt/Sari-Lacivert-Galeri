@@ -1,0 +1,33 @@
+name: Migrate fast mutations
+
+on:
+  push:
+    branches: [atmaca-native-core]
+    paths:
+      - 'coreapp/migrate_fast_mutations.py'
+      - '.github/workflows/migrate-fast-mutations.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: atmaca-native-core
+          fetch-depth: 0
+      - name: Apply fast mutation source migration
+        run: python3 coreapp/migrate_fast_mutations.py
+      - name: Commit migrated Kotlin source
+        run: |
+          if git diff --quiet; then
+            echo "No migration changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt
+          git commit -m "perf: update trash and delete locally without full rescans"
+          git push origin HEAD:atmaca-native-core
