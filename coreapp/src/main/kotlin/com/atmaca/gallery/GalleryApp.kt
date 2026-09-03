@@ -666,7 +666,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
                     } else {
                         AlbumGrid(
                             albums = if (albums.isNotEmpty()) albums else quickAlbums(state.items),
-                            onOpen = { album -> vm.openAlbum(album.relativePath) }
+                            onOpen = { album -> vm.openAlbum(album) }
                         )
                     }
                 }

@@ -1,5 +1,6 @@
 package com.atmaca.gallery
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
@@ -9,6 +10,7 @@ import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
@@ -68,6 +70,7 @@ class CompleteToolEngine(private val context: Context) {
     suspend fun extractVideoFrames(
         videos: List<Uri>,
         framesPerSecond: Int = 1,
+        moveSourceAfterSuccess: Boolean = false,
         onProgress: (doneFrames: Int, totalFrames: Int) -> Unit = { _, _ -> }
     ): ToolRunResult = withContext(Dispatchers.IO) {
         val interval = frameIntervalMs(framesPerSecond)
@@ -100,28 +103,41 @@ class CompleteToolEngine(private val context: Context) {
         plans.forEach { plan ->
             coroutineContext.ensureActive()
             val retriever = MediaMetadataRetriever()
+            var videoCreated = 0
+            var videoFailed = 0
+            val outputPath = videoFrameOutputPath(plan.name)
             try {
                 retriever.setDataSource(context, plan.uri)
-                val base = plan.name.substringBeforeLast('.', plan.name)
-                val outputPath = "Pictures/ATMACA Video Kareleri/${sanitizePathSegment(base)}/"
                 for (frameIndex in 0 until plan.count) {
                     coroutineContext.ensureActive()
                     val timeUs = frameIndex.toLong() * interval * 1000L
                     val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
                     if (frame == null) {
                         failed++
+                        videoFailed++
                     } else {
                         val ok = saveBitmapJpeg(frame, frameName(plan.name, frameIndex + 1), outputPath, 93)
                         frame.recycle()
-                        if (ok) created++ else failed++
+                        if (ok) {
+                            created++
+                            videoCreated++
+                        } else {
+                            failed++
+                            videoFailed++
+                        }
                     }
                     doneFrames++
                     onProgress(doneFrames, totalFrames)
                 }
             } catch (_: Throwable) {
                 failed++
+                videoFailed++
             } finally {
                 runCatching { retriever.release() }
+            }
+
+            if (moveSourceAfterSuccess && shouldMoveVideoAfterFrames(videoCreated, videoFailed)) {
+                if (!moveVideoToOutputFolder(plan.uri, outputPath)) failed++
             }
         }
         ToolRunResult(videos.size, created, skipped, failed)
@@ -330,6 +346,56 @@ class CompleteToolEngine(private val context: Context) {
             runCatching { resolver.delete(uri, null, null) }
             false
         }
+    }
+
+    private fun moveVideoToOutputFolder(source: Uri, outputPath: String): Boolean {
+        if (Build.VERSION.SDK_INT < 29) return false
+        val mediaUri = resolveVideoMediaStoreUri(source) ?: return false
+        return runCatching {
+            resolver.update(
+                mediaUri,
+                ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, outputPath) },
+                null,
+                null
+            ) > 0
+        }.getOrDefault(false)
+    }
+
+    private fun resolveVideoMediaStoreUri(source: Uri): Uri? {
+        if (source.authority == MediaStore.AUTHORITY) return source
+
+        if (source.authority == "com.android.providers.media.documents") {
+            val docId = runCatching { DocumentsContract.getDocumentId(source) }.getOrNull() ?: return null
+            val parts = docId.split(':', limit = 2)
+            if (parts.size == 2 && parts[0].equals("video", true)) {
+                val id = parts[1].toLongOrNull() ?: return null
+                return ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+            }
+        }
+
+        if (source.authority == "com.android.externalstorage.documents") {
+            val docId = runCatching { DocumentsContract.getDocumentId(source) }.getOrNull() ?: return null
+            val relative = docId.substringAfter(':', "").trimStart('/')
+            if (relative.isBlank()) return null
+            val name = relative.substringAfterLast('/')
+            val folder = relative.substringBeforeLast('/', "")
+            val relativePath = if (folder.isBlank()) "" else "$folder/"
+            val projection = arrayOf(MediaStore.Video.Media._ID)
+            val selection = if (relativePath.isBlank()) {
+                "${MediaStore.Video.Media.DISPLAY_NAME}=?"
+            } else {
+                "${MediaStore.Video.Media.DISPLAY_NAME}=? AND ${MediaStore.Video.Media.RELATIVE_PATH}=?"
+            }
+            val args = if (relativePath.isBlank()) arrayOf(name) else arrayOf(name, relativePath)
+            return runCatching {
+                resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, selection, args, null)?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@use null
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID))
+                    ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                }
+            }.getOrNull()
+        }
+        return null
     }
 
     private fun sanitizePathSegment(raw: String): String = raw

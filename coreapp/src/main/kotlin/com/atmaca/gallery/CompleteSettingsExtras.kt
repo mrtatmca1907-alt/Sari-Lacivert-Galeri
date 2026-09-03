@@ -112,9 +112,15 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
         }
-        selectedUris = uris.distinct()
-        done = 0
-        total = selectedUris.size
+        job = scope.launch {
+            val filtered = filterToolUris(context, uris, tool)
+            selectedUris = filtered
+            done = 0
+            total = filtered.size
+            if (uris.isNotEmpty() && filtered.isEmpty()) {
+                Toast.makeText(context, "Bu araç için uygun dosya bulunamadı", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri: Uri? ->
@@ -139,11 +145,7 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     }
 
     fun launchPicker() {
-        when (tool) {
-            AtmacaToolPage.PERSON_CROP -> picker.launch(arrayOf("image/*"))
-            AtmacaToolPage.PACKAGER -> picker.launch(arrayOf("image/*", "video/*"))
-            AtmacaToolPage.VIDEO_FRAMES -> picker.launch(arrayOf("video/*"))
-        }
+        picker.launch(toolPickerMimeTypes(tool).toTypedArray())
     }
 
     fun cancelActiveWork() {
@@ -154,6 +156,16 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
 
     fun start() {
         if (selectedUris.isEmpty() || running || scanning) return
+        if (tool == AtmacaToolPage.VIDEO_FRAMES) {
+            val workId = enqueueVideoFrameWork(context, selectedUris, framesPerSecond)
+            if (workId != null) {
+                Toast.makeText(context, "Video Kareleri arka planda başlatıldı", Toast.LENGTH_LONG).show()
+                onDismiss()
+            } else {
+                Toast.makeText(context, "Arka plan işi başlatılamadı", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         running = true
         done = 0
         total = selectedUris.size
@@ -161,7 +173,7 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
             val result = when (tool) {
                 AtmacaToolPage.PERSON_CROP -> engine.smartPersonCrop(selectedUris, maxFacesPerPhoto = maxFaces) { d, t -> done = d; total = t }
                 AtmacaToolPage.PACKAGER -> engine.packageMedia(selectedUris, batchSize = batchSize) { d, t -> done = d; total = t }
-                AtmacaToolPage.VIDEO_FRAMES -> engine.extractVideoFrames(selectedUris, framesPerSecond = framesPerSecond) { d, t -> done = d; total = t }
+                AtmacaToolPage.VIDEO_FRAMES -> error("Video Kareleri WorkManager üzerinden çalışır")
             }
             running = false
             Toast.makeText(context, "${result.created} oluşturuldu • ${result.skipped} atlandı • ${result.failed} hata", Toast.LENGTH_LONG).show()
@@ -226,4 +238,4 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
 @Composable private fun IntOptionRow(label: String, value: Int, min: Int, max: Int, step: Int = 1, onChange: (Int) -> Unit) { Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) { Text(label, modifier = Modifier.weight(1f)); OutlinedButton(onClick = { onChange((value - step).coerceAtLeast(min)) }, enabled = value > min) { Text("−") }; Spacer(Modifier.width(8.dp)); Text(value.toString()); Spacer(Modifier.width(8.dp)); OutlinedButton(onClick = { onChange((value + step).coerceAtMost(max)) }, enabled = value < max) { Text("+") } } }
 
 private fun toolTitle(tool: AtmacaToolPage): String = when (tool) { AtmacaToolPage.PERSON_CROP -> "Akıllı Kişi Kırpma"; AtmacaToolPage.PACKAGER -> "Görsel Paketleyici"; AtmacaToolPage.VIDEO_FRAMES -> "Video Kareleri" }
-private fun toolDescription(tool: AtmacaToolPage): String = when (tool) { AtmacaToolPage.PERSON_CROP -> "Orijinal fotoğraflara dokunmadan kişi/yüz bölgelerini yeni JPEG dosyaları olarak oluşturur."; AtmacaToolPage.PACKAGER -> "Seçtiğin fotoğraf ve videoları ATMACA Paketler altında ayrı paket klasörlerine kopyalar."; AtmacaToolPage.VIDEO_FRAMES -> "Her videodan belirlediğin kare hızında JPEG üretir; her video kendi isimli çıktı klasörüne gider." }
+private fun toolDescription(tool: AtmacaToolPage): String = when (tool) { AtmacaToolPage.PERSON_CROP -> "Orijinal fotoğraflara dokunmadan kişi/yüz bölgelerini yeni JPEG dosyaları olarak oluşturur."; AtmacaToolPage.PACKAGER -> "Seçtiğin fotoğraf ve videoları ATMACA Paketler altında ayrı paket klasörlerine kopyalar."; AtmacaToolPage.VIDEO_FRAMES -> "Arka planda kareleri üretir; işlenen video kopyalanmadan kendi kare klasörüne taşınır." }
