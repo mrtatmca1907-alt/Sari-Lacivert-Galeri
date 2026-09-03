@@ -36,7 +36,8 @@ data class GalleryAlbum(
     val relativePath: String,
     val name: String,
     val count: Int,
-    val cover: GalleryMedia?
+    val cover: GalleryMedia?,
+    val bucketId: Long = 0L
 )
 
 class MediaStoreRepository(context: Context) {
@@ -48,6 +49,7 @@ class MediaStoreRepository(context: Context) {
         offset: Int,
         limit: Int = PAGE_SIZE,
         albumPath: String? = null,
+        albumBucketId: Long = 0L,
         trashedOnly: Boolean = false
     ): List<GalleryMedia> = withContext(Dispatchers.IO) {
         if (trashedOnly && Build.VERSION.SDK_INT < 30) return@withContext emptyList()
@@ -58,10 +60,7 @@ class MediaStoreRepository(context: Context) {
         }
         val selectionParts = mutableListOf("${MediaStore.Files.FileColumns.MEDIA_TYPE}=?")
         val selectionArgs = mutableListOf(wantedType.toString())
-        albumPath?.let {
-            selectionParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
-            selectionArgs += normalizeRelativePath(it)
-        }
+        addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId)
         queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly)
     }
 
@@ -69,6 +68,7 @@ class MediaStoreRepository(context: Context) {
         offset: Int,
         limit: Int = PAGE_SIZE,
         albumPath: String? = null,
+        albumBucketId: Long = 0L,
         trashedOnly: Boolean = false
     ): List<GalleryMedia> = withContext(Dispatchers.IO) {
         if (trashedOnly && Build.VERSION.SDK_INT < 30) return@withContext emptyList()
@@ -79,45 +79,82 @@ class MediaStoreRepository(context: Context) {
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
         )
-        albumPath?.let {
-            selectionParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
-            selectionArgs += normalizeRelativePath(it)
-        }
+        addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId)
         queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly)
     }
 
-    suspend fun loadAlbums(): List<GalleryAlbum> = withContext(Dispatchers.IO) {
-        val args = Bundle().apply {
-            putString(
-                ContentResolver.QUERY_ARG_SQL_SELECTION,
-                "${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?"
-            )
-            putStringArray(
-                ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
-                arrayOf(
-                    MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
-                    MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
-                )
-            )
-            putStringArray(
-                ContentResolver.QUERY_ARG_SORT_COLUMNS,
-                arrayOf(MediaStore.MediaColumns.DATE_ADDED, MediaStore.Files.FileColumns._ID)
-            )
-            putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
+    private fun addAlbumSelector(
+        selectionParts: MutableList<String>,
+        selectionArgs: MutableList<String>,
+        albumPath: String?,
+        albumBucketId: Long
+    ) {
+        if (albumBucketId != 0L) {
+            selectionParts += "${MediaStore.Images.ImageColumns.BUCKET_ID}=?"
+            selectionArgs += albumBucketId.toString()
+        } else if (!albumPath.isNullOrBlank()) {
+            selectionParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
+            selectionArgs += normalizeRelativePath(albumPath)
         }
-        val counts = linkedMapOf<String, Int>()
-        val covers = linkedMapOf<String, GalleryMedia>()
-        resolver.query(filesCollection, PROJECTION, args, null)?.use { cursor ->
+    }
+
+    suspend fun loadAlbums(): List<GalleryAlbum> = withContext(Dispatchers.IO) {
+        data class AlbumAccumulator(
+            var relativePath: String,
+            var name: String,
+            var count: Int,
+            var cover: GalleryMedia?,
+            var bucketId: Long
+        )
+
+        val selection = buildString {
+            append("(${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?)")
+            if (Build.VERSION.SDK_INT >= 30) append(" AND ${MediaStore.MediaColumns.IS_TRASHED}=0")
+        }
+        val selectionArgs = arrayOf(
+            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+        )
+        val sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.Files.FileColumns._ID} DESC"
+        val grouped = linkedMapOf<String, AlbumAccumulator>()
+
+        resolver.query(filesCollection, PROJECTION, selection, selectionArgs, sortOrder)?.use { cursor ->
             val cols = Columns(cursor)
             while (cursor.moveToNext()) {
                 coroutineContext.ensureActive()
-                val path = normalizeRelativePath(cols.readRelativePath(cursor))
-                counts[path] = (counts[path] ?: 0) + 1
-                if (path !in covers) covers[path] = cols.read(cursor)
+                val item = cols.read(cursor)
+                val rawPath = item.relativePath.trim()
+                val key = albumIdentityKey(rawPath, item.bucketId, item.bucketName)
+                val fallbackName = item.bucketName?.trim().orEmpty().ifBlank {
+                    if (rawPath.isNotBlank()) albumDisplayName(rawPath) else "Depolama"
+                }
+                val displayPath = if (rawPath.isNotBlank()) normalizeRelativePath(rawPath)
+                else normalizeRelativePath("Pictures/$fallbackName")
+
+                val existing = grouped[key]
+                if (existing == null) {
+                    grouped[key] = AlbumAccumulator(
+                        relativePath = displayPath,
+                        name = fallbackName,
+                        count = 1,
+                        cover = item,
+                        bucketId = item.bucketId
+                    )
+                } else {
+                    existing.count++
+                    if (existing.cover == null) existing.cover = item
+                }
             }
         }
-        counts.map { (path, count) ->
-            GalleryAlbum(path, albumDisplayName(path), count, covers[path])
+
+        grouped.values.map {
+            GalleryAlbum(
+                relativePath = it.relativePath,
+                name = it.name,
+                count = it.count,
+                cover = it.cover,
+                bucketId = it.bucketId
+            )
         }.sortedBy { it.name.lowercase() }
     }
 
@@ -237,9 +274,6 @@ class MediaStoreRepository(context: Context) {
         private val size = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
         private val duration = cursor.getColumnIndex(MediaStore.Video.VideoColumns.DURATION)
         private val trashed = if (Build.VERSION.SDK_INT >= 30) cursor.getColumnIndex(MediaStore.MediaColumns.IS_TRASHED) else -1
-
-        fun readRelativePath(cursor: android.database.Cursor): String =
-            if (relativePath >= 0) cursor.getString(relativePath) ?: "" else ""
 
         fun read(cursor: android.database.Cursor): GalleryMedia {
             val itemId = cursor.getLong(id)
