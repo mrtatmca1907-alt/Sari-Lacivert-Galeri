@@ -50,6 +50,13 @@ jobs:
       - name: Apply stable Eagle viewer patch
         run: python3 coreapp/patch_eagle_viewer.py
 
+      - name: Upload patched source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Patched-Source
+          path: coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt
+          if-no-files-found: error
+
       - name: Unit tests
         run: gradle :coreapp:testDebugUnitTest --stacktrace
 
