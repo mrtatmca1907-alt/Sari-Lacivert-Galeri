@@ -26,9 +26,7 @@ fun enqueueVideoFrameWork(context: Context, uris: List<Uri>, framesPerSecond: In
     val queue = File(dir, "$id.queue")
     val written = runCatching {
         queue.bufferedWriter().use { writer ->
-            uris.distinct().forEach { uri ->
-                writer.appendLine(uri.toString())
-            }
+            uris.distinct().forEach { uri -> writer.appendLine(uri.toString()) }
         }
         true
     }.getOrDefault(false)
@@ -36,12 +34,7 @@ fun enqueueVideoFrameWork(context: Context, uris: List<Uri>, framesPerSecond: In
 
     val request = OneTimeWorkRequestBuilder<VideoFrameWorker>()
         .setId(id)
-        .setInputData(
-            workDataOf(
-                KEY_QUEUE_FILE to queue.absolutePath,
-                KEY_FPS to framesPerSecond.coerceIn(1, 4)
-            )
-        )
+        .setInputData(workDataOf(KEY_QUEUE_FILE to queue.absolutePath, KEY_FPS to framesPerSecond.coerceIn(1, 4)))
         .addTag(VIDEO_FRAME_WORK_TAG)
         .build()
     WorkManager.getInstance(context.applicationContext).enqueue(request)
@@ -72,7 +65,7 @@ class VideoFrameWorker(
                 framesPerSecond = fps,
                 moveSourceAfterSuccess = true
             ) { done, total ->
-                setProgress(workDataOf(KEY_DONE to done, KEY_TOTAL to total))
+                setProgressAsync(workDataOf(KEY_DONE to done, KEY_TOTAL to total))
             }
             runCatching { queue.delete() }
             Result.success(
