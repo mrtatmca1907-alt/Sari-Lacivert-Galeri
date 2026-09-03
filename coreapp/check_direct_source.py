@@ -5,7 +5,9 @@ repo = Path("coreapp/src/main/kotlin/com/atmaca/gallery/MediaStoreRepository.kt"
 photo = Path("coreapp/src/main/kotlin/com/atmaca/gallery/StablePhotoPage.kt").read_text(encoding="utf-8")
 settings = Path("coreapp/src/main/kotlin/com/atmaca/gallery/ModernSettingsDialog.kt").read_text(encoding="utf-8")
 tools = Path("coreapp/src/main/kotlin/com/atmaca/gallery/CompleteSettingsExtras.kt").read_text(encoding="utf-8")
+engine = Path("coreapp/src/main/kotlin/com/atmaca/gallery/CompleteToolEngine.kt").read_text(encoding="utf-8")
 loader = Path("coreapp/src/main/kotlin/com/atmaca/gallery/ImageLoader.kt").read_text(encoding="utf-8")
+gradle = Path("coreapp/build.gradle.kts").read_text(encoding="utf-8")
 
 required_app = [
     "enum class HomeSection { MEDIA, ALBUMS, SETTINGS",
@@ -41,6 +43,14 @@ for marker in ["DialogProperties(usePlatformDefaultWidth = false)", "LazyColumn(
 for marker in ["AtmacaToolPage.PERSON_CROP", "AtmacaToolPage.PACKAGER", "AtmacaToolPage.VIDEO_FRAMES", "LinearProgressIndicator", "job?.cancel()"]:
     if marker not in tools:
         raise SystemExit(f"DIRECT SOURCE FAIL: ATMACA tool UI missing {marker!r}")
+
+for marker in ["FaceDetection.getClient", "FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE", "personCropBounds(", "InputImage.fromBitmap"]:
+    if marker not in engine:
+        raise SystemExit(f"DIRECT SOURCE FAIL: ML smart crop engine missing {marker!r}")
+if "android.media.FaceDetector" in engine:
+    raise SystemExit("DIRECT SOURCE FAIL: legacy android.media.FaceDetector returned")
+if 'implementation("com.google.mlkit:face-detection:16.1.7")' not in gradle:
+    raise SystemExit("DIRECT SOURCE FAIL: bundled ML Kit face detection dependency missing")
 
 for marker in ["ViewerBitmapCache", "prefetchViewerBitmap("]:
     if marker not in loader:
