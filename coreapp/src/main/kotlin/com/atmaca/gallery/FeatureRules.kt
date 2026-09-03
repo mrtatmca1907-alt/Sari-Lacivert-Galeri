@@ -1,6 +1,9 @@
 package com.atmaca.gallery
 
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 data class MediaMeta(
     val id: Long,
@@ -42,8 +45,24 @@ fun nextDoubleTapScale(scale: Float): Float = if (scale > 1.1f) 1f else 2f
 
 fun shouldEnablePager(scale: Float): Boolean = scale <= 1.001f
 
+fun shouldEnablePager(scale: Float, rotation: Float): Boolean =
+    scale <= 1.001f && (normalizeViewerRotation(rotation) < 0.5f || normalizeViewerRotation(rotation) > 359.5f)
+
 fun shouldShowViewerControls(scale: Float, gestureActive: Boolean): Boolean =
     !gestureActive && scale <= 1.001f
+
+fun shouldRenderViewerChrome(
+    captureInProgress: Boolean,
+    controlsVisible: Boolean,
+    scale: Float,
+    gestureActive: Boolean
+): Boolean =
+    !captureInProgress && controlsVisible && shouldShowViewerControls(scale, gestureActive)
+
+fun normalizeViewerRotation(rotation: Float): Float = ((rotation % 360f) + 360f) % 360f
+
+fun applyViewerRotationDelta(current: Float, delta: Float): Float =
+    normalizeViewerRotation(current + delta)
 
 fun viewerPanBounds(
     viewportWidth: Float,
@@ -56,23 +75,27 @@ fun viewerPanBounds(
     if (viewportWidth <= 0f || viewportHeight <= 0f || imageWidth <= 0f || imageHeight <= 0f) {
         return ViewerPanBounds(0f, 0f)
     }
-    val quarterTurn = ((abs(rotation.toInt()) / 90) % 2) == 1
-    val sourceWidth = if (quarterTurn) imageHeight else imageWidth
-    val sourceHeight = if (quarterTurn) imageWidth else imageHeight
-    val fit = minOf(viewportWidth / sourceWidth, viewportHeight / sourceHeight)
-    val fittedWidth = sourceWidth * fit
-    val fittedHeight = sourceHeight * fit
+
+    val fit = minOf(viewportWidth / imageWidth, viewportHeight / imageHeight)
+    val fittedWidth = imageWidth * fit
+    val fittedHeight = imageHeight * fit
     val safeScale = clampViewerScale(scale)
+    val angle = normalizeViewerRotation(rotation) * PI.toFloat() / 180f
+    val c = abs(cos(angle))
+    val s = abs(sin(angle))
+    val rotatedWidth = (fittedWidth * c + fittedHeight * s) * safeScale
+    val rotatedHeight = (fittedWidth * s + fittedHeight * c) * safeScale
+
     return ViewerPanBounds(
-        maxX = ((fittedWidth * safeScale - viewportWidth) / 2f).coerceAtLeast(0f),
-        maxY = ((fittedHeight * safeScale - viewportHeight) / 2f).coerceAtLeast(0f)
+        maxX = ((rotatedWidth - viewportWidth) / 2f).coerceAtLeast(0f),
+        maxY = ((rotatedHeight - viewportHeight) / 2f).coerceAtLeast(0f)
     )
 }
 
 fun clampViewerOffset(offset: Float, maxOffset: Float): Float =
     offset.coerceIn(-maxOffset.coerceAtLeast(0f), maxOffset.coerceAtLeast(0f))
 
-fun nextQuarterRotation(rotation: Float): Float = (rotation + 90f) % 360f
+fun nextQuarterRotation(rotation: Float): Float = normalizeViewerRotation(rotation + 90f)
 
 fun normalizedCropRect(left: Float, top: Float, right: Float, bottom: Float): NormalizedCropRect {
     val l = minOf(left, right).coerceIn(0f, 1f)
