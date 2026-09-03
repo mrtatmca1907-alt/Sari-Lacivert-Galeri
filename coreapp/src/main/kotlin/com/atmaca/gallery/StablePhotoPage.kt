@@ -5,13 +5,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 fun StablePhotoPage(
     item: GalleryMedia,
     rotation: Float,
+    onRotationChanged: (Float) -> Unit,
     onScaleChanged: (Float) -> Unit,
     onGestureActive: (Boolean) -> Unit,
     onFitTap: () -> Unit
@@ -52,7 +53,7 @@ fun StablePhotoPage(
         onScaleChanged(1f)
     }
 
-    fun clampOffsets(source: Bitmap?, targetScale: Float = scale) {
+    fun clampOffsets(source: Bitmap?, targetScale: Float = scale, targetRotation: Float = rotation) {
         val image = source ?: return
         val bounds = viewerPanBounds(
             viewportWidth.toFloat(),
@@ -60,14 +61,10 @@ fun StablePhotoPage(
             image.width.toFloat(),
             image.height.toFloat(),
             targetScale,
-            rotation
+            targetRotation
         )
         offsetX = clampViewerOffset(offsetX, bounds.maxX)
         offsetY = clampViewerOffset(offsetY, bounds.maxY)
-    }
-
-    LaunchedEffect(rotation) {
-        resetTransform()
     }
 
     Box(
@@ -103,23 +100,34 @@ fun StablePhotoPage(
                                         handled = true
                                         onGestureActive(true)
                                     }
+
                                     val factor = if (pressed >= 2) dampedZoomFactor(event.calculateZoom()) else 1f
+                                    val rotationDelta = if (pressed >= 2) event.calculateRotation() else 0f
                                     val newScale = clampViewerScale(scale * factor)
+                                    val newRotation = applyViewerRotationDelta(rotation, rotationDelta)
+
+                                    if (rotationDelta != 0f) onRotationChanged(newRotation)
+
                                     if (newScale <= 1.001f) {
-                                        resetTransform()
+                                        scale = 1f
+                                        offsetX = 0f
+                                        offsetY = 0f
+                                        onScaleChanged(1f)
                                     } else {
                                         val pan = event.calculatePan()
                                         scale = newScale
                                         offsetX += pan.x
                                         offsetY += pan.y
-                                        clampOffsets(source, newScale)
+                                        clampOffsets(source, newScale, newRotation)
                                         onScaleChanged(newScale)
                                     }
+
                                     event.changes.forEach { change ->
                                         if (change.pressed) change.consume()
                                     }
                                 }
                             } while (event.changes.any { it.pressed })
+
                             if (handled) {
                                 clampOffsets(source)
                                 onGestureActive(false)
