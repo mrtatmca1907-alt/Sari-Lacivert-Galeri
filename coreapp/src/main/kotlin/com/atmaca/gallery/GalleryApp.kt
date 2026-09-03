@@ -48,6 +48,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -178,6 +179,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
     var pendingWriteAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
+    var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
 
     val selected = remember(selectedIds, state.items) {
         state.items.filter { it.id in selectedIds }
@@ -290,6 +292,17 @@ private fun GalleryHome(vm: GalleryViewModel) {
         }
     }
 
+    cropItem?.let { item ->
+        CropEditor(
+            item = item,
+            actions = actions,
+            onCancel = { cropItem = null },
+            onSaved = { cropItem = null; refreshToken++; albumsRefresh++; vm.reload() },
+            onMessage = { message = it }
+        )
+        return
+    }
+
     viewerIndex?.let { index ->
         if (state.items.isNotEmpty()) {
             MediaViewer(
@@ -302,7 +315,8 @@ private fun GalleryHome(vm: GalleryViewModel) {
                     if (state.mode == CollectionMode.TRASH) trash(listOf(item), false)
                     else trash(listOf(item), true)
                 },
-                onRename = { renameItem = it }
+                onRename = { renameItem = it },
+                onCrop = { cropItem = it }
             )
             renameItem?.let { item ->
                 RenameDialog(
@@ -1009,7 +1023,8 @@ private fun MediaViewer(
     onNeedMore: () -> Unit,
     onShare: (GalleryMedia) -> Unit,
     onTrash: (GalleryMedia) -> Unit,
-    onRename: (GalleryMedia) -> Unit
+    onRename: (GalleryMedia) -> Unit,
+    onCrop: (GalleryMedia) -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -1066,10 +1081,9 @@ private fun MediaViewer(
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.55f))
-                    .padding(top = 22.dp, start = 4.dp, end = 4.dp, bottom = 4.dp),
+                    .padding(top = 22.dp, start = 12.dp, end = 12.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White) }
                 Text(
                     items.getOrNull(pager.currentPage)?.name.orEmpty(),
                     color = Color.White,
@@ -1090,10 +1104,12 @@ private fun MediaViewer(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White) }
                     IconButton(onClick = { onShare(current) }) { Icon(Icons.Default.Share, "Paylaş", tint = Color.White) }
                     IconButton(onClick = {
-                        rotations[current.id] = ((rotations[current.id] ?: 0f) + 90f) % 360f
-                    }) { Icon(Icons.Default.RotateRight, "Döndür", tint = Color.White) }
+                        rotations[current.id] = nextQuarterRotation(rotations[current.id] ?: 0f)
+                    }) { Icon(Icons.Default.RotateRight, "90 derece döndür", tint = Color.White) }
+                    if (!current.isVideo) IconButton(onClick = { onCrop(current) }) { Icon(Icons.Default.Crop, "Kırp", tint = Color.White) }
                     IconButton(onClick = { onRename(current) }) { Icon(Icons.Default.Edit, "Ad değiştir", tint = Color.White) }
                     IconButton(onClick = { onTrash(current) }) { Icon(Icons.Default.Delete, "Çöp", tint = Color.White) }
                 }
@@ -1124,7 +1140,7 @@ private fun PhotoPage(item: GalleryMedia, rotation: Float) {
                     .fillMaxSize()
                     .pointerInput(item.id) {
                         detectTransformGestures { _, pan, zoom, _ ->
-                            val newScale = (scale * zoom).coerceIn(1f, 8f)
+                            val newScale = clampViewerScale(scale * zoom)
                             if (newScale <= 1.01f) {
                                 offsetX = 0f
                                 offsetY = 0f
@@ -1137,14 +1153,14 @@ private fun PhotoPage(item: GalleryMedia, rotation: Float) {
                     }
                     .pointerInput(item.id, scale) {
                         detectTapGestures(
-                            onDoubleTap = {
-                                if (scale > 1.1f) {
-                                    scale = 1f
-                                    offsetX = 0f
-                                    offsetY = 0f
-                                } else {
-                                    scale = 2.5f
+                            onTap = {
+                                if (scale > 1.01f || offsetX != 0f || offsetY != 0f) {
+                                    scale = 1f; offsetX = 0f; offsetY = 0f
                                 }
+                            },
+                            onDoubleTap = {
+                                scale = nextDoubleTapScale(scale)
+                                if (scale <= 1.01f) { offsetX = 0f; offsetY = 0f }
                             }
                         )
                     }
