@@ -1,0 +1,48 @@
+name: Apply Viewer v03 Patch
+on:
+  push:
+    branches: [atmaca-native-core]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[viewer-v03-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: atmaca-native-core
+      - name: Patch viewer integration
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt')
+          s=p.read_text()
+          s=s.replace('import androidx.compose.material.icons.filled.Collections', 'import androidx.compose.material.icons.filled.Collections\nimport androidx.compose.material.icons.filled.Crop')
+          s=s.replace('    var message by remember { mutableStateOf<String?>(null) }', '    var message by remember { mutableStateOf<String?>(null) }\n    var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }')
+          old='''    viewerIndex?.let { index ->\n        if (state.items.isNotEmpty()) {\n            MediaViewer('''
+          new='''    cropItem?.let { item ->\n        CropEditor(\n            item = item,\n            actions = actions,\n            onCancel = { cropItem = null },\n            onSaved = { cropItem = null; refreshToken++; albumsRefresh++; vm.reload() },\n            onMessage = { message = it }\n        )\n        return\n    }\n\n    viewerIndex?.let { index ->\n        if (state.items.isNotEmpty()) {\n            MediaViewer('''
+          s=s.replace(old,new)
+          s=s.replace('                onRename = { renameItem = it }\n            )', '                onRename = { renameItem = it },\n                onCrop = { cropItem = it }\n            )',1)
+          s=s.replace('    onRename: (GalleryMedia) -> Unit\n) {', '    onRename: (GalleryMedia) -> Unit,\n    onCrop: (GalleryMedia) -> Unit\n) {',1)
+          oldtop='''            Row(\n                Modifier\n                    .align(Alignment.TopCenter)\n                    .fillMaxWidth()\n                    .background(Color.Black.copy(alpha = 0.55f))\n                    .padding(top = 22.dp, start = 4.dp, end = 4.dp, bottom = 4.dp),\n                verticalAlignment = Alignment.CenterVertically\n            ) {\n                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White) }\n                Text(\n                    items.getOrNull(pager.currentPage)?.name.orEmpty(),\n                    color = Color.White,\n                    maxLines = 1,\n                    overflow = TextOverflow.Ellipsis,\n                    modifier = Modifier.weight(1f)\n                )\n            }'''
+          newtop='''            Row(\n                Modifier\n                    .align(Alignment.TopCenter)\n                    .fillMaxWidth()\n                    .background(Color.Black.copy(alpha = 0.55f))\n                    .padding(top = 22.dp, start = 12.dp, end = 12.dp, bottom = 8.dp),\n                verticalAlignment = Alignment.CenterVertically\n            ) {\n                Text(\n                    items.getOrNull(pager.currentPage)?.name.orEmpty(),\n                    color = Color.White,\n                    maxLines = 1,\n                    overflow = TextOverflow.Ellipsis,\n                    modifier = Modifier.weight(1f)\n                )\n            }'''
+          s=s.replace(oldtop,newtop)
+          oldbuttons='''                ) {\n                    IconButton(onClick = { onShare(current) }) { Icon(Icons.Default.Share, "Paylaş", tint = Color.White) }\n                    IconButton(onClick = {\n                        rotations[current.id] = ((rotations[current.id] ?: 0f) + 90f) % 360f\n                    }) { Icon(Icons.Default.RotateRight, "Döndür", tint = Color.White) }\n                    IconButton(onClick = { onRename(current) }) { Icon(Icons.Default.Edit, "Ad değiştir", tint = Color.White) }\n                    IconButton(onClick = { onTrash(current) }) { Icon(Icons.Default.Delete, "Çöp", tint = Color.White) }\n                }'''
+          newbuttons='''                ) {\n                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White) }\n                    IconButton(onClick = { onShare(current) }) { Icon(Icons.Default.Share, "Paylaş", tint = Color.White) }\n                    IconButton(onClick = {\n                        rotations[current.id] = nextQuarterRotation(rotations[current.id] ?: 0f)\n                    }) { Icon(Icons.Default.RotateRight, "90 derece döndür", tint = Color.White) }\n                    if (!current.isVideo) IconButton(onClick = { onCrop(current) }) { Icon(Icons.Default.Crop, "Kırp", tint = Color.White) }\n                    IconButton(onClick = { onRename(current) }) { Icon(Icons.Default.Edit, "Ad değiştir", tint = Color.White) }\n                    IconButton(onClick = { onTrash(current) }) { Icon(Icons.Default.Delete, "Çöp", tint = Color.White) }\n                }'''
+          s=s.replace(oldbuttons,newbuttons)
+          s=s.replace('val newScale = (scale * zoom).coerceIn(1f, 8f)', 'val newScale = clampViewerScale(scale * zoom)')
+          olddouble='''                            onDoubleTap = {\n                                if (scale > 1.1f) {\n                                    scale = 1f\n                                    offsetX = 0f\n                                    offsetY = 0f\n                                } else {\n                                    scale = 2.5f\n                                }\n                            }'''
+          newdouble='''                            onTap = {\n                                if (scale > 1.01f || offsetX != 0f || offsetY != 0f) {\n                                    scale = 1f; offsetX = 0f; offsetY = 0f\n                                }\n                            },\n                            onDoubleTap = {\n                                scale = nextDoubleTapScale(scale)\n                                if (scale <= 1.01f) { offsetX = 0f; offsetY = 0f }\n                            }'''
+          s=s.replace(olddouble,newdouble)
+          p.write_text(s)
+          b=Path('coreapp/build.gradle.kts')
+          bs=b.read_text().replace('versionCode = 2','versionCode = 3').replace('versionName = "0.2.0-full"','versionName = "0.3.0-viewer"')
+          b.write_text(bs)
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add coreapp
+          git diff --cached --quiet || git commit -m "feat: viewer zoom crop bottom back and icon [viewer-v03-applied]"
+          git push origin HEAD:atmaca-native-core
