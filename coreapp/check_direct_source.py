@@ -137,7 +137,7 @@ for marker in [
     "CoroutineWorker",
     "OneTimeWorkRequestBuilder<VideoFrameWorker>()",
     "moveSourceAfterSuccess = true",
-    "setProgress(workDataOf(KEY_DONE to done, KEY_TOTAL to total))",
+    "setProgressAsync(workDataOf(KEY_DONE to done, KEY_TOTAL to total))",
 ]:
     if marker not in worker:
         raise SystemExit(f"DIRECT SOURCE FAIL: background video worker missing {marker!r}")
