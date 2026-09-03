@@ -25,7 +25,7 @@ for marker in ["val dateModified: Long", "val dateTaken: Long", "MediaStore.Medi
     if marker not in repo:
         raise SystemExit(f"DIRECT SOURCE FAIL: MediaStoreRepository missing {marker!r}")
 
-for marker in ["lastTapUpMs", "viewportWidth", "nextDoubleTapScale"]:
+for marker in ["val lastTapTime", "isViewerDoubleTap(", "viewportWidth", "viewportHeight", "loadHighResolutionBitmap("]:
     if marker not in photo:
         raise SystemExit(f"DIRECT SOURCE FAIL: StablePhotoPage missing {marker!r}")
 
