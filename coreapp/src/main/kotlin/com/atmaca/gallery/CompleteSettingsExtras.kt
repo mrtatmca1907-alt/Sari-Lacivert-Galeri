@@ -94,6 +94,7 @@ fun CompleteSettingsExtras(
 private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val engine = remember { CompleteToolEngine(context) }
+    val repository = remember { MediaStoreRepository(context) }
     val scope = rememberCoroutineScope()
     var selectedUris by remember(tool) { mutableStateOf<List<Uri>>(emptyList()) }
     var running by remember(tool) { mutableStateOf(false) }
@@ -105,6 +106,7 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     var batchSize by remember(tool) { mutableIntStateOf(50) }
     var framesPerSecond by remember(tool) { mutableIntStateOf(1) }
     var maxFaces by remember(tool) { mutableIntStateOf(12) }
+    var showInternalAlbumPicker by remember(tool) { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
         uris.forEach { uri ->
@@ -180,8 +182,23 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
         }
     }
 
+    if (showInternalAlbumPicker) {
+        InternalToolAlbumPicker(
+            tool = tool,
+            repository = repository,
+            onDismiss = { showInternalAlbumPicker = false },
+            onSelected = { uris ->
+                selectedUris = uris.distinct()
+                done = 0
+                total = selectedUris.size
+                showInternalAlbumPicker = false
+                Toast.makeText(context, "Klasörden ${selectedUris.size} uygun dosya seçildi", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
     Dialog(
-        onDismissRequest = { if (!running && !scanning) onDismiss() },
+        onDismissRequest = { if (!running && !scanning && !showInternalAlbumPicker) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(modifier = Modifier.fillMaxWidth().fillMaxHeight(), color = MaterialTheme.colorScheme.background) {
@@ -202,8 +219,15 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
                     OutlinedButton(onClick = ::launchPicker, enabled = !running && !scanning, modifier = Modifier.fillMaxWidth()) {
                         Text(if (selectedUris.isEmpty()) "Dosya seç" else "Dosya seçimini değiştir (${selectedUris.size})")
                     }
-                    OutlinedButton(onClick = { folderPicker.launch(null) }, enabled = !running && !scanning, modifier = Modifier.fillMaxWidth()) {
-                        Text("Klasör seç ve alt klasörleri tara")
+                    OutlinedButton(
+                        onClick = {
+                            if (toolUsesInternalAlbumPicker(tool)) showInternalAlbumPicker = true
+                            else folderPicker.launch(null)
+                        },
+                        enabled = !running && !scanning,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (toolUsesInternalAlbumPicker(tool)) "Galeriden klasör seç" else "Klasör seç ve alt klasörleri tara")
                     }
 
                     if (scanning) {

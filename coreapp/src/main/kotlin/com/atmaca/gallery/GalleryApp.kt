@@ -392,7 +392,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
     LaunchedEffect(albumsRefresh, section, pathAction) {
         if (section == HomeSection.ALBUMS || pathAction != null) {
             albumsLoading = true
-            val fresh = runCatching { repository.loadAlbums() }.getOrDefault(emptyList())
+            val fresh = runCatching { repository.loadAlbumsOemSafe() }.getOrDefault(emptyList())
             albums = albumListWhileRefreshing(albums, fresh, refreshing = false)
             albumsLoading = false
         }
@@ -854,13 +854,17 @@ private fun MediaGrid(
     val gridState = rememberLazyGridState()
     var dragX by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
+    var lastDragIndex by remember { mutableIntStateOf(-1) }
 
     fun selectAt(x: Float, y: Float) {
         val info = gridState.layoutInfo.visibleItemsInfo.firstOrNull { cell ->
             x >= cell.offset.x && x < cell.offset.x + cell.size.width &&
                 y >= cell.offset.y && y < cell.offset.y + cell.size.height
         } ?: return
-        items.getOrNull(info.index)?.let { onDragSelection(it.id) }
+        val currentIndex = info.index
+        val indexes = if (lastDragIndex >= 0) dragSelectionIndexes(lastDragIndex, currentIndex) else listOf(currentIndex)
+        indexes.forEach { index -> items.getOrNull(index)?.let { onDragSelection(it.id) } }
+        lastDragIndex = currentIndex
     }
 
     LaunchedEffect(gridState, items.size, hasMore) {
@@ -880,6 +884,7 @@ private fun MediaGrid(
             .pointerInput(items.size, columns) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = { offset ->
+                        lastDragIndex = -1
                         dragX = offset.x; dragY = offset.y
                         selectAt(dragX, dragY)
                     },
@@ -887,7 +892,9 @@ private fun MediaGrid(
                         change.consume()
                         dragX += amount.x; dragY += amount.y
                         selectAt(dragX, dragY)
-                    }
+                    },
+                    onDragEnd = { lastDragIndex = -1 },
+                    onDragCancel = { lastDragIndex = -1 }
                 )
             },
         horizontalArrangement = Arrangement.spacedBy(2.dp),

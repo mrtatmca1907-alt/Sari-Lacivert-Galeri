@@ -106,9 +106,9 @@ fun albumIdentityKey(relativePath:String?, bucketId:Long, bucketName:String?):St
     return if(cleanName.isNotEmpty()) "name:$cleanName" else "unknown"
 }
 fun albumLocator(relativePath:String?,bucketId:Long,bucketName:String?):AlbumLocator {
-    if(bucketId!=0L) return AlbumLocator.Bucket(bucketId)
     val cleanPath=relativePath?.trim().orEmpty()
     if(cleanPath.isNotEmpty()) return AlbumLocator.Path(normalizeRelativePath(cleanPath))
+    if(bucketId!=0L) return AlbumLocator.Bucket(bucketId)
     val cleanName=bucketName?.trim().orEmpty()
     return if(cleanName.isNotEmpty()) AlbumLocator.Name(cleanName) else AlbumLocator.Unknown
 }
