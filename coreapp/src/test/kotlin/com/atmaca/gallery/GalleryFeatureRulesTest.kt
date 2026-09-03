@@ -32,4 +32,19 @@ class GalleryFeatureRulesTest {
         assertFalse(shouldCommitViewerTransform(gestureEnded=false))
         assertTrue(shouldCommitViewerTransform(gestureEnded=true))
     }
+
+    @Test fun photoOptionsLiveInTopMenuAndBottomBarStaysMinimal() {
+        assertEquals(
+            listOf("Kırp", "Screenshot modu", "Ad değiştir", "Çöpe taşı / sil"),
+            viewerMenuEntries(isVideo = false, screenshotMode = false)
+        )
+        assertEquals(listOf("Paylaş", "Geri"), viewerBottomActions(isVideo = false))
+    }
+
+    @Test fun videoTopMenuDoesNotExposePhotoOnlyTools() {
+        assertEquals(
+            listOf("Ad değiştir", "Çöpe taşı / sil"),
+            viewerMenuEntries(isVideo = true, screenshotMode = false)
+        )
+    }
 }
