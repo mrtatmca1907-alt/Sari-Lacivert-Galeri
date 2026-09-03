@@ -1,0 +1,35 @@
+name: Migrate background tools album
+
+on:
+  push:
+    branches: [atmaca-native-core]
+    paths:
+      - 'coreapp/migrate_background_tools_album.py'
+      - '.github/workflows/migrate-background-tools-album.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: atmaca-native-core
+          fetch-depth: 0
+      - name: Apply migration
+        run: python3 coreapp/migrate_background_tools_album.py
+      - name: Commit migrated source
+        run: |
+          if git diff --quiet; then
+            echo "No migration changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add coreapp/src/main/kotlin/com/atmaca/gallery/CompleteToolEngine.kt \
+                  coreapp/src/main/kotlin/com/atmaca/gallery/CompleteSettingsExtras.kt \
+                  coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt
+          git commit -m "fix: background video move and reliable tool selection"
+          git push origin HEAD:atmaca-native-core
