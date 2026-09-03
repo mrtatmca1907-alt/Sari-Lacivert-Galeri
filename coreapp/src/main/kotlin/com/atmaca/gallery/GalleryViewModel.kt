@@ -65,6 +65,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         loadNextPage()
     }
 
+    fun removeItemsByIds(ids: Set<Long>) {
+        if (ids.isEmpty()) return
+        val current = _state.value
+        val keepIds = removeMutatedIds(current.items.map { it.id }, ids).toHashSet()
+        _state.value = current.copy(
+            items = current.items.filter { it.id in keepIds },
+            loading = false,
+            error = null
+        )
+    }
+
     fun loadNextPage() {
         val current = _state.value
         if (current.loading || !current.hasMore) return
