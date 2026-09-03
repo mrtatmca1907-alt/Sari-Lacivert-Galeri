@@ -107,9 +107,14 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     var maxFaces by remember(tool) { mutableIntStateOf(12) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
-        selectedUris = uris
+        uris.forEach { uri ->
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+        selectedUris = uris.distinct()
         done = 0
-        total = uris.size
+        total = selectedUris.size
     }
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri: Uri? ->

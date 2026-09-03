@@ -68,44 +68,61 @@ class CompleteToolEngine(private val context: Context) {
     suspend fun extractVideoFrames(
         videos: List<Uri>,
         framesPerSecond: Int = 1,
-        onProgress: (doneVideos: Int, totalVideos: Int) -> Unit = { _, _ -> }
+        onProgress: (doneFrames: Int, totalFrames: Int) -> Unit = { _, _ -> }
     ): ToolRunResult = withContext(Dispatchers.IO) {
         val interval = frameIntervalMs(framesPerSecond)
-        var created = 0
+        data class FramePlan(val uri: Uri, val name: String, val count: Int)
+        val plans = ArrayList<FramePlan>(videos.size)
         var skipped = 0
         var failed = 0
-        videos.forEachIndexed { videoIndex, uri ->
+
+        videos.forEachIndexed { index, uri ->
             coroutineContext.ensureActive()
             val retriever = MediaMetadataRetriever()
             try {
                 retriever.setDataSource(context, uri)
                 val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-                val videoName = queryNameMime(uri).first.ifBlank { "video_${videoIndex + 1}.mp4" }
-                val base = videoName.substringBeforeLast('.', videoName)
+                val name = queryNameMime(uri).first.ifBlank { "video_${index + 1}.mp4" }
                 val count = frameCount(duration, interval)
-                if (count == 0) {
-                    skipped++
-                } else {
-                    for (frameIndex in 0 until count) {
-                        coroutineContext.ensureActive()
-                        val timeUs = frameIndex.toLong() * interval * 1000L
-                        val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-                        if (frame == null) {
-                            failed++
-                            continue
-                        }
-                        val path = "Pictures/ATMACA Video Kareleri/${sanitizePathSegment(base)}/"
-                        val ok = saveBitmapJpeg(frame, frameName(videoName, frameIndex + 1), path, 93)
+                if (count <= 0) skipped++ else plans += FramePlan(uri, name, count)
+            } catch (_: Throwable) {
+                failed++
+            } finally {
+                runCatching { retriever.release() }
+            }
+        }
+
+        val totalFrames = plans.sumOf { it.count }
+        var doneFrames = 0
+        var created = 0
+        onProgress(0, totalFrames)
+
+        plans.forEach { plan ->
+            coroutineContext.ensureActive()
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, plan.uri)
+                val base = plan.name.substringBeforeLast('.', plan.name)
+                val outputPath = "Pictures/ATMACA Video Kareleri/${sanitizePathSegment(base)}/"
+                for (frameIndex in 0 until plan.count) {
+                    coroutineContext.ensureActive()
+                    val timeUs = frameIndex.toLong() * interval * 1000L
+                    val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                    if (frame == null) {
+                        failed++
+                    } else {
+                        val ok = saveBitmapJpeg(frame, frameName(plan.name, frameIndex + 1), outputPath, 93)
                         frame.recycle()
                         if (ok) created++ else failed++
                     }
+                    doneFrames++
+                    onProgress(doneFrames, totalFrames)
                 }
             } catch (_: Throwable) {
                 failed++
             } finally {
                 runCatching { retriever.release() }
             }
-            onProgress(videoIndex + 1, videos.size)
         }
         ToolRunResult(videos.size, created, skipped, failed)
     }

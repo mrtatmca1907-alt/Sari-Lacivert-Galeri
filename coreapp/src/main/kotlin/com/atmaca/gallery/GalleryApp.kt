@@ -217,6 +217,8 @@ private fun GalleryHome(vm: GalleryViewModel) {
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
+    var albums by remember { mutableStateOf<List<GalleryAlbum>>(emptyList()) }
+    var albumsLoading by remember { mutableStateOf(false) }
 
     val selected = remember(selectedIds, state.items) {
         state.items.filter { it.id in selectedIds }
@@ -245,13 +247,15 @@ private fun GalleryHome(vm: GalleryViewModel) {
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        val success = result.resultCode == Activity.RESULT_OK
         pendingCameraUri?.let { uri ->
-            actions.finishCameraImage(uri, result.resultCode == Activity.RESULT_OK)
+            actions.finishCameraImage(uri, success)
         }
         pendingCameraUri = null
-        refreshToken++
-        albumsRefresh++
-        vm.reload()
+        if (success) {
+            albumsRefresh++
+            if (shouldReloadPrimaryMediaAfterCamera(section, success = true)) refreshToken++
+        }
     }
 
     fun runAfterWriteAccess(items: List<GalleryMedia>, action: () -> Unit) {
@@ -385,11 +389,12 @@ private fun GalleryHome(vm: GalleryViewModel) {
         }
     }
 
-    val albums by produceState<List<GalleryAlbum>>(
-        initialValue = emptyList(), albumsRefresh, section, pathAction
-    ) {
+    LaunchedEffect(albumsRefresh, section, pathAction) {
         if (section == HomeSection.ALBUMS || pathAction != null) {
-            value = runCatching { repository.loadAlbums() }.getOrDefault(emptyList())
+            albumsLoading = true
+            val fresh = runCatching { repository.loadAlbums() }.getOrDefault(emptyList())
+            albums = albumListWhileRefreshing(albums, fresh, refreshing = false)
+            albumsLoading = false
         }
     }
 
@@ -537,13 +542,13 @@ private fun GalleryHome(vm: GalleryViewModel) {
                 onCamera = ::openCamera,
                 onRefresh = {
                     selectedIds = emptySet()
-                    refreshToken++
-                    albumsRefresh++
-                    duplicatesRefresh++
                     when (section) {
-                        HomeSection.ALBUMS -> if (state.mode == CollectionMode.ALBUM) vm.reload()
-                        HomeSection.DUPLICATES -> Unit
-                        else -> vm.reload()
+                        HomeSection.ALBUMS -> {
+                            albumsRefresh++
+                            if (state.mode == CollectionMode.ALBUM) vm.reload()
+                        }
+                        HomeSection.DUPLICATES -> duplicatesRefresh++
+                        else -> refreshToken++
                     }
                 },
                 onSettings = { showSettings = true },
