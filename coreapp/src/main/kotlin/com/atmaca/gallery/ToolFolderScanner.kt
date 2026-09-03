@@ -3,6 +3,7 @@ package com.atmaca.gallery
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -27,6 +28,22 @@ fun toolAcceptsDocument(tool: AtmacaToolPage, mimeType: String?, displayName: St
         else -> ""
     }
     return toolAcceptsMime(tool, inferred)
+}
+
+suspend fun filterToolUris(context: Context, uris: List<Uri>, tool: AtmacaToolPage): List<Uri> = withContext(Dispatchers.IO) {
+    val resolver = context.contentResolver
+    uris.distinct().filter { uri ->
+        coroutineContext.ensureActive()
+        val declaredMime = runCatching { resolver.getType(uri) }.getOrNull()
+        val name = runCatching {
+            resolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val index = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+                if (index >= 0) cursor.getString(index) else null
+            }
+        }.getOrNull()
+        toolAcceptsDocument(tool, declaredMime, name)
+    }
 }
 
 suspend fun collectToolUrisFromTree(
