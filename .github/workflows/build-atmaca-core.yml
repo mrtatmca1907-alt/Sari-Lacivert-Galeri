@@ -1,5 +1,8 @@
 name: Build ATMACA Native Core
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   pull_request:
@@ -35,9 +38,6 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
-      - name: Verify direct gallery source before patches
-        run: python3 coreapp/check_direct_source.py
-
       - name: Apply complete gallery home patch
         run: python3 coreapp/patch_complete_gallery.py
 
@@ -53,15 +53,13 @@ jobs:
       - name: Apply stable Eagle viewer patch
         run: python3 coreapp/patch_eagle_viewer.py
 
-      - name: Upload patched source snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: ATMACA-Patched-Source
-          path: |
-            coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt
-            coreapp/src/main/kotlin/com/atmaca/gallery/MediaStoreRepository.kt
-            coreapp/src/main/kotlin/com/atmaca/gallery/StablePhotoPage.kt
-          if-no-files-found: error
+      - name: Commit migrated direct sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt coreapp/src/main/kotlin/com/atmaca/gallery/MediaStoreRepository.kt coreapp/src/main/kotlin/com/atmaca/gallery/StablePhotoPage.kt
+          git commit -m "refactor: migrate gallery patches into direct Kotlin source"
+          git push origin HEAD:atmaca-native-core
 
       - name: Unit tests
         run: gradle :coreapp:testDebugUnitTest --stacktrace
