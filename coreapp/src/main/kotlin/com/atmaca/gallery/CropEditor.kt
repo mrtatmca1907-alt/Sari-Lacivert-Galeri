@@ -115,10 +115,14 @@ fun CropEditor(
                     val h = (crop.height * source.height).roundToInt().coerceIn(1, source.height - y)
                     scope.launch {
                         val cropped = runCatching { Bitmap.createBitmap(source, x, y, w, h) }.getOrNull()
-                        val saved = cropped?.let { actions.saveCroppedCopy(item, it) }
+                        val saved = cropped?.let { actions.overwriteCropped(item, it) } == true
                         if (cropped !== source) cropped?.recycle()
-                        if (saved != null) { onMessage("Kırpılmış kopya kaydedildi"); onSaved() }
-                        else onMessage("Kırpılmış fotoğraf kaydedilemedi")
+                        if (saved) {
+                            onMessage("Fotoğraf kırpılarak güncellendi")
+                            onSaved()
+                        } else {
+                            onMessage("Fotoğraf güncellenemedi")
+                        }
                     }
                 }) { Text("Kaydet") }
             }
