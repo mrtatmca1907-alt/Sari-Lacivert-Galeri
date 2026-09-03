@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 @Composable
 fun ModernSettingsDialog(
@@ -37,11 +38,17 @@ fun ModernSettingsDialog(
     onOpenTrash: () -> Unit,
     onOpenDuplicates: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
             shape = RoundedCornerShape(18.dp),
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.96f)
+                .padding(horizontal = 8.dp, vertical = 8.dp)
         ) {
             Column(Modifier.fillMaxWidth()) {
                 Row(
