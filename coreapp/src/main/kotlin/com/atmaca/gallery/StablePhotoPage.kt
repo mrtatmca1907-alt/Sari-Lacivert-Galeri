@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import kotlin.math.abs
+import kotlin.math.hypot
 
 @Composable
 fun StablePhotoPage(
@@ -45,13 +46,27 @@ fun StablePhotoPage(
     var offsetY by remember(item.id) { mutableFloatStateOf(0f) }
     var viewportWidth by remember(item.id) { mutableIntStateOf(0) }
     var viewportHeight by remember(item.id) { mutableIntStateOf(0) }
+    val lastTapTime = remember(item.id) { longArrayOf(0L) }
+    val lastTapPosition = remember(item.id) { floatArrayOf(0f, 0f) }
 
     LaunchedEffect(rotation, item.id) {
         if (abs(normalizeViewerRotation(rotation) - normalizeViewerRotation(localRotation)) > 0.5f) localRotation = rotation
     }
 
-    val bitmap by produceState<Bitmap?>(initialValue = null, item.uri) {
-        value = loadHighResolutionBitmap(context, item)
+    val bitmap by produceState<Bitmap?>(
+        initialValue = null,
+        item.uri,
+        viewportWidth,
+        viewportHeight
+    ) {
+        if (viewportWidth > 0 && viewportHeight > 0) {
+            value = loadHighResolutionBitmap(
+                context = context,
+                item = item,
+                viewportWidth = viewportWidth,
+                viewportHeight = viewportHeight
+            )
+        }
     }
 
     fun clampOffsets(source: Bitmap?, targetScale: Float = scale, targetRotation: Float = localRotation) {
@@ -80,9 +95,12 @@ fun StablePhotoPage(
                 // One stable pointer coroutine: no scale/rotation keys, no competing tap recognizer.
                 .pointerInput(item.id) {
                     awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
+                        val firstDown = awaitFirstDown(requireUnconsumed = false)
+                        val downX = firstDown.position.x
+                        val downY = firstDown.position.y
                         var transformed = false
                         var moved = false
+                        var lastEventTime = firstDown.uptimeMillis
                         do {
                             val event = awaitPointerEvent()
                             val pressed = event.changes.count { it.pressed }
@@ -90,8 +108,15 @@ fun StablePhotoPage(
                             val zoomRaw = if (pressed >= 2) event.calculateZoom() else 1f
                             val rotationDelta = if (pressed >= 2) event.calculateRotation() else 0f
                             val owns = shouldPhotoConsumeGesture(pressed, scale, localRotation)
+                            event.changes.firstOrNull()?.let { change ->
+                                lastEventTime = change.uptimeMillis
+                                if (hypot(change.position.x - downX, change.position.y - downY) > 12f) moved = true
+                            }
+                            val transformFrame = owns && (
+                                pressed >= 2 || abs(pan.x) > 0.01f || abs(pan.y) > 0.01f
+                            )
 
-                            if (owns) {
+                            if (transformFrame) {
                                 if (!transformed) { transformed = true; onGestureActive(true) }
                                 if (pressed >= 2) {
                                     val oldScale = scale
@@ -126,7 +151,25 @@ fun StablePhotoPage(
                             }
                             onGestureActive(false)
                         } else if (!moved) {
-                            if (scale > 1.001f || abs(localRotation) > 0.5f) resetTransform() else onFitTap()
+                            val distanceFromLast = hypot(
+                                downX - lastTapPosition[0],
+                                downY - lastTapPosition[1]
+                            )
+                            val doubleTap = isViewerDoubleTap(
+                                previousUpMs = lastTapTime[0],
+                                currentUpMs = lastEventTime,
+                                distancePx = distanceFromLast
+                            )
+                            if (doubleTap) {
+                                lastTapTime[0] = 0L
+                                // Approved behavior: two taps toggle viewer chrome / immersive mode.
+                                // Pinch zoom and free rotation remain owned by this same gesture coroutine.
+                                onFitTap()
+                            } else {
+                                lastTapTime[0] = lastEventTime
+                                lastTapPosition[0] = downX
+                                lastTapPosition[1] = downY
+                            }
                         }
                     }
                 }

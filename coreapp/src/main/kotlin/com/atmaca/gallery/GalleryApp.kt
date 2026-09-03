@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -100,6 +101,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -121,7 +123,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-enum class HomeSection { PHOTOS, VIDEOS, ALBUMS, DUPLICATES, TRASH }
+enum class HomeSection { MEDIA, ALBUMS, SETTINGS, PHOTOS, VIDEOS, DUPLICATES, TRASH }
 private enum class PathAction { COPY, MOVE }
 
 @Composable
@@ -170,13 +172,41 @@ private fun GalleryHome(vm: GalleryViewModel) {
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("atmaca_gallery", Context.MODE_PRIVATE) }
 
-    var section by rememberSaveable { mutableStateOf(HomeSection.PHOTOS) }
+    var section by rememberSaveable { mutableStateOf(HomeSection.MEDIA) }
     var viewerIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var refreshToken by remember { mutableIntStateOf(0) }
     var albumsRefresh by remember { mutableIntStateOf(0) }
     var duplicatesRefresh by remember { mutableIntStateOf(0) }
     var gridColumns by rememberSaveable { mutableIntStateOf(prefs.getInt("grid_columns", 4).coerceIn(3, 6)) }
+    var mediaFilter by rememberSaveable {
+        mutableStateOf(
+            runCatching {
+                MediaFilter.valueOf(
+                    prefs.getString("media_filter", MediaFilter.ALL.name) ?: MediaFilter.ALL.name
+                )
+            }.getOrDefault(MediaFilter.ALL)
+        )
+    }
+    var mediaSort by rememberSaveable {
+        mutableStateOf(
+            runCatching {
+                MediaSort.valueOf(
+                    prefs.getString("media_sort", MediaSort.TAKEN.name) ?: MediaSort.TAKEN.name
+                )
+            }.getOrDefault(MediaSort.TAKEN)
+        )
+    }
+    var sortDirection by rememberSaveable {
+        mutableStateOf(
+            runCatching {
+                SortDirection.valueOf(
+                    prefs.getString("sort_direction", SortDirection.DESCENDING.name)
+                        ?: SortDirection.DESCENDING.name
+                )
+            }.getOrDefault(SortDirection.DESCENDING)
+        )
+    }
     var showSettings by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var renameItem by remember { mutableStateOf<GalleryMedia?>(null) }
@@ -285,6 +315,8 @@ private fun GalleryHome(vm: GalleryViewModel) {
         selectedIds = emptySet()
         viewerIndex = null
         when (section) {
+            HomeSection.MEDIA -> vm.openMedia()
+            HomeSection.SETTINGS -> showSettings = true
             HomeSection.PHOTOS -> vm.switchTab(GalleryTab.PHOTOS)
             HomeSection.VIDEOS -> vm.switchTab(GalleryTab.VIDEOS)
             HomeSection.TRASH -> vm.openTrash()
@@ -293,7 +325,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
     }
 
     LaunchedEffect(refreshToken) {
-        if (refreshToken > 0 && section in listOf(HomeSection.PHOTOS, HomeSection.VIDEOS, HomeSection.TRASH)) {
+        if (refreshToken > 0 && section in listOf(HomeSection.MEDIA, HomeSection.PHOTOS, HomeSection.VIDEOS, HomeSection.TRASH)) {
             vm.reload()
         }
     }
@@ -408,10 +440,39 @@ private fun GalleryHome(vm: GalleryViewModel) {
     if (showSettings) {
         SettingsDialog(
             gridColumns = gridColumns,
-            onDismiss = { showSettings = false },
+            mediaFilter = mediaFilter,
+            mediaSort = mediaSort,
+            sortDirection = sortDirection,
+            onDismiss = {
+                showSettings = false
+                if (section == HomeSection.SETTINGS) section = HomeSection.MEDIA
+            },
             onGridColumns = { columns ->
                 gridColumns = columns
                 prefs.edit().putInt("grid_columns", columns).apply()
+            },
+            onMediaFilter = { filter ->
+                mediaFilter = filter
+                selectedIds = emptySet()
+                prefs.edit().putString("media_filter", filter.name).apply()
+            },
+            onMediaSort = { sort ->
+                mediaSort = sort
+                selectedIds = emptySet()
+                prefs.edit().putString("media_sort", sort.name).apply()
+            },
+            onSortDirection = { direction ->
+                sortDirection = direction
+                selectedIds = emptySet()
+                prefs.edit().putString("sort_direction", direction.name).apply()
+            },
+            onOpenTrash = {
+                showSettings = false
+                section = HomeSection.TRASH
+            },
+            onOpenDuplicates = {
+                showSettings = false
+                section = HomeSection.DUPLICATES
             }
         )
     }
@@ -420,34 +481,22 @@ private fun GalleryHome(vm: GalleryViewModel) {
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = section == HomeSection.PHOTOS,
-                    onClick = { section = HomeSection.PHOTOS },
+                    selected = section == HomeSection.MEDIA,
+                    onClick = { section = HomeSection.MEDIA },
                     icon = { Text("▣") },
-                    label = { Text("Foto") }
-                )
-                NavigationBarItem(
-                    selected = section == HomeSection.VIDEOS,
-                    onClick = { section = HomeSection.VIDEOS },
-                    icon = { Icon(Icons.Default.PlayArrow, null) },
-                    label = { Text("Video") }
+                    label = { Text("Medya") }
                 )
                 NavigationBarItem(
                     selected = section == HomeSection.ALBUMS,
                     onClick = { section = HomeSection.ALBUMS },
                     icon = { Icon(Icons.Default.Collections, null) },
-                    label = { Text("Albüm") }
+                    label = { Text("Albümler") }
                 )
                 NavigationBarItem(
-                    selected = section == HomeSection.DUPLICATES,
-                    onClick = { section = HomeSection.DUPLICATES },
-                    icon = { Icon(Icons.Default.FindInPage, null) },
-                    label = { Text("Kopya") }
-                )
-                NavigationBarItem(
-                    selected = section == HomeSection.TRASH,
-                    onClick = { section = HomeSection.TRASH },
-                    icon = { Icon(Icons.Default.Delete, null) },
-                    label = { Text("Çöp") }
+                    selected = section == HomeSection.SETTINGS,
+                    onClick = { section = HomeSection.SETTINGS; showSettings = true },
+                    icon = { Icon(Icons.Default.Settings, null) },
+                    label = { Text("Ayarlar") }
                 )
             }
         }
@@ -461,6 +510,8 @@ private fun GalleryHome(vm: GalleryViewModel) {
                 title = when {
                     state.mode == CollectionMode.ALBUM && section == HomeSection.ALBUMS ->
                         albumDisplayName(state.albumPath.orEmpty())
+                    section == HomeSection.MEDIA -> "Medya"
+                    section == HomeSection.SETTINGS -> "Ayarlar"
                     section == HomeSection.PHOTOS -> "Fotoğraflar"
                     section == HomeSection.VIDEOS -> "Videolar"
                     section == HomeSection.ALBUMS -> "Albümler"
@@ -489,12 +540,28 @@ private fun GalleryHome(vm: GalleryViewModel) {
                 onMoreChange = { showMore = it }
             )
 
+            if (state.mode == CollectionMode.TRASH && selected.isEmpty() && state.items.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Geri Dönüşüm Kutusu", modifier = Modifier.weight(1f))
+                    TextButton(onClick = { selectedIds = state.items.mapTo(mutableSetOf()) { it.id } }) {
+                        Text("Tümünü seç")
+                    }
+                    TextButton(onClick = { permanentDelete(state.items) }) {
+                        Text("Çöp kutusunu boşalt")
+                    }
+                }
+            }
+
             if (selected.isNotEmpty()) {
                 SelectionBar(
                     selectedCount = selected.size,
                     trashMode = state.mode == CollectionMode.TRASH,
                     canRename = selected.size == 1 && state.mode != CollectionMode.TRASH,
                     onClear = { selectedIds = emptySet() },
+                    onSelectAll = { selectedIds = state.items.mapTo(mutableSetOf()) { it.id } },
                     onShare = { share(selected) },
                     onCopy = {
                         pathItems = selected
@@ -529,14 +596,18 @@ private fun GalleryHome(vm: GalleryViewModel) {
             }
 
             when (section) {
-                HomeSection.PHOTOS, HomeSection.VIDEOS, HomeSection.TRASH -> {
+                HomeSection.MEDIA, HomeSection.SETTINGS, HomeSection.PHOTOS, HomeSection.VIDEOS, HomeSection.TRASH -> {
                     MediaCollection(
                         state = state,
                         gridColumns = gridColumns,
+                        mediaFilter = mediaFilter,
+                        mediaSort = mediaSort,
+                        sortDirection = sortDirection,
                         selectedIds = selectedIds,
                         onToggleSelection = { id ->
                             selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
                         },
+                        onDragSelection = { id -> selectedIds = selectedIds + id },
                         onOpen = { index ->
                             if (selectedIds.isEmpty()) viewerIndex = index
                             else {
@@ -558,10 +629,14 @@ private fun GalleryHome(vm: GalleryViewModel) {
                         MediaCollection(
                             state = state,
                             gridColumns = gridColumns,
+                            mediaFilter = mediaFilter,
+                            mediaSort = mediaSort,
+                            sortDirection = sortDirection,
                             selectedIds = selectedIds,
                             onToggleSelection = { id ->
                                 selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
                             },
+                            onDragSelection = { id -> selectedIds = selectedIds + id },
                             onOpen = { index ->
                                 if (selectedIds.isEmpty()) viewerIndex = index
                                 else {
@@ -644,6 +719,7 @@ private fun SelectionBar(
     trashMode: Boolean,
     canRename: Boolean,
     onClear: () -> Unit,
+    onSelectAll: () -> Unit,
     onShare: () -> Unit,
     onCopy: () -> Unit,
     onMove: () -> Unit,
@@ -659,6 +735,7 @@ private fun SelectionBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text("$selectedCount seçili", modifier = Modifier.weight(1f))
+        IconButton(onClick = onSelectAll) { Icon(Icons.Default.SelectAll, "Tümünü seç") }
         IconButton(onClick = onShare) { Icon(Icons.Default.Share, "Paylaş") }
         if (!trashMode) {
             IconButton(onClick = onCopy) { Icon(Icons.Default.ContentCopy, "Kopyala") }
@@ -679,12 +756,29 @@ private fun SelectionBar(
 private fun MediaCollection(
     state: GalleryUiState,
     gridColumns: Int,
+    mediaFilter: MediaFilter,
+    mediaSort: MediaSort,
+    sortDirection: SortDirection,
     selectedIds: Set<Long>,
     onToggleSelection: (Long) -> Unit,
+    onDragSelection: (Long) -> Unit,
     onOpen: (Int) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit
 ) {
+    val visibleItems = remember(state.items, mediaFilter, mediaSort, sortDirection) {
+        val filtered = state.items.filter { mediaFilterAccepts(it.isVideo, it.mimeType, mediaFilter) }
+        val ordered = when (mediaSort) {
+            MediaSort.NAME -> filtered.sortedBy { it.name.lowercase() }
+            MediaSort.PATH -> filtered.sortedWith(compareBy({ it.relativePath.lowercase() }, { it.name.lowercase() }))
+            MediaSort.SIZE -> filtered.sortedBy { it.size }
+            MediaSort.MODIFIED -> filtered.sortedBy { it.dateModified }
+            MediaSort.TAKEN -> filtered.sortedBy { if (it.dateTaken > 0L) it.dateTaken else it.dateAdded * 1000L }
+            MediaSort.RANDOM -> filtered.shuffled()
+        }
+        if (mediaSort == MediaSort.RANDOM) ordered else applySortDirection(ordered, sortDirection)
+    }
+
     when {
         state.items.isEmpty() && state.loading -> Box(
             Modifier.fillMaxSize(), contentAlignment = Alignment.Center
@@ -704,14 +798,25 @@ private fun MediaCollection(
             Text("Burada medya yok")
         }
 
+        visibleItems.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Bu filtrede medya yok")
+        }
+
         else -> MediaGrid(
-            items = state.items,
+            items = visibleItems,
             loading = state.loading,
             hasMore = state.hasMore,
             columns = gridColumns,
             selectedIds = selectedIds,
             onToggleSelection = onToggleSelection,
-            onOpen = onOpen,
+            onDragSelection = onDragSelection,
+            onOpen = { visibleIndex ->
+                val target = visibleItems.getOrNull(visibleIndex)
+                val originalIndex = target?.let { item ->
+                    state.items.indexOfFirst { it.id == item.id && it.isVideo == item.isVideo }
+                } ?: -1
+                if (originalIndex >= 0) onOpen(originalIndex)
+            },
             onLoadMore = onLoadMore
         )
     }
@@ -726,10 +831,21 @@ private fun MediaGrid(
     columns: Int,
     selectedIds: Set<Long>,
     onToggleSelection: (Long) -> Unit,
+    onDragSelection: (Long) -> Unit,
     onOpen: (Int) -> Unit,
     onLoadMore: () -> Unit
 ) {
     val gridState = rememberLazyGridState()
+    var dragX by remember { mutableFloatStateOf(0f) }
+    var dragY by remember { mutableFloatStateOf(0f) }
+
+    fun selectAt(x: Float, y: Float) {
+        val info = gridState.layoutInfo.visibleItemsInfo.firstOrNull { cell ->
+            x >= cell.offset.x && x < cell.offset.x + cell.size.width &&
+                y >= cell.offset.y && y < cell.offset.y + cell.size.height
+        } ?: return
+        items.getOrNull(info.index)?.let { onDragSelection(it.id) }
+    }
 
     LaunchedEffect(gridState, items.size, hasMore) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
@@ -743,7 +859,21 @@ private fun MediaGrid(
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
         state = gridState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(items.size, columns) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { offset ->
+                        dragX = offset.x; dragY = offset.y
+                        selectAt(dragX, dragY)
+                    },
+                    onDrag = { change, amount ->
+                        change.consume()
+                        dragX += amount.x; dragY += amount.y
+                        selectAt(dragX, dragY)
+                    }
+                )
+            },
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -812,6 +942,18 @@ private fun MediaTile(
                 )
             }
         }
+        Text(
+            mediaNameOverlay(item.name),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.58f))
+                .padding(horizontal = 5.dp, vertical = 3.dp)
+        )
         if (selected) {
             Box(
                 Modifier
@@ -1034,9 +1176,10 @@ private fun MediaViewer(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val prefs = remember { context.getSharedPreferences("gallery", Context.MODE_PRIVATE) }
     val screenshotActions = remember { GalleryActions(context) }
     val scope = rememberCoroutineScope()
-    val pager = rememberPagerState(initialPage = initialIndex) { items.size }
+    val pager = rememberPagerState(initialPage = initialIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) { items.size }
     val rotations = remember { mutableStateMapOf<Long, Float>() }
     val zooms = remember { mutableStateMapOf<Long, Float>() }
     var gestureActive by remember { mutableStateOf(false) }
@@ -1046,6 +1189,15 @@ private fun MediaViewer(
     var captureInProgress by remember { mutableStateOf(false) }
     var screenshotOffsetX by remember { mutableFloatStateOf(0f) }
     var screenshotOffsetY by remember { mutableFloatStateOf(0f) }
+    var showInfo by remember { mutableStateOf(false) }
+    var slideshowRunning by remember { mutableStateOf(false) }
+    var favoriteIds by remember {
+        mutableStateOf(prefs.getStringSet("favorite_ids", emptySet())?.toSet() ?: emptySet())
+    }
+
+    val slideshowSeconds = clampSlideshowSeconds(prefs.getInt("slideshow_seconds", 4))
+    val slideshowLoop = prefs.getBoolean("slideshow_loop", true)
+    val slideshowRandom = prefs.getBoolean("slideshow_random", false)
 
     DisposableEffect(activity) {
         val decor = activity?.window?.decorView
@@ -1068,10 +1220,40 @@ private fun MediaViewer(
         }
     }
 
+    DisposableEffect(slideshowRunning, activity) {
+        val window = activity?.window
+        if (slideshowRunning) {
+            window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            if (slideshowRunning) {
+                window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
+
     LaunchedEffect(pager, items.size) {
         snapshotFlow { pager.currentPage }
             .distinctUntilChanged()
             .collect { page -> if (items.size - page <= 4) onNeedMore() }
+    }
+
+    LaunchedEffect(slideshowRunning, pager.currentPage, items.size, slideshowSeconds, slideshowLoop, slideshowRandom) {
+        if (!slideshowRunning || items.size <= 1) return@LaunchedEffect
+        delay(slideshowSeconds * 1000L)
+        if (!slideshowRunning) return@LaunchedEffect
+        val current = pager.currentPage
+        val controller = SlideshowController(items.size, slideshowLoop)
+        if (!controller.canAdvance(current)) {
+            slideshowRunning = false
+            return@LaunchedEffect
+        }
+        val next = if (slideshowRandom && items.size > 1) {
+            var candidate = current
+            while (candidate == current) candidate = kotlin.random.Random.nextInt(items.size)
+            candidate
+        } else controller.nextIndex(current)
+        pager.animateScrollToPage(next)
     }
 
     BackHandler(onBack = onBack)
@@ -1085,6 +1267,21 @@ private fun MediaViewer(
         scale = currentScale,
         gestureActive = gestureActive
     )
+
+    val backgroundBitmap by produceState<Bitmap?>(initialValue = null, currentItem?.uri) {
+        val current = currentItem
+        value = if (current != null && !current.isVideo && Build.VERSION.SDK_INT >= 29) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.loadThumbnail(
+                        current.uri,
+                        android.util.Size(420, 720),
+                        null
+                    )
+                }.getOrNull()
+            }
+        } else null
+    }
 
     fun captureCleanScreenshot() {
         if (captureInProgress || currentItem?.isVideo != false) return
@@ -1112,11 +1309,26 @@ private fun MediaViewer(
         }
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-    ) {
+    fun toggleFavorite(item: GalleryMedia) {
+        val id = item.id.toString()
+        favoriteIds = if (id in favoriteIds) favoriteIds - id else favoriteIds + id
+        prefs.edit().putStringSet("favorite_ids", favoriteIds.toSet()).apply()
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        backgroundBitmap?.let { bg ->
+            Image(
+                bitmap = bg.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(32.dp)
+                    .graphicsLayer(alpha = 0.42f, scaleX = 1.12f, scaleY = 1.12f)
+            )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.34f)))
+        }
+
         HorizontalPager(
             state = pager,
             userScrollEnabled = shouldEnablePager(currentScale, currentRotation),
@@ -1139,48 +1351,39 @@ private fun MediaViewer(
         }
 
         if (renderChrome) {
-            Row(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .padding(top = 22.dp, start = 12.dp, end = 12.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    currentItem?.name.orEmpty(),
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
             val current = currentItem
             if (current != null) {
                 Row(
                     Modifier
-                        .align(Alignment.BottomCenter)
+                        .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.60f))
-                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                        .background(Color.Black.copy(alpha = 0.62f))
+                        .padding(top = 14.dp, start = 2.dp, end = 2.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { onShare(current) }) {
-                        Icon(Icons.Default.Share, "Paylaş", tint = Color.White)
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White)
                     }
-
+                    Text(
+                        current.name,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
                     if (!current.isVideo) {
                         IconButton(onClick = {
                             rotations[current.id] = nextQuarterRotation(rotations[current.id] ?: 0f)
                         }) {
-                            Icon(Icons.Default.RotateRight, "90 derece döndür", tint = Color.White)
+                            Icon(Icons.Default.RotateRight, "Döndür", tint = Color.White)
+                        }
+                        IconButton(onClick = { onCrop(current) }) {
+                            Icon(Icons.Default.Crop, "Düzenle", tint = Color.White)
                         }
                     }
-
                     Box {
                         IconButton(onClick = { optionsExpanded = true }) {
-                            Icon(Icons.Default.MoreVert, "Seçenekler", tint = Color.White)
+                            Icon(Icons.Default.MoreVert, "Diğer", tint = Color.White)
                         }
                         DropdownMenu(
                             expanded = optionsExpanded,
@@ -1188,15 +1391,7 @@ private fun MediaViewer(
                         ) {
                             if (!current.isVideo) {
                                 DropdownMenuItem(
-                                    text = { Text("Kırp") },
-                                    leadingIcon = { Icon(Icons.Default.Crop, null) },
-                                    onClick = {
-                                        optionsExpanded = false
-                                        onCrop(current)
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(if (screenshotMode) "Screenshot modunu kapat" else "Screenshot modu") },
+                                    text = { Text("Screenshot modu") },
                                     leadingIcon = { Icon(Icons.Default.PhotoCamera, null) },
                                     onClick = {
                                         screenshotMode = !screenshotMode
@@ -1213,6 +1408,13 @@ private fun MediaViewer(
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text(if (slideshowRunning) "Slaytı durdur" else "Slayt gösterisi") },
+                                onClick = {
+                                    optionsExpanded = false
+                                    slideshowRunning = !slideshowRunning
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Çöpe taşı / sil") },
                                 leadingIcon = { Icon(Icons.Default.Delete, null) },
                                 onClick = {
@@ -1222,21 +1424,56 @@ private fun MediaViewer(
                             )
                         }
                     }
+                }
 
-                    Spacer(Modifier.weight(1f))
+                Row(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.66f))
+                        .padding(horizontal = 2.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    IconButton(onClick = { toggleFavorite(current) }) {
+                        Text(if (current.id.toString() in favoriteIds) "♥" else "♡", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                    }
+                    IconButton(onClick = { if (!current.isVideo) onCrop(current) }) {
+                        Icon(Icons.Default.Edit, "Düzenle", tint = if (current.isVideo) Color.Gray else Color.White)
+                    }
+                    IconButton(onClick = { onShare(current) }) {
+                        Icon(Icons.Default.Share, "Paylaş", tint = Color.White)
+                    }
+                    IconButton(onClick = { onTrash(current) }) {
+                        Icon(Icons.Default.Delete, "Çöp", tint = Color.White)
+                    }
+                    IconButton(onClick = { showInfo = !showInfo }) {
+                        Text("ⓘ", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                    }
+                    IconButton(onClick = { slideshowRunning = !slideshowRunning }) {
+                        Text(if (slideshowRunning) "Ⅱ" else "▶", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                    }
+                }
 
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White)
+                if (showInfo) {
+                    Column(
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(16.dp)
+                            .background(Color.Black.copy(alpha = 0.82f), RoundedCornerShape(12.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(current.name, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("${current.width} × ${current.height}", color = Color.White)
+                        Text(formatBytes(current.size), color = Color.White)
+                        Text(current.relativePath, color = Color.LightGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (current.isVideo) Text("Süre: ${formatDuration(current.durationMs)}", color = Color.White)
                     }
                 }
             }
         }
 
-        if (
-            screenshotMode &&
-            currentItem?.isVideo == false &&
-            !captureInProgress
-        ) {
+        if (screenshotMode && currentItem?.isVideo == false && !captureInProgress) {
             Box(
                 Modifier
                     .align(Alignment.Center)
@@ -1418,15 +1655,51 @@ private fun PathDialog(
 @Composable
 private fun SettingsDialog(
     gridColumns: Int,
+    mediaFilter: MediaFilter,
+    mediaSort: MediaSort,
+    sortDirection: SortDirection,
     onDismiss: () -> Unit,
-    onGridColumns: (Int) -> Unit
+    onGridColumns: (Int) -> Unit,
+    onMediaFilter: (MediaFilter) -> Unit,
+    onMediaSort: (MediaSort) -> Unit,
+    onSortDirection: (SortDirection) -> Unit,
+    onOpenTrash: () -> Unit,
+    onOpenDuplicates: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Galeri ayarları") },
         text = {
-            Column {
-                Text("Izgara sütunu")
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Gösterilecek medya", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    MediaFilter.entries.forEachIndexed { index, filter ->
+                        TextButton(onClick = { onMediaFilter(filter) }) {
+                            val label = mediaFilterLabels()[index]
+                            Text(if (filter == mediaFilter) "[$label]" else label)
+                        }
+                    }
+                }
+                Text("Sıralama", style = MaterialTheme.typography.labelLarge)
+                Column {
+                    MediaSort.entries.forEachIndexed { index, sort ->
+                        TextButton(onClick = { onMediaSort(sort) }) {
+                            val label = mediaSortLabels()[index]
+                            Text(if (sort == mediaSort) "[$label]" else label)
+                        }
+                    }
+                }
+                if (mediaSort != MediaSort.RANDOM) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SortDirection.entries.forEachIndexed { index, direction ->
+                            TextButton(onClick = { onSortDirection(direction) }) {
+                                val label = sortDirectionLabels()[index]
+                                Text(if (direction == sortDirection) "[$label]" else label)
+                            }
+                        }
+                    }
+                }
+                Text("Izgara sütunu", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     (3..6).forEach { columns ->
                         TextButton(onClick = { onGridColumns(columns) }) {
@@ -1435,8 +1708,12 @@ private fun SettingsDialog(
                     }
                 }
                 Text(
-                    "Yüksek çözünürlüklü görüntüleyici, video kontrolleri ve sayfalı medya yükleme etkindir.",
+                    "Filtre, sıralama ve ızgara seçimi cihazda saklanır.",
                     style = MaterialTheme.typography.bodySmall
+                )
+                CompleteSettingsExtras(
+                    onOpenTrash = onOpenTrash,
+                    onOpenDuplicates = onOpenDuplicates
                 )
             }
         },

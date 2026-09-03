@@ -20,6 +20,8 @@ data class GalleryMedia(
     val mimeType: String?,
     val isVideo: Boolean,
     val dateAdded: Long,
+    val dateModified: Long,
+    val dateTaken: Long,
     val width: Int,
     val height: Int,
     val bucketId: Long,
@@ -225,6 +227,8 @@ class MediaStoreRepository(context: Context) {
         private val name = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
         private val mime = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
         private val date = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+        private val dateModified = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+        private val dateTaken = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
         private val width = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
         private val height = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
         private val bucketId = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_ID)
@@ -249,6 +253,8 @@ class MediaStoreRepository(context: Context) {
                 mimeType = cursor.getString(mime),
                 isVideo = isVideo,
                 dateAdded = cursor.getLong(date),
+                dateModified = cursor.getLong(dateModified),
+                dateTaken = if (dateTaken >= 0) cursor.getLong(dateTaken) else 0L,
                 width = cursor.getInt(width),
                 height = cursor.getInt(height),
                 bucketId = if (bucketId >= 0) cursor.getLong(bucketId) else 0L,
@@ -270,6 +276,8 @@ class MediaStoreRepository(context: Context) {
             add(MediaStore.MediaColumns.DISPLAY_NAME)
             add(MediaStore.MediaColumns.MIME_TYPE)
             add(MediaStore.MediaColumns.DATE_ADDED)
+            add(MediaStore.MediaColumns.DATE_MODIFIED)
+            add(MediaStore.MediaColumns.DATE_TAKEN)
             add(MediaStore.MediaColumns.WIDTH)
             add(MediaStore.MediaColumns.HEIGHT)
             add(MediaStore.Images.ImageColumns.BUCKET_ID)
