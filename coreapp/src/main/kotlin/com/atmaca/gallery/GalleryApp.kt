@@ -438,7 +438,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
     }
 
     if (showSettings) {
-        SettingsDialog(
+        ModernSettingsDialog(
             gridColumns = gridColumns,
             mediaFilter = mediaFilter,
             mediaSort = mediaSort,
