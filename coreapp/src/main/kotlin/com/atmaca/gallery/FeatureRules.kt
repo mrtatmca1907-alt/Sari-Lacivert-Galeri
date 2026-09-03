@@ -12,6 +12,37 @@ data class AlbumSummary(
     val count: Int
 )
 
+data class NormalizedCropRect(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float
+) {
+    val width: Float get() = right - left
+    val height: Float get() = bottom - top
+}
+
+enum class CropRatio(val ratio: Float) {
+    FREE(0f),
+    SQUARE(1f),
+    FOUR_THREE(4f / 3f),
+    SIXTEEN_NINE(16f / 9f)
+}
+
+fun clampViewerScale(scale: Float): Float = scale.coerceIn(1f, 8f)
+
+fun nextDoubleTapScale(scale: Float): Float = if (scale > 1.1f) 1f else 2.5f
+
+fun nextQuarterRotation(rotation: Float): Float = (rotation + 90f) % 360f
+
+fun normalizedCropRect(left: Float, top: Float, right: Float, bottom: Float): NormalizedCropRect {
+    val l = minOf(left, right).coerceIn(0f, 1f)
+    val r = maxOf(left, right).coerceIn(0f, 1f)
+    val t = minOf(top, bottom).coerceIn(0f, 1f)
+    val b = maxOf(top, bottom).coerceIn(0f, 1f)
+    return NormalizedCropRect(l, t, r, b)
+}
+
 fun groupAlbums(items: List<MediaMeta>): List<AlbumSummary> =
     items
         .groupBy { normalizeRelativePath(it.relativePath) }
