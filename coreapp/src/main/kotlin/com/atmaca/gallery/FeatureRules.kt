@@ -22,6 +22,16 @@ fun mediaFilterAccepts(isVideo:Boolean,filter:MediaFilter):Boolean = when(filter
 }
 fun mediaFilterLabels():List<String> = listOf("Tümü","Fotoğraflar","Videolar")
 fun mediaSortLabels():List<String> = listOf("En yeni","En eski","Ada göre")
+fun completeSettingsEntries():List<String> = listOf(
+    "Geri Dönüşüm Kutusu",
+    "Slayt gösterisi",
+    "Akıllı Kişi Kırpma",
+    "Görsel Paketleyici",
+    "Video Kareleri"
+)
+fun clampSlideshowSeconds(seconds:Int):Int = seconds.coerceIn(1,30)
+fun packageBatchPath(batch:Int):String = "Pictures/ATMACA Paketler/Paket_${batch.coerceAtLeast(1).toString().padStart(4,'0')}/"
+fun frameIntervalMs(framesPerSecond:Int):Long = 1000L / framesPerSecond.coerceIn(1,30)
 
 fun isViewerDoubleTap(previousUpMs:Long,currentUpMs:Long,distancePx:Float,maxDelayMs:Long=300L,maxDistancePx:Float=80f):Boolean =
     previousUpMs>0L && currentUpMs>previousUpMs && currentUpMs-previousUpMs<=maxDelayMs && distancePx<=maxDistancePx
