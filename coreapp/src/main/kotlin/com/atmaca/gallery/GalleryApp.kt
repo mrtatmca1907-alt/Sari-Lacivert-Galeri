@@ -49,6 +49,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Crop
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -180,6 +181,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
+    var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
 
     val selected = remember(selectedIds, state.items) {
         state.items.filter { it.id in selectedIds }
@@ -290,6 +292,17 @@ private fun GalleryHome(vm: GalleryViewModel) {
         if (refreshToken > 0 && section in listOf(HomeSection.PHOTOS, HomeSection.VIDEOS, HomeSection.TRASH)) {
             vm.reload()
         }
+    }
+
+    cropItem?.let { item ->
+        CropEditor(
+            item = item,
+            actions = actions,
+            onCancel = { cropItem = null },
+            onSaved = { cropItem = null; refreshToken++; albumsRefresh++; vm.reload() },
+            onMessage = { message = it }
+        )
+        return
     }
 
     cropItem?.let { item ->
