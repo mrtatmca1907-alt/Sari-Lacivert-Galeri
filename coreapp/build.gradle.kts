@@ -11,8 +11,8 @@ android {
         applicationId = "com.atmaca.gallery"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0-stable-photo"
+        versionCode = 5
+        versionName = "0.4.1-stable-photo"
     }
 
     compileOptions {
@@ -23,7 +23,6 @@ android {
     buildFeatures { compose = true }
 }
 
-// Viewer v0.3: zoom, swipe, rotate, crop, bottom back, custom icon.
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     implementation(composeBom)
