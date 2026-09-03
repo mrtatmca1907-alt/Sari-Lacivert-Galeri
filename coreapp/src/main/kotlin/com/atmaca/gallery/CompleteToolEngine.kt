@@ -5,19 +5,24 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
-import android.graphics.PointF
-import android.media.FaceDetector
+import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.face.Face
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetector
+import com.google.mlkit.vision.face.FaceDetectorOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /** Result shared by the three isolated ATMACA media tools. */
@@ -106,96 +111,129 @@ class CompleteToolEngine(private val context: Context) {
     }
 
     /**
-     * Independent on-device smart crop. Android's local FaceDetector is used as the
-     * detector; source photos are never modified and every detected region is written
-     * as a new JPEG under Pictures/ATMACA Kişi Kırpma/.
+     * On-device smart crop using bundled ML Kit face detection. The detector works on
+     * a bounded preview bitmap; detections are mapped back to source coordinates and
+     * expanded to include head/shoulders/upper body. Source photos are never modified.
      */
     suspend fun smartPersonCrop(
         photos: List<Uri>,
         maxFacesPerPhoto: Int = 12,
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }
     ): ToolRunResult = withContext(Dispatchers.Default) {
+        val detector = createFaceDetector()
         var created = 0
         var skipped = 0
         var failed = 0
-        photos.forEachIndexed { photoIndex, uri ->
-            coroutineContext.ensureActive()
-            val source = decodeBitmap(uri)
-            if (source == null || source.width < 2 || source.height < 2) {
-                failed++
-                source?.recycle()
-                onProgress(photoIndex + 1, photos.size)
-                return@forEachIndexed
-            }
-            try {
-                val detection = prepareFaceBitmap(source)
-                val faces = arrayOfNulls<FaceDetector.Face>(maxFacesPerPhoto.coerceIn(1, 32))
-                val detector = FaceDetector(detection.bitmap.width, detection.bitmap.height, faces.size)
-                val found = runCatching { detector.findFaces(detection.bitmap, faces) }.getOrDefault(0)
-                if (found <= 0) {
-                    skipped++
-                } else {
-                    val sourceName = queryNameMime(uri).first.ifBlank { "photo_${photoIndex + 1}.jpg" }
-                    repeat(found) { faceIndex ->
-                        coroutineContext.ensureActive()
-                        val face = faces[faceIndex] ?: return@repeat
-                        val midpoint = PointF()
-                        face.getMidPoint(midpoint)
-                        val eyes = face.eyesDistance().coerceAtLeast(8f)
-                        val scale = detection.scaleToSource
-                        val cx = midpoint.x * scale
-                        val cy = midpoint.y * scale
-                        val e = eyes * scale
-                        val left = (cx - e * 2.6f).roundToInt().coerceIn(0, source.width - 1)
-                        val right = (cx + e * 2.6f).roundToInt().coerceIn(left + 1, source.width)
-                        val top = (cy - e * 2.7f).roundToInt().coerceIn(0, source.height - 1)
-                        val bottom = (cy + e * 3.7f).roundToInt().coerceIn(top + 1, source.height)
-                        val crop = runCatching { Bitmap.createBitmap(source, left, top, right - left, bottom - top) }.getOrNull()
-                        if (crop == null) {
-                            failed++
-                        } else {
-                            val outputName = personCropName(sourceName.substringBeforeLast('.', sourceName) + ".jpg", faceIndex + 1)
-                            val ok = withContext(Dispatchers.IO) {
-                                saveBitmapJpeg(crop, outputName, "Pictures/ATMACA Kişi Kırpma/", 94)
+        try {
+            photos.forEachIndexed { photoIndex, uri ->
+                coroutineContext.ensureActive()
+                val source = decodeBitmap(uri)
+                if (source == null || source.width < 2 || source.height < 2) {
+                    failed++
+                    source?.recycle()
+                    onProgress(photoIndex + 1, photos.size)
+                    return@forEachIndexed
+                }
+
+                var detectionBitmap: Bitmap? = null
+                try {
+                    val prepared = prepareDetectionBitmap(source)
+                    detectionBitmap = prepared.bitmap
+                    val faces = detectFaces(detector, prepared.bitmap)
+                        .sortedByDescending { it.boundingBox.width().toLong() * it.boundingBox.height().toLong() }
+                        .take(maxFacesPerPhoto.coerceIn(1, 32))
+
+                    if (faces.isEmpty()) {
+                        skipped++
+                    } else {
+                        val sourceName = queryNameMime(uri).first.ifBlank { "photo_${photoIndex + 1}.jpg" }
+                        faces.forEachIndexed { faceIndex, face ->
+                            coroutineContext.ensureActive()
+                            val box = scaleRectToSource(face.boundingBox, prepared.scaleToSource)
+                            val bounds = personCropBounds(
+                                sourceWidth = source.width,
+                                sourceHeight = source.height,
+                                faceLeft = box.left,
+                                faceTop = box.top,
+                                faceRight = box.right,
+                                faceBottom = box.bottom
+                            )
+                            if (bounds.width <= 0 || bounds.height <= 0) {
+                                failed++
+                                return@forEachIndexed
                             }
-                            crop.recycle()
-                            if (ok) created++ else failed++
+                            val crop = runCatching {
+                                Bitmap.createBitmap(source, bounds.left, bounds.top, bounds.width, bounds.height)
+                            }.getOrNull()
+                            if (crop == null) {
+                                failed++
+                            } else {
+                                val outputName = personCropName(
+                                    sourceName.substringBeforeLast('.', sourceName) + ".jpg",
+                                    faceIndex + 1
+                                )
+                                val ok = withContext(Dispatchers.IO) {
+                                    saveBitmapJpeg(crop, outputName, "Pictures/ATMACA Kişi Kırpma/", 94)
+                                }
+                                crop.recycle()
+                                if (ok) created++ else failed++
+                            }
                         }
                     }
+                } catch (_: Throwable) {
+                    failed++
+                } finally {
+                    if (detectionBitmap != null && detectionBitmap !== source && !detectionBitmap!!.isRecycled) {
+                        detectionBitmap!!.recycle()
+                    }
+                    source.recycle()
                 }
-                if (detection.bitmap !== source) detection.bitmap.recycle()
-            } catch (_: Throwable) {
-                failed++
-            } finally {
-                source.recycle()
+                onProgress(photoIndex + 1, photos.size)
             }
-            onProgress(photoIndex + 1, photos.size)
+        } finally {
+            detector.close()
         }
         ToolRunResult(photos.size, created, skipped, failed)
     }
 
+    private fun createFaceDetector(): FaceDetector {
+        val options = FaceDetectorOptions.Builder()
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+            .setMinFaceSize(0.05f)
+            .build()
+        return FaceDetection.getClient(options)
+    }
+
+    private suspend fun detectFaces(detector: FaceDetector, bitmap: Bitmap): List<Face> =
+        suspendCancellableCoroutine { continuation ->
+            detector.process(InputImage.fromBitmap(bitmap, 0))
+                .addOnSuccessListener { faces ->
+                    if (continuation.isActive) continuation.resume(faces)
+                }
+                .addOnFailureListener { error ->
+                    if (continuation.isActive) continuation.resumeWithException(error)
+                }
+        }
+
     private data class DetectionBitmap(val bitmap: Bitmap, val scaleToSource: Float)
 
-    private fun prepareFaceBitmap(source: Bitmap): DetectionBitmap {
+    private fun prepareDetectionBitmap(source: Bitmap): DetectionBitmap {
         val maxEdge = 1600
-        val ratio = max(source.width, source.height).toFloat() / maxEdge.toFloat()
-        val scaled = if (ratio > 1f) {
-            val w = (source.width / ratio).roundToInt().coerceAtLeast(2)
-            val h = (source.height / ratio).roundToInt().coerceAtLeast(2)
-            Bitmap.createScaledBitmap(source, w, h, true)
-        } else source
-        val evenWidth = if (scaled.width % 2 == 0) scaled.width else scaled.width - 1
-        val detectorSized = if (evenWidth != scaled.width) {
-            Bitmap.createBitmap(scaled, 0, 0, evenWidth.coerceAtLeast(2), scaled.height)
-        } else scaled
-        if (scaled !== source && detectorSized !== scaled) scaled.recycle()
-        val rgb565 = if (detectorSized.config != Bitmap.Config.RGB_565) {
-            detectorSized.copy(Bitmap.Config.RGB_565, false).also {
-                if (detectorSized !== source) detectorSized.recycle()
-            }
-        } else detectorSized
-        return DetectionBitmap(rgb565, source.width.toFloat() / rgb565.width.toFloat())
+        val edge = max(source.width, source.height)
+        if (edge <= maxEdge) return DetectionBitmap(source, 1f)
+        val ratio = edge.toFloat() / maxEdge.toFloat()
+        val width = (source.width / ratio).roundToInt().coerceAtLeast(2)
+        val height = (source.height / ratio).roundToInt().coerceAtLeast(2)
+        val scaled = Bitmap.createScaledBitmap(source, width, height, true)
+        return DetectionBitmap(scaled, source.width.toFloat() / scaled.width.toFloat())
     }
+
+    private fun scaleRectToSource(rect: Rect, scale: Float): Rect = Rect(
+        (rect.left * scale).roundToInt(),
+        (rect.top * scale).roundToInt(),
+        (rect.right * scale).roundToInt(),
+        (rect.bottom * scale).roundToInt()
+    )
 
     private fun decodeBitmap(uri: Uri): Bitmap? = runCatching {
         if (Build.VERSION.SDK_INT >= 28) {
@@ -262,7 +300,9 @@ class CompleteToolEngine(private val context: Context) {
         }
         val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
         return try {
-            val ok = resolver.openOutputStream(uri, "w")?.use { out -> bitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(70, 100), out) } == true
+            val ok = resolver.openOutputStream(uri, "w")?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(70, 100), out)
+            } == true
             if (ok) {
                 values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0); resolver.update(uri, values, null, null)
                 true
