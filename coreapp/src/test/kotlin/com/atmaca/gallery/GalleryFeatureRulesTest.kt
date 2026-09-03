@@ -27,84 +27,17 @@ class GalleryFeatureRulesTest {
         assertTrue(shouldPhotoConsumeGesture(pointerCount=1, scale=1.5f, rotation=0f))
         assertTrue(shouldPhotoConsumeGesture(pointerCount=1, scale=1f, rotation=15f))
     }
-
-    @Test fun parentTransformStateIsCommittedOnlyWhenGestureEnds() {
-        assertFalse(shouldCommitViewerTransform(gestureEnded=false))
-        assertTrue(shouldCommitViewerTransform(gestureEnded=true))
-    }
-
-    @Test fun photoOptionsLiveInTopMenuAndBottomBarStaysMinimal() {
-        assertEquals(
-            listOf("Kırp", "Screenshot modu", "Ad değiştir", "Çöpe taşı / sil"),
-            viewerMenuEntries(isVideo = false, screenshotMode = false)
-        )
-        assertEquals(listOf("Paylaş", "Geri"), viewerBottomActions(isVideo = false))
-    }
-
-    @Test fun videoTopMenuDoesNotExposePhotoOnlyTools() {
-        assertEquals(
-            listOf("Ad değiştir", "Çöpe taşı / sil"),
-            viewerMenuEntries(isVideo = true, screenshotMode = false)
-        )
-    }
-
-    @Test fun homeHasOnlyMediaAlbumsSettings() {
-        assertEquals(
-            listOf(HomeSection.MEDIA, HomeSection.ALBUMS, HomeSection.SETTINGS),
-            homeSections()
-        )
-    }
-
-    @Test fun thumbnailNameUsesMediaDisplayName() {
-        assertEquals("denizcakir_84.jpg", mediaNameOverlay("denizcakir_84.jpg"))
-    }
-
-    @Test fun mediaFilterSeparatesPhotosVideosAndAll() {
-        assertTrue(mediaFilterAccepts(isVideo = false, MediaFilter.ALL))
-        assertTrue(mediaFilterAccepts(isVideo = true, MediaFilter.ALL))
-        assertTrue(mediaFilterAccepts(isVideo = false, MediaFilter.PHOTOS))
-        assertFalse(mediaFilterAccepts(isVideo = true, MediaFilter.PHOTOS))
-        assertTrue(mediaFilterAccepts(isVideo = true, MediaFilter.VIDEOS))
-        assertFalse(mediaFilterAccepts(isVideo = false, MediaFilter.VIDEOS))
-    }
-
-    @Test fun settingsExposeStableSortAndFilterChoices() {
-        assertEquals(listOf("Tümü", "Fotoğraflar", "Videolar"), mediaFilterLabels())
-        assertEquals(listOf("En yeni", "En eski", "Ada göre"), mediaSortLabels())
-    }
-
-    @Test fun doubleTapNeedsTwoNearbyTapsInsideTheTimeWindow() {
-        assertTrue(isViewerDoubleTap(1000L, 1240L, 18f, 300L, 80f))
-        assertFalse(isViewerDoubleTap(1000L, 1400L, 18f, 300L, 80f))
-        assertFalse(isViewerDoubleTap(1000L, 1240L, 120f, 300L, 80f))
-    }
-
-    @Test fun viewportDecodeReducesHugeImagesButKeepsNormalPhotosSharp() {
-        assertEquals(3, calculateViewerDecodeSample(12000, 9000, 1080, 1920))
-        assertEquals(1, calculateViewerDecodeSample(4000, 3000, 1080, 1920))
-        assertEquals(1, calculateViewerDecodeSample(0, 0, 1080, 1920))
-    }
-
-    @Test fun completeSettingsContainRecycleSlideshowAndAllThreeTools() {
-        assertEquals(
-            listOf("Geri Dönüşüm Kutusu", "Slayt gösterisi", "Akıllı Kişi Kırpma", "Görsel Paketleyici", "Video Kareleri"),
-            completeSettingsEntries()
-        )
-    }
-
-    @Test fun slideshowIntervalIsAlwaysSafe() {
-        assertEquals(1, clampSlideshowSeconds(0))
-        assertEquals(5, clampSlideshowSeconds(5))
-        assertEquals(30, clampSlideshowSeconds(80))
-    }
-
-    @Test fun packagerCreatesStableBatchFolders() {
-        assertEquals("Pictures/ATMACA Paketler/Paket_0001/", packageBatchPath(1))
-        assertEquals("Pictures/ATMACA Paketler/Paket_0012/", packageBatchPath(12))
-    }
-
-    @Test fun videoFramesUseOneSecondDefaultCadence() {
-        assertEquals(1000L, frameIntervalMs(1))
-        assertEquals(500L, frameIntervalMs(2))
-    }
+    @Test fun parentTransformStateIsCommittedOnlyWhenGestureEnds() { assertFalse(shouldCommitViewerTransform(false)); assertTrue(shouldCommitViewerTransform(true)) }
+    @Test fun photoOptionsLiveInTopMenuAndBottomBarStaysMinimal() { assertEquals(listOf("Kırp","Screenshot modu","Ad değiştir","Çöpe taşı / sil"),viewerMenuEntries(false,false)); assertEquals(listOf("Paylaş","Geri"),viewerBottomActions(false)) }
+    @Test fun videoTopMenuDoesNotExposePhotoOnlyTools() { assertEquals(listOf("Ad değiştir","Çöpe taşı / sil"),viewerMenuEntries(true,false)) }
+    @Test fun homeHasOnlyMediaAlbumsSettings() { assertEquals(listOf(HomeSection.MEDIA,HomeSection.ALBUMS,HomeSection.SETTINGS),homeSections()) }
+    @Test fun thumbnailNameUsesMediaDisplayName() { assertEquals("denizcakir_84.jpg",mediaNameOverlay("denizcakir_84.jpg")) }
+    @Test fun mediaFilterSeparatesPhotosVideosAndAll() { assertTrue(mediaFilterAccepts(false,MediaFilter.ALL)); assertTrue(mediaFilterAccepts(true,MediaFilter.ALL)); assertTrue(mediaFilterAccepts(false,MediaFilter.PHOTOS)); assertFalse(mediaFilterAccepts(true,MediaFilter.PHOTOS)); assertTrue(mediaFilterAccepts(true,MediaFilter.VIDEOS)); assertFalse(mediaFilterAccepts(false,MediaFilter.VIDEOS)) }
+    @Test fun settingsExposeStableSortAndFilterChoices() { assertEquals(listOf("Tümü","Fotoğraflar","Videolar","GIF'ler","RAW resimler","SVG'ler"),mediaFilterLabels()); assertEquals(listOf("Ad","Yol","Boyut","Son değiştirilme","Alınan tarih","Rastgele"),mediaSortLabels()) }
+    @Test fun doubleTapNeedsTwoNearbyTapsInsideTheTimeWindow() { assertTrue(isViewerDoubleTap(1000L,1240L,18f,300L,80f)); assertFalse(isViewerDoubleTap(1000L,1400L,18f,300L,80f)); assertFalse(isViewerDoubleTap(1000L,1240L,120f,300L,80f)) }
+    @Test fun viewportDecodeReducesHugeImagesButKeepsNormalPhotosSharp() { assertEquals(3,calculateViewerDecodeSample(12000,9000,1080,1920)); assertEquals(1,calculateViewerDecodeSample(4000,3000,1080,1920)); assertEquals(1,calculateViewerDecodeSample(0,0,1080,1920)) }
+    @Test fun completeSettingsContainRecycleSlideshowAndAllThreeTools() { assertEquals(listOf("Geri Dönüşüm Kutusu","Slayt gösterisi","Akıllı Kişi Kırpma","Görsel Paketleyici","Video Kareleri"),completeSettingsEntries()) }
+    @Test fun slideshowIntervalIsAlwaysSafe() { assertEquals(1,clampSlideshowSeconds(0)); assertEquals(5,clampSlideshowSeconds(5)); assertEquals(30,clampSlideshowSeconds(80)) }
+    @Test fun packagerCreatesStableBatchFolders() { assertEquals("Pictures/ATMACA Paketler/Paket_0001/",packageBatchPath(1)); assertEquals("Pictures/ATMACA Paketler/Paket_0012/",packageBatchPath(12)) }
+    @Test fun videoFramesUseOneSecondDefaultCadence() { assertEquals(1000L,frameIntervalMs(1)); assertEquals(500L,frameIntervalMs(2)) }
 }
