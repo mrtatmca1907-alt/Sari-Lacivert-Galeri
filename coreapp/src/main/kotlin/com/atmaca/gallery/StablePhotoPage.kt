@@ -139,8 +139,8 @@ fun StablePhotoPage(
                                         val nextScale = clampViewerScale(oldScale * galleryZoomFactor(zoomRaw))
                                         if (abs(nextScale - oldScale) > 0.0005f) {
                                             val centroid = event.calculateCentroid(useCurrent = true)
-                                            offsetX = zoomOffsetAroundFocus(offsetX, centroid.x - viewportWidth / 2f, oldScale, nextScale)
-                                            offsetY = zoomOffsetAroundFocus(offsetY, centroid.y - viewportHeight / 2f, oldScale, nextScale)
+                                            offsetX = zoomOffsetAroundFocus(offsetX, centroid.x - fitted.width / 2f, oldScale, nextScale)
+                                            offsetY = zoomOffsetAroundFocus(offsetY, centroid.y - fitted.height / 2f, oldScale, nextScale)
                                             scale = nextScale
                                             moved = true
                                         }
