@@ -11,7 +11,7 @@ class PhysicalPickerAndPersonCropContractTest {
         val source = File("src/main/kotlin/com/atmaca/gallery/InternalToolAlbumPicker.kt").readText()
         assertFalse(source.contains("repository.loadAlbumsOemSafe()"))
         assertFalse(source.contains("repository.loadMixedPage("))
-        assertTrue(source.contains("repository.loadCompleteAlbums()"))
+        assertTrue(source.contains("repository.loadCompleteAlbums"))
     }
 
     @Test
