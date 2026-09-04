@@ -98,4 +98,107 @@ if full_quality_new not in feature_text:
     feature_text = feature_text.replace(full_quality_old, full_quality_new, 1)
 feature_path.write_text(feature_text, encoding="utf-8")
 
+repository_path = Path("coreapp/src/main/kotlin/com/atmaca/gallery/MediaStoreRepository.kt")
+repository_text = repository_path.read_text(encoding="utf-8")
+if "suspend fun loadMixedPageAfter(" not in repository_text:
+    marker = "    private fun addAlbumSelector(\n"
+    if repository_text.count(marker) != 1:
+        raise SystemExit("keyset repository insertion marker bulunamadi")
+    keyset_function = '''    suspend fun loadMixedPageAfter(
+        afterDateAdded: Long?,
+        afterId: Long?,
+        limit: Int = PAGE_SIZE,
+        albumPath: String? = null,
+        albumBucketId: Long = 0L,
+        albumBucketName: String? = null,
+        trashedOnly: Boolean = false
+    ): List<GalleryMedia> = withContext(Dispatchers.IO) {
+        if (trashedOnly && Build.VERSION.SDK_INT < 30) return@withContext emptyList()
+        val selectionParts = mutableListOf("(${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?)")
+        val selectionArgs = mutableListOf(
+            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+        )
+        addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId, albumBucketName)
+        if (afterDateAdded != null && afterId != null) {
+            selectionParts += "(${MediaStore.MediaColumns.DATE_ADDED}<? OR (${MediaStore.MediaColumns.DATE_ADDED}=? AND ${MediaStore.Files.FileColumns._ID}<?))"
+            selectionArgs += afterDateAdded.toString()
+            selectionArgs += afterDateAdded.toString()
+            selectionArgs += afterId.toString()
+        }
+        queryKeysetPage(selectionParts, selectionArgs, limit, trashedOnly)
+    }
+
+'''
+    repository_text = repository_text.replace(marker, keyset_function + marker, 1)
+
+if "private fun queryKeysetPage(" not in repository_text:
+    marker = "    private fun sha256(uri: Uri): String? = runCatching {\n"
+    if repository_text.count(marker) != 1:
+        raise SystemExit("keyset query insertion marker bulunamadi")
+    query_function = '''    private fun queryKeysetPage(
+        selectionParts: List<String>,
+        selectionArgs: List<String>,
+        limit: Int,
+        trashedOnly: Boolean
+    ): List<GalleryMedia> {
+        val args = Bundle().apply {
+            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selectionParts.joinToString(" AND "))
+            putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selectionArgs.toTypedArray())
+            putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(MediaStore.MediaColumns.DATE_ADDED, MediaStore.Files.FileColumns._ID))
+            putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
+            putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
+            if (Build.VERSION.SDK_INT >= 30 && trashedOnly) putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
+        }
+        return queryMedia(args, limit)
+    }
+
+'''
+    repository_text = repository_text.replace(marker, query_function + marker, 1)
+repository_path.write_text(repository_text, encoding="utf-8")
+
+view_model_path = Path("coreapp/src/main/kotlin/com/atmaca/gallery/GalleryViewModel.kt")
+view_model_text = view_model_path.read_text(encoding="utf-8")
+if "val lastLoaded = snapshot.items.lastOrNull()" not in view_model_text:
+    marker = "            runCatching {\n                when (snapshot.mode) {\n"
+    replacement = "            val lastLoaded = snapshot.items.lastOrNull()\n            runCatching {\n                when (snapshot.mode) {\n"
+    if view_model_text.count(marker) != 1:
+        raise SystemExit("view model last media marker bulunamadi")
+    view_model_text = view_model_text.replace(marker, replacement, 1)
+
+old_media = '''                    CollectionMode.MEDIA -> repository.loadMixedPage(
+                        offset = snapshot.items.size,
+                        limit = MediaStoreRepository.PAGE_SIZE
+                    )'''
+new_media = '''                    CollectionMode.MEDIA -> repository.loadMixedPageAfter(
+                        afterDateAdded = lastLoaded?.dateAdded,
+                        afterId = lastLoaded?.id,
+                        limit = MediaStoreRepository.PAGE_SIZE
+                    )'''
+if new_media not in view_model_text:
+    if view_model_text.count(old_media) != 1:
+        raise SystemExit("view model media paging marker bulunamadi")
+    view_model_text = view_model_text.replace(old_media, new_media, 1)
+
+old_album = '''                        val fastPage = repository.loadMixedPage(
+                            offset = snapshot.items.size,
+                            limit = MediaStoreRepository.PAGE_SIZE,
+                            albumPath = snapshot.albumPath,
+                            albumBucketId = snapshot.albumBucketId,
+                            albumBucketName = snapshot.albumBucketName
+                        )'''
+new_album = '''                        val fastPage = repository.loadMixedPageAfter(
+                            afterDateAdded = lastLoaded?.dateAdded,
+                            afterId = lastLoaded?.id,
+                            limit = MediaStoreRepository.PAGE_SIZE,
+                            albumPath = snapshot.albumPath,
+                            albumBucketId = snapshot.albumBucketId,
+                            albumBucketName = snapshot.albumBucketName
+                        )'''
+if new_album not in view_model_text:
+    if view_model_text.count(old_album) != 1:
+        raise SystemExit("view model album paging marker bulunamadi")
+    view_model_text = view_model_text.replace(old_album, new_album, 1)
+view_model_path.write_text(view_model_text, encoding="utf-8")
+
 print("Runtime gallery fixes applied")
