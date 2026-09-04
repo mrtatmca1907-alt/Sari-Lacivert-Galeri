@@ -711,13 +711,20 @@ private fun GalleryTopBar(
         if (showBack) {
             IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Geri") }
         }
-        Text(
-            title,
-            style = MaterialTheme.typography.headlineSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                visibleBuildBadge(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1
+            )
+        }
         IconButton(onClick = onCamera) { Icon(Icons.Default.PhotoCamera, "Kamera") }
         IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "Yenile") }
         Box {
@@ -754,10 +761,11 @@ private fun SelectionBar(
         Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant)
+            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("$selectedCount seçili", maxLines = 1, modifier = Modifier.width(78.dp))
+        Text("$selectedCount seçili", maxLines = 1, softWrap = false, modifier = Modifier.width(94.dp))
         IconButton(onClick = onSelectAll, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.SelectAll, "Tümünü seç") }
         IconButton(onClick = onShare, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Share, "Paylaş") }
         if (!trashMode) {
