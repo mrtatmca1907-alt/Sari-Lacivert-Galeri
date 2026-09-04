@@ -19,6 +19,25 @@ if "import androidx.compose.foundation.gestures.scrollBy\n" not in text:
         "scrollBy import"
     )
 
+if "private const val HIGH_QUALITY_THUMBNAIL_EDGE = 720" not in text:
+    replace_once(
+        "private enum class PathAction { COPY, MOVE }\n",
+        "private enum class PathAction { COPY, MOVE }\nprivate const val HIGH_QUALITY_THUMBNAIL_EDGE = 720\n",
+        "high quality thumbnail constant"
+    )
+
+if "loadThumbnailCompat(context, item, HIGH_QUALITY_THUMBNAIL_EDGE)" not in text:
+    replace_once(
+        "val key = \"${item.uri}:${item.dateModified}:${item.size}:360\"",
+        "val key = \"${item.uri}:${item.dateModified}:${item.size}:$HIGH_QUALITY_THUMBNAIL_EDGE\"",
+        "thumbnail cache key"
+    )
+    replace_once(
+        "loadThumbnailCompat(context, item, 360)",
+        "loadThumbnailCompat(context, item, HIGH_QUALITY_THUMBNAIL_EDGE)",
+        "thumbnail quality load"
+    )
+
 if "shouldLoadMoreForEmptyFilteredPage(\n            totalLoaded = state.items.size" not in text:
     replace_once(
         "        if (mediaSort == MediaSort.RANDOM) ordered else applySortDirection(ordered, sortDirection)\n    }\n\n    when {",
@@ -62,4 +81,21 @@ if "onDragEnd = { dragActive = false; lastDragIndex = -1 }" not in text:
     )
 
 path.write_text(text, encoding="utf-8")
+
+feature_path = Path("coreapp/src/main/kotlin/com/atmaca/gallery/FeatureRules.kt")
+feature_text = feature_path.read_text(encoding="utf-8")
+full_quality_old = '''fun calculateViewerDecodeSample(sourceWidth:Int,sourceHeight:Int,viewportWidth:Int,viewportHeight:Int):Int {
+    if(sourceWidth<=0||sourceHeight<=0||viewportWidth<=0||viewportHeight<=0)return 1
+    val sourceEdge=maxOf(sourceWidth,sourceHeight).toLong(); val targetEdge=maxOf(viewportWidth,viewportHeight).toLong()*2L
+    if(targetEdge<=0L)return 1
+    return (sourceEdge/targetEdge).toInt().coerceAtLeast(1)
+}'''
+full_quality_new = '''fun calculateViewerDecodeSample(sourceWidth:Int,sourceHeight:Int,viewportWidth:Int,viewportHeight:Int):Int = 1'''
+if full_quality_new not in feature_text:
+    count = feature_text.count(full_quality_old)
+    if count != 1:
+        raise SystemExit(f"full quality viewer decode: beklenen 1 eslesme, bulunan {count}")
+    feature_text = feature_text.replace(full_quality_old, full_quality_new, 1)
+feature_path.write_text(feature_text, encoding="utf-8")
+
 print("Runtime gallery fixes applied")
