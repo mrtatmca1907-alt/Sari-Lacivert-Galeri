@@ -65,6 +65,12 @@ fun shouldLoadMoreForEmptyFilteredPage(
     loading: Boolean
 ): Boolean = totalLoaded > 0 && filteredVisible == 0 && hasMore && !loading
 
+fun viewerPagingShouldLoadMore(totalLoaded: Int, currentPage: Int, preloadAhead: Int = 48): Boolean {
+    if (totalLoaded <= 0 || currentPage < 0) return false
+    val remainingAfterCurrent = (totalLoaded - 1 - currentPage).coerceAtLeast(0)
+    return remainingAfterCurrent <= preloadAhead.coerceAtLeast(1)
+}
+
 fun dragAutoScrollDelta(pointerY: Float, viewportHeight: Float, edgePx: Float): Float {
     if (viewportHeight <= 0f || edgePx <= 0f) return 0f
     val topEdge = edgePx
