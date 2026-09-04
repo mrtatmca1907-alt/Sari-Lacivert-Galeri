@@ -46,4 +46,9 @@ class OemRegressionTest {
         assertTrue(keepToolDialogOpenForBackgroundProgress(AtmacaToolPage.VIDEO_FRAMES))
         assertFalse(keepToolDialogOpenForBackgroundProgress(AtmacaToolPage.PERSON_CROP))
     }
+
+    @Test fun buildIdentityIsVisibleAndUniqueForThisPhoneTest() {
+        assertEquals("BUILD 140904", visibleBuildBadge())
+        assertTrue(appVersionCodeForTest() > 13)
+    }
 }
