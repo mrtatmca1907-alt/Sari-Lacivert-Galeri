@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -53,8 +54,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.ContentCopy
@@ -111,7 +110,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -872,6 +873,8 @@ private fun MediaGrid(
 ) {
     val gridState = rememberLazyGridState()
     val gridScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    var scrollbarHeightPx by remember { mutableIntStateOf(0) }
     var dragX by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
     var lastDragIndex by remember { mutableIntStateOf(-1) }
@@ -930,10 +933,7 @@ private fun MediaGrid(
                 selected = item.id in selectedIds,
                 modifier = Modifier
                     .aspectRatio(1f)
-                    .combinedClickable(
-                        onClick = { onOpen(index) },
-                        onLongClick = { onToggleSelection(item.id) }
-                    )
+                    .clickable { onOpen(index) }
             )
         }
         if (loading) {
@@ -944,24 +944,46 @@ private fun MediaGrid(
             }
         }
     }
-        Column(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 4.dp)
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f), RoundedCornerShape(18.dp))
-        ) {
-            IconButton(
-                onClick = { gridScope.launch { gridState.animateScrollToItem(0) } },
-                enabled = items.isNotEmpty()
-            ) { Icon(Icons.Default.KeyboardArrowUp, "En üste git") }
-            IconButton(
-                onClick = {
-                    gridScope.launch {
-                        if (items.isNotEmpty()) gridState.animateScrollToItem(items.lastIndex)
+        if (items.size > gridState.layoutInfo.visibleItemsInfo.size) {
+            val thumbHeightPx = with(density) { 64.dp.toPx() }
+            val travelPx = (scrollbarHeightPx - thumbHeightPx).coerceAtLeast(1f)
+            val maxFirst = (items.lastIndex - gridState.layoutInfo.visibleItemsInfo.size + 1).coerceAtLeast(1)
+            val fraction = (gridState.firstVisibleItemIndex.toFloat() / maxFirst.toFloat()).coerceIn(0f, 1f)
+            val thumbOffsetPx = travelPx * fraction
+
+            fun jumpScrollbar(pointerY: Float) {
+                val targetFraction = ((pointerY - thumbHeightPx / 2f) / travelPx).coerceIn(0f, 1f)
+                val targetIndex = (targetFraction * maxFirst).roundToInt().coerceIn(0, items.lastIndex)
+                gridScope.launch { gridState.scrollToItem(targetIndex) }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(18.dp)
+                    .onSizeChanged { scrollbarHeightPx = it.height }
+                    .pointerInput(items.size, scrollbarHeightPx) {
+                        detectDragGestures(
+                            onDragStart = { jumpScrollbar(it.y) },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                jumpScrollbar(change.position.y)
+                            }
+                        )
                     }
-                },
-                enabled = items.isNotEmpty()
-            ) { Icon(Icons.Default.KeyboardArrowDown, "En alta git") }
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset { IntOffset(0, thumbOffsetPx.roundToInt()) }
+                        .padding(end = 2.dp)
+                        .width(7.dp)
+                        .height(64.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color.DarkGray.copy(alpha = 0.78f))
+                )
+            }
         }
     }
 }
