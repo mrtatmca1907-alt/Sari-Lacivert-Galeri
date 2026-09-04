@@ -50,7 +50,7 @@ enum class AtmacaToolPage { PERSON_CROP, PACKAGER, VIDEO_FRAMES }
 fun CompleteSettingsExtras(
     onOpenTrash: () -> Unit,
     onOpenDuplicates: () -> Unit,
-    onOpenTool: (AtmacaToolPage) -> Unit
+    onOpenTool: (AtmacaToolPage) -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("gallery", android.content.Context.MODE_PRIVATE) }
