@@ -2,6 +2,9 @@ package com.atmaca.gallery
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -113,7 +116,16 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     var framesPerSecond by remember(tool) { mutableIntStateOf(1) }
     var maxFaces by remember(tool) { mutableIntStateOf(12) }
     var showInternalAlbumPicker by remember(tool) { mutableStateOf(false) }
+    var showDirectFolderPicker by remember(tool) { mutableStateOf(false) }
     var backgroundWorkId by remember(tool) { mutableStateOf<UUID?>(null) }
+
+    val allFilesAccessLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager()) {
+            showDirectFolderPicker = true
+        } else {
+            Toast.makeText(context, "Tüm dosyalara erişim izni verilmedi", Toast.LENGTH_LONG).show()
+        }
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
         uris.forEach { uri ->
@@ -222,6 +234,21 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
         }
     }
 
+    if (showDirectFolderPicker) {
+        DirectFolderPicker(
+            tool = tool,
+            onDismiss = { showDirectFolderPicker = false },
+            onSelected = { uris ->
+                selectedUris = uris.distinct()
+                done = 0
+                total = selectedUris.size
+                showDirectFolderPicker = false
+                Toast.makeText(context, "${selectedUris.size} uygun dosya seçildi", Toast.LENGTH_SHORT).show()
+            }
+        )
+        return
+    }
+
     if (showInternalAlbumPicker) {
         InternalToolAlbumPicker(
             tool = tool,
@@ -268,11 +295,21 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
                         Text("Galeriden albüm seç")
                     }
                     OutlinedButton(
-                        onClick = { folderPicker.launch(null) },
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                                allFilesAccessLauncher.launch(intent)
+                            } else {
+                                showDirectFolderPicker = true
+                            }
+                        },
                         enabled = !running && !scanning,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Telefon klasörü seç (alt klasörler dahil)")
+                        Text("Telefon klasörü seç (kök ve alt klasörler)")
                     }
 
                     if (scanning) {
