@@ -11,8 +11,8 @@ android {
         applicationId = "com.atmaca.gallery"
         minSdk = 26
         targetSdk = 36
-        versionCode = 140906
-        versionName = "0.7.2-hios-build-140906"
+        versionCode = 140907
+        versionName = "0.7.3-hios-build-140907"
     }
 
     compileOptions {

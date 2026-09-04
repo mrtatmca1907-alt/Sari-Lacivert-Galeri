@@ -29,3 +29,9 @@ data class AlbumQueryOutcome(val albums: List<GalleryAlbum>, val imageFailed: Bo
 }
 internal fun albumQueryOutcome(albums: List<GalleryAlbum>, imageFailed: Boolean, videoFailed: Boolean) =
     AlbumQueryOutcome(albums, imageFailed, videoFailed)
+
+internal fun albumQuerySortFallbacks(): List<String?> = listOf(
+    "date_added DESC, _id DESC",
+    "date_added DESC",
+    null
+)

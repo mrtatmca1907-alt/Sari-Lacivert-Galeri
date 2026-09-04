@@ -49,7 +49,7 @@ class OemRegressionTest {
     }
 
     @Test fun buildIdentityIsVisibleAndUniqueForThisPhoneTest() {
-        assertEquals("BUILD 140906", visibleBuildBadge())
+        assertEquals("BUILD 140907", visibleBuildBadge())
         assertTrue(appVersionCodeForTest() > 13)
     }
     @Test fun android13RootFolderSelectionUsesDirectStorageAccess() {

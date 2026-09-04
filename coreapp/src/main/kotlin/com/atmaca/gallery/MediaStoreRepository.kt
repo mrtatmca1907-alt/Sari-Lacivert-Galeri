@@ -192,15 +192,17 @@ class MediaStoreRepository(context: Context) {
             MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME
         )
 
-        fun queryAlbumCollectionOemSafe(collection: Uri, selection: String?, sort: String) =
-            runCatching { resolver.query(collection, ALBUM_RICH_PROJECTION, selection, null, sort) }.getOrNull()
-                ?: runCatching { resolver.query(collection, ALBUM_CORE_PROJECTION, selection, null, sort) }.getOrNull()
-                ?: runCatching { resolver.query(collection, ALBUM_CORE_PROJECTION, null, null, sort) }.getOrNull()
+        fun queryAlbumCollectionOemSafe(collection: Uri, selection: String?) =
+            albumQuerySortFallbacks().firstNotNullOfOrNull { sort ->
+                runCatching { resolver.query(collection, ALBUM_RICH_PROJECTION, selection, null, sort) }.getOrNull()
+                    ?: runCatching { resolver.query(collection, ALBUM_CORE_PROJECTION, selection, null, sort) }.getOrNull()
+            } ?: albumQuerySortFallbacks().firstNotNullOfOrNull { sort ->
+                runCatching { resolver.query(collection, ALBUM_CORE_PROJECTION, null, null, sort) }.getOrNull()
+            }
 
         fun scan(collection: Uri, isVideo: Boolean): Boolean = runCatching {
                 val selection = if (Build.VERSION.SDK_INT >= 30) "${MediaStore.MediaColumns.IS_TRASHED}=0" else null
-                val sort = "${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.MediaColumns._ID} DESC"
-                val resultCursor = queryAlbumCollectionOemSafe(collection, selection, sort)
+                val resultCursor = queryAlbumCollectionOemSafe(collection, selection)
                     ?: return@runCatching false
                 resultCursor.use { cursor ->
                     val idI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
