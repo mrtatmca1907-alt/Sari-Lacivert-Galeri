@@ -107,13 +107,31 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         offset = snapshot.items.size,
                         limit = MediaStoreRepository.PAGE_SIZE
                     )
-                    CollectionMode.ALBUM -> repository.loadMixedPage(
-                        offset = snapshot.items.size,
-                        limit = MediaStoreRepository.PAGE_SIZE,
-                        albumPath = snapshot.albumPath,
-                        albumBucketId = snapshot.albumBucketId,
-                        albumBucketName = snapshot.albumBucketName
-                    )
+                    CollectionMode.ALBUM -> {
+                        val fastPage = repository.loadMixedPage(
+                            offset = snapshot.items.size,
+                            limit = MediaStoreRepository.PAGE_SIZE,
+                            albumPath = snapshot.albumPath,
+                            albumBucketId = snapshot.albumBucketId,
+                            albumBucketName = snapshot.albumBucketName
+                        )
+                        if (fastPage.isNotEmpty() || snapshot.items.isNotEmpty()) {
+                            fastPage
+                        } else {
+                            val album = GalleryAlbum(
+                                relativePath = snapshot.albumPath.orEmpty(),
+                                name = snapshot.albumBucketName.orEmpty().ifBlank {
+                                    snapshot.albumPath?.let(::albumDisplayName) ?: "Depolama"
+                                },
+                                count = 0,
+                                cover = null,
+                                bucketId = snapshot.albumBucketId,
+                                bucketName = snapshot.albumBucketName
+                            )
+                            repository.loadAllInAlbumOemSafe(album)
+                                .take(MediaStoreRepository.PAGE_SIZE)
+                        }
+                    }
                     CollectionMode.TRASH -> repository.loadMixedPage(
                         offset = snapshot.items.size,
                         limit = MediaStoreRepository.PAGE_SIZE,
