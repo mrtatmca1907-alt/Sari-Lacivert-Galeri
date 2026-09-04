@@ -128,7 +128,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 _state.value = now.copy(
                     items = now.items + uniquePage,
                     loading = false,
-                    hasMore = page.size == MediaStoreRepository.PAGE_SIZE,
+                    hasMore = hasMoreAfterPage(page.size),
                     error = null
                 )
             }.onFailure { throwable ->
