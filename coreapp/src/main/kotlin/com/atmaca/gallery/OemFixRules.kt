@@ -40,3 +40,7 @@ fun videoFrameProgressText(done: Int, total: Int): String =
 fun screenshotSourceSelectionEnabled(): Boolean = true
 
 fun albumOpenUsesSeparateMediaCollections(): Boolean = true
+
+fun toolHostMustBeGalleryRoot(): Boolean = true
+
+fun albumDiagnosticText(count: Int): String = "Bulunan albüm: ${count.coerceAtLeast(0)}"

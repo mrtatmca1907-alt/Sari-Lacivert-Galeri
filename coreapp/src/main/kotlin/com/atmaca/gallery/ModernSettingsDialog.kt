@@ -36,7 +36,8 @@ fun ModernSettingsDialog(
     onMediaSort: (MediaSort) -> Unit,
     onSortDirection: (SortDirection) -> Unit,
     onOpenTrash: () -> Unit,
-    onOpenDuplicates: () -> Unit
+    onOpenDuplicates: () -> Unit,
+    onOpenTool: (AtmacaToolPage) -> Unit
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -100,7 +101,8 @@ fun ModernSettingsDialog(
                     item {
                         CompleteSettingsExtras(
                             onOpenTrash = onOpenTrash,
-                            onOpenDuplicates = onOpenDuplicates
+                            onOpenDuplicates = onOpenDuplicates,
+                            onOpenTool = onOpenTool
                         )
                     }
                     item { Spacer(Modifier.width(1.dp)) }

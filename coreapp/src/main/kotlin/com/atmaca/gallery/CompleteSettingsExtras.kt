@@ -49,14 +49,14 @@ enum class AtmacaToolPage { PERSON_CROP, PACKAGER, VIDEO_FRAMES }
 @Composable
 fun CompleteSettingsExtras(
     onOpenTrash: () -> Unit,
-    onOpenDuplicates: () -> Unit
+    onOpenDuplicates: () -> Unit,
+    onOpenTool: (AtmacaToolPage) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("gallery", android.content.Context.MODE_PRIVATE) }
     var slideshowSeconds by remember { mutableIntStateOf(clampSlideshowSeconds(prefs.getInt("slideshow_seconds", 4))) }
     var slideshowLoop by remember { mutableStateOf(prefs.getBoolean("slideshow_loop", true)) }
     var slideshowRandom by remember { mutableStateOf(prefs.getBoolean("slideshow_random", false)) }
-    var activeTool by remember { mutableStateOf<AtmacaToolPage?>(null) }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         SettingsSubheader("Galeri araçları")
@@ -88,16 +88,15 @@ fun CompleteSettingsExtras(
         }
 
         SettingsSubheader("ATMACA araçları")
-        ToolLaunchButton("Akıllı Kişi Kırpma", "Fotoğraflardaki kişi/yüz bölgelerini ayrı JPEG olarak üretir.") { activeTool = AtmacaToolPage.PERSON_CROP }
-        ToolLaunchButton("Görsel Paketleyici", "Seçilen medya dosyalarını belirlediğin grup boyutuyla klasörlere ayırır.") { activeTool = AtmacaToolPage.PACKAGER }
-        ToolLaunchButton("Video Kareleri", "Videolardan seçtiğin hızda JPEG kareleri ayrı video klasörlerine çıkarır.") { activeTool = AtmacaToolPage.VIDEO_FRAMES }
+        ToolLaunchButton("Akıllı Kişi Kırpma", "Fotoğraflardaki kişi/yüz bölgelerini ayrı JPEG olarak üretir.") { onOpenTool(AtmacaToolPage.PERSON_CROP) }
+        ToolLaunchButton("Görsel Paketleyici", "Seçilen medya dosyalarını belirlediğin grup boyutuyla klasörlere ayırır.") { onOpenTool(AtmacaToolPage.PACKAGER) }
+        ToolLaunchButton("Video Kareleri", "Videolardan seçtiğin hızda JPEG kareleri ayrı video klasörlerine çıkarır.") { onOpenTool(AtmacaToolPage.VIDEO_FRAMES) }
     }
 
-    activeTool?.let { tool -> AtmacaToolDialog(tool = tool, onDismiss = { activeTool = null }) }
 }
 
 @Composable
-private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
+fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val engine = remember { CompleteToolEngine(context) }
     val repository = remember { MediaStoreRepository(context) }

@@ -48,8 +48,8 @@ class OemRegressionTest {
     }
 
     @Test fun buildIdentityIsVisibleAndUniqueForThisPhoneTest() {
-        assertEquals("BUILD 140904", visibleBuildBadge())
-        assertTrue(appVersionCodeForTest() > 13)
+        assertEquals("BUILD 140904-R2", visibleBuildBadge())
+        assertTrue(appVersionCodeForTest() > 140904)
     }
 
     @Test fun toolLaunchMustLeaveSettingsDialogBeforeShowingTool() {

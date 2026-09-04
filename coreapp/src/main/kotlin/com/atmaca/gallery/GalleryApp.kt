@@ -210,6 +210,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
         )
     }
     var showSettings by remember { mutableStateOf(false) }
+    var activeTool by remember { mutableStateOf<AtmacaToolPage?>(null) }
     var showMore by remember { mutableStateOf(false) }
     var renameItem by remember { mutableStateOf<GalleryMedia?>(null) }
     var pathAction by remember { mutableStateOf<PathAction?>(null) }
@@ -491,8 +492,17 @@ private fun GalleryHome(vm: GalleryViewModel) {
             onOpenDuplicates = {
                 showSettings = false
                 section = HomeSection.DUPLICATES
+            },
+            onOpenTool = { tool ->
+                showSettings = false
+                if (section == HomeSection.SETTINGS) section = HomeSection.MEDIA
+                activeTool = tool
             }
         )
+    }
+
+    activeTool?.let { tool ->
+        AtmacaToolDialog(tool = tool, onDismiss = { activeTool = null })
     }
 
     BackHandler(enabled = selectedIds.isNotEmpty() && state.mode != CollectionMode.ALBUM) {
@@ -673,10 +683,18 @@ private fun GalleryHome(vm: GalleryViewModel) {
                             onRetry = vm::reload
                         )
                     } else {
-                        AlbumGrid(
-                            albums = if (albums.isNotEmpty()) albums else quickAlbums(state.items),
-                            onOpen = { album -> vm.openAlbum(album) }
-                        )
+                        Column(Modifier.fillMaxSize()) {
+                            Text(
+                                albumDiagnosticText(albums.size),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                            AlbumGrid(
+                                albums = if (albums.isNotEmpty()) albums else quickAlbums(state.items),
+                                onOpen = { album -> vm.openAlbum(album) }
+                            )
+                        }
                     }
                 }
 
