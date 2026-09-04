@@ -82,5 +82,42 @@ if 'text = { Text("Paylaş") }' not in text:
         raise SystemExit("viewer share menu marker bulunamadi")
     text = text.replace(marker, share_menu + marker, 1)
 
+old_top_actions = '''                    if (!current.isVideo) {
+                        IconButton(onClick = {
+                            rotations[current.id] = nextQuarterRotation(rotations[current.id] ?: 0f)
+                        }) {
+                            Icon(Icons.Default.RotateRight, "Döndür", tint = Color.White)
+                        }
+                        IconButton(onClick = { onCrop(current) }) {
+                            Icon(Icons.Default.Crop, "Düzenle", tint = Color.White)
+                        }
+                    }
+                    Box {
+'''
+new_top_actions = '''                    Box {
+'''
+if old_top_actions in text:
+    text = text.replace(old_top_actions, new_top_actions, 1)
+
+rotate_menu = '''                            if (!current.isVideo) {
+                                DropdownMenuItem(
+                                    text = { Text("Döndür") },
+                                    leadingIcon = { Icon(Icons.Default.RotateRight, null) },
+                                    onClick = {
+                                        rotations[current.id] = nextQuarterRotation(rotations[current.id] ?: 0f)
+                                        optionsExpanded = false
+                                    }
+                                )
+'''
+if 'text = { Text("Döndür") }' not in text:
+    marker = '''                            if (!current.isVideo) {
+                                DropdownMenuItem(
+                                    text = { Text("Screenshot modu") },'''
+    replacement = rotate_menu + '''                                DropdownMenuItem(
+                                    text = { Text("Screenshot modu") },'''
+    if text.count(marker) != 1:
+        raise SystemExit("viewer rotate menu marker bulunamadi")
+    text = text.replace(marker, replacement, 1)
+
 path.write_text(text, encoding="utf-8")
 print("Viewer chrome simplified")
