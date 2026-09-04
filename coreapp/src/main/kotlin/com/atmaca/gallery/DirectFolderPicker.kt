@@ -46,21 +46,31 @@ fun DirectFolderPicker(
     val root = remember { Environment.getExternalStorageDirectory().canonicalFile }
     var current by remember { mutableStateOf(root) }
     var folders by remember { mutableStateOf<List<File>>(emptyList()) }
+    var files by remember { mutableStateOf<List<File>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var selecting by remember { mutableStateOf(false) }
     var scanned by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(current) {
+    LaunchedEffect(current, tool) {
         loading = true
-        folders = withContext(Dispatchers.IO) {
+        val children = withContext(Dispatchers.IO) {
             current.listFiles()
                 ?.asSequence()
-                ?.filter { it.isDirectory && it.canRead() && !it.name.startsWith(".") }
-                ?.sortedBy { it.name.lowercase() }
+                ?.filter { it.canRead() && !it.name.startsWith(".") }
                 ?.toList()
                 .orEmpty()
         }
+        folders = children
+            .asSequence()
+            .filter { it.isDirectory }
+            .sortedBy { it.name.lowercase() }
+            .toList()
+        files = children
+            .asSequence()
+            .filter { it.isFile && toolAcceptsDocument(tool, null, it.name) }
+            .sortedBy { it.name.lowercase() }
+            .toList()
         loading = false
     }
 
@@ -106,15 +116,38 @@ fun DirectFolderPicker(
                         CircularProgressIndicator()
                     }
                 }
+
                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                    items(folders, key = { it.absolutePath }) { folder ->
+                    items(folders, key = { "folder:${it.absolutePath}" }) { folder ->
                         Row(
-                            modifier = Modifier.fillMaxWidth().clickable(enabled = !selecting) { current = folder }
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !selecting) { current = folder }
                                 .padding(horizontal = 8.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("📁", modifier = Modifier.padding(end = 10.dp))
-                            Text(folder.name, style = MaterialTheme.typography.bodyLarge)
+                            Column(Modifier.weight(1f)) {
+                                Text(folder.name, style = MaterialTheme.typography.bodyLarge)
+                                Text("Klasör", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    items(files, key = { "file:${it.absolutePath}" }) { file ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !selecting) {
+                                    onSelected(listOf(Uri.fromFile(file)))
+                                }
+                                .padding(horizontal = 8.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("📄", modifier = Modifier.padding(end = 10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(file.name, style = MaterialTheme.typography.bodyLarge)
+                                Text("Dosyayı doğrudan seç", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
                 }
