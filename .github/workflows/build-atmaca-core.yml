@@ -49,6 +49,9 @@ jobs:
       - name: Apply OEM album retry
         run: python3 coreapp/apply_album_oem_retry.py
 
+      - name: Apply viewer paging fix
+        run: python3 coreapp/apply_viewer_paging_fix.py
+
       - name: Verify direct gallery source
         run: python3 coreapp/check_direct_source.py
 
