@@ -41,6 +41,12 @@ fun screenshotSourceSelectionEnabled(): Boolean = true
 
 fun albumOpenUsesSeparateMediaCollections(): Boolean = true
 
+fun shouldLoadMoreForEmptyFilteredPage(
+    totalLoaded: Int,
+    filteredVisible: Int,
+    hasMore: Boolean,
+    loading: Boolean
+): Boolean = totalLoaded > 0 && filteredVisible == 0 && hasMore && !loading
 
 enum class ScrollbarEdge { LEFT, RIGHT }
 
