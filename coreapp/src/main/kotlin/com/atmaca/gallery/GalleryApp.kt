@@ -404,8 +404,11 @@ private fun GalleryHome(vm: GalleryViewModel) {
     LaunchedEffect(albumsRefresh, section, pathAction) {
         if (section == HomeSection.ALBUMS || pathAction != null) {
             albumsLoading = true
-            val fresh = runCatching { repository.loadAlbumsOemSafe() }.getOrDefault(emptyList())
-            albums = albumListWhileRefreshing(albums, fresh, refreshing = false)
+            val result = runCatching { repository.loadCompleteAlbums() }.getOrElse {
+                albumQueryOutcome(emptyList(), imageFailed = true, videoFailed = true)
+            }
+            albums = result.albums
+            if (result.completelyFailed) message = "Albümler okunamadı. Medya izinlerini kontrol edip Yenile'ye dokun."
             albumsLoading = false
         }
     }
@@ -700,7 +703,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
                         )
                     } else {
                         AlbumGrid(
-                            albums = if (albums.isNotEmpty()) albums else quickAlbums(state.items),
+                            albums = albums,
                             onOpen = { album -> vm.openAlbum(album) }
                         )
                     }

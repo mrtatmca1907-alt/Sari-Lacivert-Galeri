@@ -27,6 +27,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -102,8 +103,8 @@ fun CompleteSettingsExtras(
 @Composable
 private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val engine = remember { CompleteToolEngine(context) }
     val repository = remember { MediaStoreRepository(context) }
+    val prefs = remember { context.getSharedPreferences("gallery_tool_jobs", android.content.Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
     var selectedUris by remember(tool) { mutableStateOf<List<Uri>>(emptyList()) }
     var running by remember(tool) { mutableStateOf(false) }
@@ -117,7 +118,43 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     var maxFaces by remember(tool) { mutableIntStateOf(12) }
     var showInternalAlbumPicker by remember(tool) { mutableStateOf(false) }
     var showDirectFolderPicker by remember(tool) { mutableStateOf(false) }
-    var backgroundWorkId by remember(tool) { mutableStateOf<UUID?>(null) }
+    var backgroundWorkId by remember(tool) {
+        mutableStateOf(prefs.getString("active_${tool.name}", null)?.let { runCatching { UUID.fromString(it) }.getOrNull() })
+    }
+
+    LaunchedEffect(backgroundWorkId) {
+        val workId = backgroundWorkId ?: return@LaunchedEffect
+        val manager = WorkManager.getInstance(context.applicationContext)
+        running = true
+        while (true) {
+            val info = withContext(Dispatchers.IO) { runCatching { manager.getWorkInfoById(workId).get() }.getOrNull() }
+            if (info != null) {
+                done = info.progress.getInt(MEDIA_TOOL_KEY_DONE, done)
+                total = info.progress.getInt(MEDIA_TOOL_KEY_TOTAL, total)
+                when (info.state) {
+                    WorkInfo.State.SUCCEEDED -> {
+                        running = false
+                        backgroundWorkId = null
+                        prefs.edit().remove("active_${tool.name}").apply()
+                        val created = info.outputData.getInt(MEDIA_TOOL_KEY_CREATED, 0)
+                        val skipped = info.outputData.getInt(MEDIA_TOOL_KEY_SKIPPED, 0)
+                        val failed = info.outputData.getInt(MEDIA_TOOL_KEY_FAILED, 0)
+                        Toast.makeText(context, "$created oluşturuldu • $skipped atlandı • $failed hata", Toast.LENGTH_LONG).show()
+                        break
+                    }
+                    WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
+                        running = false
+                        backgroundWorkId = null
+                        prefs.edit().remove("active_${tool.name}").apply()
+                        Toast.makeText(context, "${toolTitleForWork(tool)} işi tamamlanamadı", Toast.LENGTH_LONG).show()
+                        break
+                    }
+                    else -> Unit
+                }
+            }
+            delay(500)
+        }
+    }
 
     val allFilesAccessLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager()) {
@@ -172,6 +209,7 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     fun cancelActiveWork() {
         job?.cancel()
         backgroundWorkId?.let { WorkManager.getInstance(context.applicationContext).cancelWorkById(it) }
+        prefs.edit().remove("active_${tool.name}").apply()
         backgroundWorkId = null
         running = false
         scanning = false
@@ -179,59 +217,22 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
 
     fun start() {
         if (selectedUris.isEmpty() || running || scanning) return
-        if (tool == AtmacaToolPage.VIDEO_FRAMES) {
-            val workId = enqueueVideoFrameWork(context, selectedUris, framesPerSecond)
-            if (workId != null) {
-                backgroundWorkId = workId
-                running = true
-                done = 0
-                total = 0
-                Toast.makeText(context, "Video Kareleri arka planda başlatıldı", Toast.LENGTH_LONG).show()
-                job = scope.launch {
-                    val manager = WorkManager.getInstance(context.applicationContext)
-                    while (true) {
-                        val info = withContext(Dispatchers.IO) { runCatching { manager.getWorkInfoById(workId).get() }.getOrNull() }
-                        if (info != null) {
-                            done = info.progress.getInt("done", done)
-                            total = info.progress.getInt("total", total)
-                            when (info.state) {
-                                WorkInfo.State.SUCCEEDED -> {
-                                    running = false
-                                    backgroundWorkId = null
-                                    val created = info.outputData.getInt("created", done)
-                                    val failed = info.outputData.getInt("failed", 0)
-                                    Toast.makeText(context, "$created kare oluşturuldu${if (failed > 0) " • $failed hata" else ""}", Toast.LENGTH_LONG).show()
-                                    break
-                                }
-                                WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
-                                    running = false
-                                    backgroundWorkId = null
-                                    Toast.makeText(context, "Video Kareleri işi tamamlanamadı", Toast.LENGTH_LONG).show()
-                                    break
-                                }
-                                else -> Unit
-                            }
-                        }
-                        delay(500)
-                    }
-                }
-            } else {
-                Toast.makeText(context, "Arka plan işi başlatılamadı", Toast.LENGTH_LONG).show()
-            }
+        val option = when (tool) {
+            AtmacaToolPage.PERSON_CROP -> maxFaces
+            AtmacaToolPage.PACKAGER -> batchSize
+            AtmacaToolPage.VIDEO_FRAMES -> framesPerSecond
+        }
+        val workId = enqueueMediaToolWork(context, tool, selectedUris, option)
+        if (workId == null) {
+            Toast.makeText(context, "Arka plan işi başlatılamadı", Toast.LENGTH_LONG).show()
             return
         }
-        running = true
         done = 0
-        total = selectedUris.size
-        job = scope.launch {
-            val result = when (tool) {
-                AtmacaToolPage.PERSON_CROP -> engine.smartPersonCrop(selectedUris, maxFacesPerPhoto = maxFaces) { d, t -> done = d; total = t }
-                AtmacaToolPage.PACKAGER -> engine.packageMedia(selectedUris, batchSize = batchSize) { d, t -> done = d; total = t }
-                AtmacaToolPage.VIDEO_FRAMES -> error("Video Kareleri WorkManager üzerinden çalışır")
-            }
-            running = false
-            Toast.makeText(context, "${result.created} oluşturuldu • ${result.skipped} atlandı • ${result.failed} hata", Toast.LENGTH_LONG).show()
-        }
+        total = if (tool == AtmacaToolPage.VIDEO_FRAMES) 0 else selectedUris.size
+        running = true
+        prefs.edit().putString("active_${tool.name}", workId.toString()).apply()
+        backgroundWorkId = workId
+        Toast.makeText(context, "${toolTitleForWork(tool)} arka planda başlatıldı", Toast.LENGTH_LONG).show()
     }
 
     if (showDirectFolderPicker) {
@@ -266,16 +267,14 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
     }
 
     Dialog(
-        onDismissRequest = { if (!running && !scanning && !showInternalAlbumPicker) onDismiss() },
+        onDismissRequest = { if (!scanning && !showInternalAlbumPicker) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(modifier = Modifier.fillMaxWidth().fillMaxHeight(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text(toolTitle(tool), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { if (running || scanning) cancelActiveWork() else onDismiss() }) {
-                        Text(if (running || scanning) "İptal" else "Kapat")
-                    }
+                    TextButton(onClick = onDismiss, enabled = !scanning) { Text("Kapat") }
                 }
 
                 Column(
@@ -326,9 +325,10 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
                     }
 
                     if (running) {
-                        Text(if (tool == AtmacaToolPage.VIDEO_FRAMES) videoFrameProgressText(done, total) else "İşleniyor: $done / $total")
+                        Text("Arka planda işleniyor: $done / ${if (total > 0) total else "?"}")
                         if (total > 0) LinearProgressIndicator(progress = { done.toFloat() / total.toFloat() }, modifier = Modifier.fillMaxWidth())
                         else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        OutlinedButton(onClick = ::cancelActiveWork, modifier = Modifier.fillMaxWidth()) { Text("İşlemi iptal et") }
                     }
 
                     Button(onClick = ::start, enabled = selectedUris.isNotEmpty() && !running && !scanning, modifier = Modifier.fillMaxWidth()) { Text("Başlat") }

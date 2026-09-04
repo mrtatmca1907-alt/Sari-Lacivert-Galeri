@@ -45,41 +45,10 @@ fun InternalToolAlbumPicker(
 
     LaunchedEffect(refreshKey) {
         loading = true
-        albums = emptyList()
-        val grouped = linkedMapOf<String, GalleryAlbum>()
-        var offset = 0
-        val pageSize = 1200
-        while (true) {
-            val page = runCatching {
-                repository.loadMixedPage(offset = offset, limit = pageSize)
-            }.getOrDefault(emptyList())
-            if (page.isEmpty()) break
-            page.forEach { item ->
-                val rawPath = item.relativePath.trim()
-                val key = albumIdentityKey(rawPath, item.bucketId, item.bucketName)
-                val displayPath = if (rawPath.isNotBlank()) normalizeRelativePath(rawPath) else ""
-                val displayName = item.bucketName?.trim().orEmpty().ifBlank {
-                    if (displayPath.isNotBlank()) albumDisplayName(displayPath) else "Depolama"
-                }
-                val current = grouped[key]
-                grouped[key] = if (current == null) {
-                    GalleryAlbum(
-                        relativePath = displayPath,
-                        name = displayName,
-                        count = 1,
-                        cover = item,
-                        bucketId = item.bucketId,
-                        bucketName = item.bucketName
-                    )
-                } else {
-                    current.copy(count = current.count + 1, cover = current.cover ?: item)
-                }
-            }
-            albums = grouped.values.sortedBy { it.name.lowercase() }
-            loading = false
-            if (page.size < pageSize) break
-            offset += page.size
+        val result = runCatching { repository.loadCompleteAlbums() }.getOrElse {
+            albumQueryOutcome(emptyList(), imageFailed = true, videoFailed = true)
         }
+        albums = result.albums
         loading = false
     }
 

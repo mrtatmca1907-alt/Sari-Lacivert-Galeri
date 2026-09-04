@@ -13,7 +13,7 @@ fun toolUsesInternalAlbumPicker(tool: AtmacaToolPage): Boolean = true
 fun shouldRenderOuterToolDialog(showInternalAlbumPicker: Boolean): Boolean = !showInternalAlbumPicker
 
 fun keepToolDialogOpenForBackgroundProgress(tool: AtmacaToolPage): Boolean =
-    tool == AtmacaToolPage.VIDEO_FRAMES
+    toolUsesBackgroundWorker(tool)
 
 fun albumGridKey(album: GalleryAlbum): String = buildString {
     append(album.relativePath.trim())

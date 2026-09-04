@@ -162,7 +162,9 @@ class MediaStoreRepository(context: Context) {
             .sortedBy { it.name.lowercase() }
     }
 
-    suspend fun loadAlbumsOemSafe(): List<GalleryAlbum> = withContext(Dispatchers.IO) {
+    suspend fun loadAlbumsOemSafe(): List<GalleryAlbum> = loadCompleteAlbums().albums
+
+    suspend fun loadCompleteAlbums(): AlbumQueryOutcome = withContext(Dispatchers.IO) {
         data class Acc(
             var relativePath: String,
             var name: String,
@@ -195,11 +197,12 @@ class MediaStoreRepository(context: Context) {
                 ?: runCatching { resolver.query(collection, ALBUM_CORE_PROJECTION, selection, null, sort) }.getOrNull()
                 ?: runCatching { resolver.query(collection, ALBUM_CORE_PROJECTION, null, null, sort) }.getOrNull()
 
-        fun scan(collection: Uri, isVideo: Boolean) {
-            runCatching {
+        fun scan(collection: Uri, isVideo: Boolean): Boolean = runCatching {
                 val selection = if (Build.VERSION.SDK_INT >= 30) "${MediaStore.MediaColumns.IS_TRASHED}=0" else null
                 val sort = "${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.MediaColumns._ID} DESC"
-                queryAlbumCollectionOemSafe(collection, selection, sort)?.use { cursor ->
+                val resultCursor = queryAlbumCollectionOemSafe(collection, selection, sort)
+                    ?: return@runCatching false
+                resultCursor.use { cursor ->
                     val idI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                     val nameI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                     val mimeI = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
@@ -246,15 +249,15 @@ class MediaStoreRepository(context: Context) {
                         }
                     }
                 }
-            }
-        }
+                true
+            }.getOrDefault(false)
 
-        scan(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
-        scan(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
+        val imagesLoaded = scan(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
+        val videosLoaded = scan(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
         val primary = grouped.values
             .map { GalleryAlbum(it.relativePath, it.name, it.count, it.cover, it.bucketId, it.bucketName) }
-        val filesFallback = runCatching { loadAlbums() }.getOrDefault(emptyList())
-        mergeAlbumSources(primary, filesFallback)
+            .sortedBy { it.name.lowercase() }
+        albumQueryOutcome(primary, imageFailed = !imagesLoaded, videoFailed = !videosLoaded)
     }
 
     suspend fun loadAllInAlbum(album: GalleryAlbum): List<GalleryMedia> = loadAllInAlbumOemSafe(album)

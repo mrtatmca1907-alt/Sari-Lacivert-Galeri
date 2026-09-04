@@ -42,13 +42,14 @@ class OemRegressionTest {
         assertFalse(albumGridKey(a) == albumGridKey(b))
     }
 
-    @Test fun videoFramesKeepDialogVisibleSoCounterCanBeSeen() {
-        assertTrue(keepToolDialogOpenForBackgroundProgress(AtmacaToolPage.VIDEO_FRAMES))
-        assertFalse(keepToolDialogOpenForBackgroundProgress(AtmacaToolPage.PERSON_CROP))
+    @Test fun everyToolKeepsDialogVisibleWhileBackgroundWorkRuns() {
+        AtmacaToolPage.entries.forEach {
+            assertTrue(keepToolDialogOpenForBackgroundProgress(it))
+        }
     }
 
     @Test fun buildIdentityIsVisibleAndUniqueForThisPhoneTest() {
-        assertEquals("BUILD 140905", visibleBuildBadge())
+        assertEquals("BUILD 140906", visibleBuildBadge())
         assertTrue(appVersionCodeForTest() > 13)
     }
     @Test fun android13RootFolderSelectionUsesDirectStorageAccess() {
