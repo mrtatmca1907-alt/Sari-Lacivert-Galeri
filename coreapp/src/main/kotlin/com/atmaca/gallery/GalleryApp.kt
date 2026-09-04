@@ -353,7 +353,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
             item = item,
             actions = actions,
             onCancel = { cropItem = null },
-            onSaved = { cropItem = null; refreshToken++; albumsRefresh++; vm.reload() },
+            onSaved = { cropItem = null; albumsRefresh++; vm.reload() },
             onMessage = { message = it }
         )
         return
@@ -1064,7 +1064,7 @@ private object ThumbnailCache : LruCache<String, Bitmap>(64 * 1024) {
 @Composable
 private fun MediaThumbnail(item: GalleryMedia): Bitmap? {
     val context = LocalContext.current
-    val key = "${item.uri}:360"
+    val key = "${item.uri}:${item.dateModified}:${item.size}:360"
     val bitmap by produceState<Bitmap?>(initialValue = ThumbnailCache.get(key), key) {
         if (value == null) {
             value = withContext(Dispatchers.IO) {
