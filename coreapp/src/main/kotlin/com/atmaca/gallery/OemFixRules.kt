@@ -40,3 +40,18 @@ fun videoFrameProgressText(done: Int, total: Int): String =
 fun screenshotSourceSelectionEnabled(): Boolean = true
 
 fun albumOpenUsesSeparateMediaCollections(): Boolean = true
+
+
+enum class ScrollbarEdge { LEFT, RIGHT }
+
+fun requiresDirectStorageAccess(sdkInt: Int): Boolean = sdkInt >= 30
+
+fun albumLookupKeys(relativePath: String?, bucketId: Long, bucketName: String?): List<String> = buildList {
+    val cleanPath = relativePath?.trim().orEmpty()
+    if (cleanPath.isNotEmpty()) add("path:${normalizeRelativePath(cleanPath)}")
+    if (bucketId != 0L) add("bucket:$bucketId")
+    val cleanName = bucketName?.trim().orEmpty()
+    if (cleanName.isNotEmpty()) add("name:$cleanName")
+}.distinct()
+
+fun galleryScrollbarEdge(): ScrollbarEdge = ScrollbarEdge.RIGHT
