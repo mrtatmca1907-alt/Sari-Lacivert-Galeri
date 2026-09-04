@@ -51,4 +51,18 @@ class OemRegressionTest {
         assertEquals("BUILD 140904", visibleBuildBadge())
         assertTrue(appVersionCodeForTest() > 13)
     }
+    @Test fun android13RootFolderSelectionUsesDirectStorageAccess() {
+        assertTrue(requiresDirectStorageAccess(33))
+    }
+
+    @Test fun albumLookupKeepsBothPathAndBucketAsFallbacks() {
+        assertEquals(
+            listOf("path:DCIM/Camera/", "bucket:4242"),
+            albumLookupKeys("DCIM/Camera/", 4242L, "Camera")
+        )
+    }
+
+    @Test fun galleryFastScrollbarIsOnTheRightEdge() {
+        assertEquals(ScrollbarEdge.RIGHT, galleryScrollbarEdge())
+    }
 }
