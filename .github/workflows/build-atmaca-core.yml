@@ -43,6 +43,9 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
+      - name: Apply runtime gallery fixes
+        run: python3 coreapp/apply_runtime_fixes.py
+
       - name: Verify direct gallery source
         run: python3 coreapp/check_direct_source.py
 
