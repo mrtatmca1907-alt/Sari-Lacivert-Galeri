@@ -126,6 +126,18 @@ class GalleryActions(context: Context) {
             }.getOrDefault(false)
             if (!written) return@withContext false
 
+            runCatching {
+                resolver.update(
+                    source.uri,
+                    ContentValues().apply {
+                        put(MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000L)
+                        put(MediaStore.MediaColumns.SIZE, temp.length())
+                    },
+                    null,
+                    null
+                )
+            }
+
             if (!isPng && !source.name.endsWith(".jpg", true) && !source.name.endsWith(".jpeg", true)) {
                 val base = source.name.substringBeforeLast('.', source.name)
                 runCatching {
