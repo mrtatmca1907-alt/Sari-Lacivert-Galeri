@@ -164,7 +164,63 @@ class MediaStoreRepository(context: Context) {
 
     suspend fun loadAlbumsOemSafe(): List<GalleryAlbum> = loadCompleteAlbums().albums
 
-    suspend fun loadCompleteAlbums(): AlbumQueryOutcome = withContext(Dispatchers.IO) {
+    suspend fun loadCompleteAlbums(
+        onSnapshot: (List<GalleryAlbum>) -> Unit = {}
+    ): AlbumQueryOutcome {
+        data class Acc(
+            val relativePath: String,
+            val name: String,
+            var count: Int,
+            var cover: GalleryMedia?,
+            val bucketId: Long,
+            val bucketName: String?
+        )
+        val grouped = linkedMapOf<String, Acc>()
+        val pageSize = 600
+        var afterDate: Long? = null
+        var afterId: Long? = null
+        var failed = false
+        var keepGoing: Boolean
+
+        fun snapshot(): List<GalleryAlbum> = grouped.values.map {
+            GalleryAlbum(it.relativePath, it.name, it.count, it.cover, it.bucketId, it.bucketName)
+        }.sortedBy { it.name.lowercase() }
+
+        do {
+            val page = runCatching {
+                loadMixedPageAfter(afterDateAdded = afterDate, afterId = afterId, limit = pageSize)
+            }.getOrElse {
+                failed = true
+                emptyList()
+            }
+            page.forEach { item ->
+                val rawPath = item.relativePath.trim()
+                val key = albumIdentityKey(rawPath, item.bucketId, item.bucketName)
+                val displayPath = if (rawPath.isNotBlank()) normalizeRelativePath(rawPath) else ""
+                val displayName = item.bucketName?.trim().orEmpty().ifBlank {
+                    if (displayPath.isNotBlank()) albumDisplayName(displayPath) else "Depolama"
+                }
+                val current = grouped[key]
+                if (current == null) {
+                    grouped[key] = Acc(displayPath, displayName, 1, item, item.bucketId, item.bucketName)
+                } else {
+                    current.count++
+                    if ((current.cover?.dateAdded ?: Long.MIN_VALUE) < item.dateAdded) current.cover = item
+                }
+            }
+            if (page.isNotEmpty()) {
+                afterDate = page.last().dateAdded
+                afterId = page.last().id
+                onSnapshot(snapshot())
+            }
+            keepGoing = !failed && albumScanShouldContinue(page.size, pageSize)
+        } while (keepGoing)
+
+        val albums = snapshot()
+        return albumQueryOutcome(albums, imageFailed = failed && albums.isEmpty(), videoFailed = failed && albums.isEmpty())
+    }
+
+    private suspend fun loadAlbumsFromSeparateCollections(): AlbumQueryOutcome = withContext(Dispatchers.IO) {
         data class Acc(
             var relativePath: String,
             var name: String,

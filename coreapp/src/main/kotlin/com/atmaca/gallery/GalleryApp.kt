@@ -404,7 +404,12 @@ private fun GalleryHome(vm: GalleryViewModel) {
     LaunchedEffect(albumsRefresh, section, pathAction) {
         if (section == HomeSection.ALBUMS || pathAction != null) {
             albumsLoading = true
-            val result = runCatching { repository.loadCompleteAlbums() }.getOrElse {
+            val result = runCatching {
+                repository.loadCompleteAlbums { partial ->
+                    albums = partial
+                    albumsLoading = false
+                }
+            }.getOrElse {
                 albumQueryOutcome(emptyList(), imageFailed = true, videoFailed = true)
             }
             albums = result.albums

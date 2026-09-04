@@ -45,7 +45,12 @@ fun InternalToolAlbumPicker(
 
     LaunchedEffect(refreshKey) {
         loading = true
-        val result = runCatching { repository.loadCompleteAlbums() }.getOrElse {
+        val result = runCatching {
+            repository.loadCompleteAlbums { partial ->
+                albums = partial
+                loading = false
+            }
+        }.getOrElse {
             albumQueryOutcome(emptyList(), imageFailed = true, videoFailed = true)
         }
         albums = result.albums

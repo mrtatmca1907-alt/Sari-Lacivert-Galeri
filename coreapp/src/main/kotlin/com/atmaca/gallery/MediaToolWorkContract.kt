@@ -35,3 +35,6 @@ internal fun albumQuerySortFallbacks(): List<String?> = listOf(
     "date_added DESC",
     null
 )
+
+internal fun albumScanShouldContinue(received: Int, pageSize: Int): Boolean =
+    pageSize > 0 && received == pageSize
