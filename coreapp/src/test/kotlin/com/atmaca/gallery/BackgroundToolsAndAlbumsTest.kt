@@ -39,4 +39,10 @@ class BackgroundToolsAndAlbumsTest {
             albumQuerySortFallbacks()
         )
     }
+
+    @Test fun fileBackedAlbumScanContinuesOnlyAfterAFullPage() {
+        assertTrue(albumScanShouldContinue(received = 600, pageSize = 600))
+        assertFalse(albumScanShouldContinue(received = 599, pageSize = 600))
+        assertFalse(albumScanShouldContinue(received = 0, pageSize = 600))
+    }
 }
