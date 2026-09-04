@@ -248,21 +248,26 @@ class MediaStoreRepository(context: Context) {
             val selectionParts = mutableListOf<String>()
             val selectionArgs = mutableListOf<String>()
             if (Build.VERSION.SDK_INT >= 30) selectionParts += "${MediaStore.MediaColumns.IS_TRASHED}=0"
-            when (locator) {
-                is AlbumLocator.Path -> {
-                    selectionParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
-                    selectionArgs += locator.path
+            val lookup = albumLookupKeys(album.relativePath, album.bucketId, album.bucketName)
+            val albumParts = mutableListOf<String>()
+            lookup.forEach { key ->
+                when {
+                    key.startsWith("path:") -> {
+                        albumParts += "${MediaStore.MediaColumns.RELATIVE_PATH}=?"
+                        selectionArgs += key.removePrefix("path:")
+                    }
+                    key.startsWith("bucket:") -> {
+                        albumParts += "${MediaStore.Images.ImageColumns.BUCKET_ID}=?"
+                        selectionArgs += key.removePrefix("bucket:")
+                    }
+                    key.startsWith("name:") -> {
+                        albumParts += "${MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME}=?"
+                        selectionArgs += key.removePrefix("name:")
+                    }
                 }
-                is AlbumLocator.Bucket -> {
-                    selectionParts += "${MediaStore.Images.ImageColumns.BUCKET_ID}=?"
-                    selectionArgs += locator.id.toString()
-                }
-                is AlbumLocator.Name -> {
-                    selectionParts += "${MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME}=?"
-                    selectionArgs += locator.name
-                }
-                AlbumLocator.Unknown -> return
             }
+            if (albumParts.isEmpty()) return
+            selectionParts += albumParts.joinToString(prefix = "(", postfix = ")", separator = " OR ")
 
             val selection = selectionParts.takeIf { it.isNotEmpty() }?.joinToString(" AND ")
             val args = selectionArgs.takeIf { it.isNotEmpty() }?.toTypedArray()
