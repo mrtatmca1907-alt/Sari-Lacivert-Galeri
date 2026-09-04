@@ -1,0 +1,27 @@
+name: Fix Legacy Settings Compile
+
+on:
+  push:
+    branches: [ atmaca-native-core ]
+    paths:
+      - 'coreapp/fix_legacy_settings_compile.py'
+      - '.github/workflows/fix-legacy-settings-compile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: atmaca-native-core
+      - run: python3 coreapp/fix_legacy_settings_compile.py
+      - run: |
+          git config user.name "atmaca-migration-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add coreapp/src/main/kotlin/com/atmaca/gallery/CompleteSettingsExtras.kt
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: keep legacy settings helper compile compatible"
+          git push origin HEAD:atmaca-native-core
