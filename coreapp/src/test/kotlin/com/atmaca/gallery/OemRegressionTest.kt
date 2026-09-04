@@ -51,4 +51,12 @@ class OemRegressionTest {
         assertEquals("BUILD 140904", visibleBuildBadge())
         assertTrue(appVersionCodeForTest() > 13)
     }
+
+    @Test fun toolLaunchMustLeaveSettingsDialogBeforeShowingTool() {
+        assertTrue(toolHostMustBeGalleryRoot())
+    }
+
+    @Test fun albumDiagnosticTextShowsRealReturnedCount() {
+        assertEquals("Bulunan albüm: 17", albumDiagnosticText(17))
+    }
 }
