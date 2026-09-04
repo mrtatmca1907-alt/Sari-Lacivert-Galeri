@@ -80,6 +80,129 @@ if "onDragEnd = { dragActive = false; lastDragIndex = -1 }" not in text:
         "drag end cancel"
     )
 
+# Album-first sade galeri duzeni. Kök dosya secimine dokunmaz.
+if "var section by rememberSaveable { mutableStateOf(HomeSection.ALBUMS) }" not in text:
+    replace_once(
+        "var section by rememberSaveable { mutableStateOf(HomeSection.MEDIA) }",
+        "var section by rememberSaveable { mutableStateOf(HomeSection.ALBUMS) }",
+        "album first home"
+    )
+
+if "NavigationBarItem(" in text:
+    old_scaffold = '''    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = section == HomeSection.MEDIA,
+                    onClick = { section = HomeSection.MEDIA },
+                    icon = { Text("▣") },
+                    label = { Text("Medya") }
+                )
+                NavigationBarItem(
+                    selected = section == HomeSection.ALBUMS,
+                    onClick = { section = HomeSection.ALBUMS },
+                    icon = { Icon(Icons.Default.Collections, null) },
+                    label = { Text("Albümler") }
+                )
+                NavigationBarItem(
+                    selected = section == HomeSection.SETTINGS,
+                    onClick = { section = HomeSection.SETTINGS; showSettings = true },
+                    icon = { Icon(Icons.Default.Settings, null) },
+                    label = { Text("Ayarlar") }
+                )
+            }
+        }
+    ) { padding ->'''
+    new_scaffold = '''    Scaffold { padding ->'''
+    replace_once(old_scaffold, new_scaffold, "remove bottom navigation")
+
+if "showAllMedia = section == HomeSection.MEDIA" not in text:
+    old_call = '''                onCamera = ::openCamera,
+                onRefresh = {
+                    selectedIds = emptySet()
+                    when (section) {
+                        HomeSection.ALBUMS -> {
+                            albumsRefresh++
+                            if (state.mode == CollectionMode.ALBUM) vm.reload()
+                        }
+                        HomeSection.DUPLICATES -> duplicatesRefresh++
+                        else -> refreshToken++
+                    }
+                },
+                onSettings = { showSettings = true },
+                showMore = showMore,
+                onMoreChange = { showMore = it }
+            )'''
+    new_call = '''                onCamera = ::openCamera,
+                onSettings = { showSettings = true },
+                showAllMedia = section == HomeSection.MEDIA,
+                onToggleView = {
+                    selectedIds = emptySet()
+                    section = if (section == HomeSection.MEDIA) HomeSection.ALBUMS else HomeSection.MEDIA
+                },
+                showMore = showMore,
+                onMoreChange = { showMore = it }
+            )'''
+    replace_once(old_call, new_call, "top bar simple controls call")
+
+if "showAllMedia: Boolean," not in text:
+    old_signature = '''    onCamera: () -> Unit,
+    onRefresh: () -> Unit,
+    onSettings: () -> Unit,
+    showMore: Boolean,'''
+    new_signature = '''    onCamera: () -> Unit,
+    onSettings: () -> Unit,
+    showAllMedia: Boolean,
+    onToggleView: () -> Unit,
+    showMore: Boolean,'''
+    replace_once(old_signature, new_signature, "top bar simple controls signature")
+
+if "Icon(Icons.Default.Refresh, \"Yenile\")" in text:
+    replace_once(
+        '''        IconButton(onClick = onCamera) { Icon(Icons.Default.PhotoCamera, "Kamera") }
+        IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "Yenile") }
+        Box {''',
+        '''        Box {''',
+        "remove permanent camera refresh buttons"
+    )
+
+if "Tüm klasör içeriğini göster" not in text:
+    old_menu = '''            DropdownMenu(expanded = showMore, onDismissRequest = { onMoreChange(false) }) {
+                DropdownMenuItem(
+                    text = { Text("Ayarlar") },
+                    leadingIcon = { Icon(Icons.Default.Settings, null) },
+                    onClick = {
+                        onMoreChange(false)
+                        onSettings()
+                    }
+                )
+            }'''
+    new_menu = '''            DropdownMenu(expanded = showMore, onDismissRequest = { onMoreChange(false) }) {
+                DropdownMenuItem(
+                    text = { Text(if (showAllMedia) "Klasör görünümüne geç" else "Tüm klasör içeriğini göster") },
+                    onClick = { onMoreChange(false); onToggleView() }
+                )
+                DropdownMenuItem(
+                    text = { Text("Sıralama ölçütü") },
+                    onClick = { onMoreChange(false); onSettings() }
+                )
+                DropdownMenuItem(
+                    text = { Text("Medyayı filtrele") },
+                    onClick = { onMoreChange(false); onSettings() }
+                )
+                DropdownMenuItem(
+                    text = { Text("Kamerayı aç") },
+                    leadingIcon = { Icon(Icons.Default.PhotoCamera, null) },
+                    onClick = { onMoreChange(false); onCamera() }
+                )
+                DropdownMenuItem(
+                    text = { Text("Görünüm ve diğer ayarlar") },
+                    leadingIcon = { Icon(Icons.Default.Settings, null) },
+                    onClick = { onMoreChange(false); onSettings() }
+                )
+            }'''
+    replace_once(old_menu, new_menu, "compact overflow menu")
+
 path.write_text(text, encoding="utf-8")
 
 feature_path = Path("coreapp/src/main/kotlin/com/atmaca/gallery/FeatureRules.kt")
