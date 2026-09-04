@@ -20,7 +20,7 @@ def require(text, markers, label):
         if marker not in text: raise SystemExit(f"DIRECT SOURCE FAIL: {label} missing {marker!r}")
 
 require(app,[
-    "enum class HomeSection { MEDIA, ALBUMS, SETTINGS","mutableStateOf(HomeSection.ALBUMS)",'Text("Tüm klasör içeriğini göster")','Text("Klasör görünümüne geç")','Text("Sıralama ölçütü")','Text("Medyayı filtrele")',
+    "enum class HomeSection { MEDIA, ALBUMS, SETTINGS","mutableStateOf(HomeSection.ALBUMS)","Tüm klasör içeriğini göster","Klasör görünümüne geç","Sıralama ölçütü","Medyayı filtrele",
     "ModernSettingsDialog(","detectDragGesturesAfterLongPress","slideshowPrefetchIndices(","prefetchViewerBitmap(",
     "pendingMutationIds","vm.removeItemsByIds(affectedIds)","var albums by remember { mutableStateOf<List<GalleryAlbum>>(emptyList()) }",
     "LaunchedEffect(albumsRefresh, section, pathAction)","shouldReloadPrimaryMediaAfterCamera(section, success = true)","vm.openAlbum(album)",
