@@ -78,12 +78,12 @@ fun nextDoubleTapScale(scale:Float)=if(scale>1.1f)1f else 2.25f
 fun zoomOffsetAroundFocus(oldOffset:Float,focusFromCenter:Float,oldScale:Float,newScale:Float):Float { if(oldScale<=0f)return oldOffset; val ratio=newScale/oldScale; return oldOffset+focusFromCenter*(1f-ratio) }
 fun normalizeViewerRotation(rotation:Float)=((rotation%360f)+360f)%360f
 fun applyViewerRotationDelta(current:Float,delta:Float)=normalizeViewerRotation(current+delta)
-fun shouldPhotoConsumeGesture(pointerCount:Int,scale:Float,rotation:Float):Boolean = pointerCount>=2 || scale>1.001f || (normalizeViewerRotation(rotation)>0.5f && normalizeViewerRotation(rotation)<359.5f)
+fun shouldPhotoConsumeGesture(pointerCount:Int,scale:Float,rotation:Float):Boolean = pointerCount>=2 || scale>1.001f
 fun shouldCommitViewerTransform(gestureEnded:Boolean):Boolean=gestureEnded
 fun viewerMenuEntries(isVideo:Boolean,screenshotMode:Boolean):List<String> = if(isVideo) listOf("Ad değiştir","Çöpe taşı / sil") else listOf("Kırp",if(screenshotMode)"Screenshot modunu kapat" else "Screenshot modu","Ad değiştir","Çöpe taşı / sil")
 fun viewerBottomActions(isVideo:Boolean):List<String> = listOf("Paylaş","Geri")
 fun shouldEnablePager(scale:Float)=scale<=1.001f
-fun shouldEnablePager(scale:Float,rotation:Float)=scale<=1.001f&&(normalizeViewerRotation(rotation)<0.5f||normalizeViewerRotation(rotation)>359.5f)
+fun shouldEnablePager(scale:Float,rotation:Float)=scale<=1.001f
 fun shouldShowViewerControls(scale:Float,gestureActive:Boolean)=!gestureActive&&scale<=1.001f
 fun shouldRenderViewerChrome(captureInProgress:Boolean,controlsVisible:Boolean,scale:Float,gestureActive:Boolean)=!captureInProgress&&controlsVisible&&shouldShowViewerControls(scale,gestureActive)
 fun viewerPanBounds(viewportWidth:Float,viewportHeight:Float,imageWidth:Float,imageHeight:Float,scale:Float,rotation:Float):ViewerPanBounds{
@@ -111,4 +111,16 @@ fun albumLocator(relativePath:String?,bucketId:Long,bucketName:String?):AlbumLoc
     if(bucketId!=0L) return AlbumLocator.Bucket(bucketId)
     val cleanName=bucketName?.trim().orEmpty()
     return if(cleanName.isNotEmpty()) AlbumLocator.Name(cleanName) else AlbumLocator.Unknown
+}
+
+fun hasMoreAfterPage(receivedCount:Int):Boolean = receivedCount > 0
+fun releasedViewerRotation(baseRotation:Float):Float = normalizeViewerRotation(baseRotation)
+fun mergeAlbumSources(primary:List<GalleryAlbum>, secondary:List<GalleryAlbum>):List<GalleryAlbum> {
+    val merged = linkedMapOf<String, GalleryAlbum>()
+    (primary + secondary).forEach { album ->
+        val key = albumIdentityKey(album.relativePath, album.bucketId, album.bucketName)
+        val current = merged[key]
+        if (current == null || album.count > current.count) merged[key] = album
+    }
+    return merged.values.sortedBy { it.name.lowercase() }
 }
