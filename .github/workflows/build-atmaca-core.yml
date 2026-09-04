@@ -64,6 +64,9 @@ jobs:
       - name: Apply rotated viewer fit
         run: python3 coreapp/apply_rotated_viewer_fit.py
 
+      - name: Apply physical tool fixes
+        run: python3 coreapp/apply_physical_tool_fixes.py
+
       - name: Verify direct gallery source
         run: python3 coreapp/check_direct_source.py
 
