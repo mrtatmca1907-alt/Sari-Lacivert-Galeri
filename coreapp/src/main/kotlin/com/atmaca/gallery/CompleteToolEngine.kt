@@ -146,7 +146,8 @@ class CompleteToolEngine(private val context: Context) {
     /**
      * On-device smart crop using bundled ML Kit face detection. The detector works on
      * a bounded preview bitmap; detections are mapped back to source coordinates and
-     * expanded to include head/shoulders/upper body. Source photos are never modified.
+     * expanded to include head/shoulders/upper body. Every source gets its own
+     * result folder; crops are written first and the original is moved last.
      */
     suspend fun smartPersonCrop(
         photos: List<Uri>,
@@ -160,6 +161,10 @@ class CompleteToolEngine(private val context: Context) {
         try {
             photos.forEachIndexed { photoIndex, uri ->
                 coroutineContext.ensureActive()
+                val sourceName = queryNameMime(uri).first.ifBlank { "photo_${photoIndex + 1}.jpg" }
+                val sourceBase = sanitizePathSegment(sourceName.substringBeforeLast('.', sourceName))
+                val outputPath = "Pictures/ATMACA Kişi Kırpma/${sourceBase}_${photoIndex + 1}/"
+                val failedBeforePhoto = failed
                 val source = decodeBitmap(uri)
                 if (source == null || source.width < 2 || source.height < 2) {
                     failed++
@@ -179,7 +184,6 @@ class CompleteToolEngine(private val context: Context) {
                     if (faces.isEmpty()) {
                         skipped++
                     } else {
-                        val sourceName = queryNameMime(uri).first.ifBlank { "photo_${photoIndex + 1}.jpg" }
                         faces.forEachIndexed { faceIndex, face ->
                             coroutineContext.ensureActive()
                             val box = scaleRectToSource(face.boundingBox, prepared.scaleToSource)
@@ -206,7 +210,7 @@ class CompleteToolEngine(private val context: Context) {
                                     faceIndex + 1
                                 )
                                 val ok = withContext(Dispatchers.IO) {
-                                    saveBitmapJpeg(crop, outputName, "Pictures/ATMACA Kişi Kırpma/", 94)
+                                    saveBitmapJpeg(crop, outputName, outputPath, 94)
                                 }
                                 crop.recycle()
                                 if (ok) created++ else failed++
@@ -220,6 +224,12 @@ class CompleteToolEngine(private val context: Context) {
                         detectionBitmap!!.recycle()
                     }
                     source.recycle()
+                }
+                // Orijinali ancak bu fotoğrafa ait bütün kırpmalar başarıyla
+                // yazıldıktan sonra taşı. Böylece yarım işlemde kaynak kaybolmaz.
+                if (failed == failedBeforePhoto) {
+                    val moved = withContext(Dispatchers.IO) { moveImageToOutputFolder(uri, outputPath) }
+                    if (moved) created++ else failed++
                 }
                 onProgress(photoIndex + 1, photos.size)
             }
@@ -359,6 +369,54 @@ class CompleteToolEngine(private val context: Context) {
                 null
             ) > 0
         }.getOrDefault(false)
+    }
+
+    private fun moveImageToOutputFolder(source: Uri, outputPath: String): Boolean {
+        if (Build.VERSION.SDK_INT < 29) return false
+        val mediaUri = resolveImageMediaStoreUri(source) ?: return false
+        return runCatching {
+            resolver.update(
+                mediaUri,
+                ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, outputPath) },
+                null,
+                null
+            ) > 0
+        }.getOrDefault(false)
+    }
+
+    private fun resolveImageMediaStoreUri(source: Uri): Uri? {
+        if (source.authority == MediaStore.AUTHORITY) return source
+        if (source.authority == "com.android.providers.media.documents") {
+            val docId = runCatching { DocumentsContract.getDocumentId(source) }.getOrNull() ?: return null
+            val parts = docId.split(':', limit = 2)
+            if (parts.size == 2 && parts[0].equals("image", true)) {
+                val id = parts[1].toLongOrNull() ?: return null
+                return ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+            }
+        }
+        if (source.authority == "com.android.externalstorage.documents") {
+            val docId = runCatching { DocumentsContract.getDocumentId(source) }.getOrNull() ?: return null
+            val relative = docId.substringAfter(':', "").trimStart('/')
+            if (relative.isBlank()) return null
+            val name = relative.substringAfterLast('/')
+            val folder = relative.substringBeforeLast('/', "")
+            val relativePath = if (folder.isBlank()) "" else "$folder/"
+            val projection = arrayOf(MediaStore.Images.Media._ID)
+            val selection = if (relativePath.isBlank()) {
+                "${MediaStore.Images.Media.DISPLAY_NAME}=?"
+            } else {
+                "${MediaStore.Images.Media.DISPLAY_NAME}=? AND ${MediaStore.Images.Media.RELATIVE_PATH}=?"
+            }
+            val args = if (relativePath.isBlank()) arrayOf(name) else arrayOf(name, relativePath)
+            return runCatching {
+                resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, args, null)?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@use null
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID))
+                    ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+                }
+            }.getOrNull()
+        }
+        return null
     }
 
     private fun resolveVideoMediaStoreUri(source: Uri): Uri? {
