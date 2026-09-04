@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -93,45 +94,52 @@ fun CropEditor(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        val source = bitmap
-        if (source == null) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center))
-        } else {
-            Image(source.asImageBitmap(), item.name, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-            Canvas(
-                Modifier.fillMaxSize().pointerInput(item.id, ratio, source.width, source.height) {
-                    detectDragGestures { change, drag ->
-                        val imageBounds = fitImageBounds(size.width.toFloat(), size.height.toFloat(), source.width, source.height)
-                        if (imageBounds.width <= 0f || imageBounds.height <= 0f) return@detectDragGestures
-                        change.consume()
-                        val dx = drag.x / imageBounds.width
-                        val dy = drag.y / imageBounds.height
-                        val p = Offset(
-                            ((change.position.x - imageBounds.left) / imageBounds.width).coerceIn(0f, 1f),
-                            ((change.position.y - imageBounds.top) / imageBounds.height).coerceIn(0f, 1f)
-                        )
-                        val distances = listOf(abs(p.x-left), abs(p.x-right), abs(p.y-top), abs(p.y-bottom))
-                        when (distances.indexOf(distances.minOrNull())) {
-                            0 -> left = (left + dx).coerceIn(0f, right - .05f)
-                            1 -> right = (right + dx).coerceIn(left + .05f, 1f)
-                            2 -> top = (top + dy).coerceIn(0f, bottom - .05f)
-                            else -> bottom = (bottom + dy).coerceIn(top + .05f, 1f)
+    Column(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            val source = bitmap
+            if (source == null) {
+                CircularProgressIndicator(Modifier.align(Alignment.Center))
+            } else {
+                Image(
+                    source.asImageBitmap(),
+                    item.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Canvas(
+                    Modifier.fillMaxSize().pointerInput(item.id, ratio, source.width, source.height) {
+                        detectDragGestures { change, drag ->
+                            val imageBounds = fitImageBounds(size.width.toFloat(), size.height.toFloat(), source.width, source.height)
+                            if (imageBounds.width <= 0f || imageBounds.height <= 0f) return@detectDragGestures
+                            change.consume()
+                            val dx = drag.x / imageBounds.width
+                            val dy = drag.y / imageBounds.height
+                            val p = Offset(
+                                ((change.position.x - imageBounds.left) / imageBounds.width).coerceIn(0f, 1f),
+                                ((change.position.y - imageBounds.top) / imageBounds.height).coerceIn(0f, 1f)
+                            )
+                            val distances = listOf(abs(p.x-left), abs(p.x-right), abs(p.y-top), abs(p.y-bottom))
+                            when (distances.indexOf(distances.minOrNull())) {
+                                0 -> left = (left + dx).coerceIn(0f, right - .05f)
+                                1 -> right = (right + dx).coerceIn(left + .05f, 1f)
+                                2 -> top = (top + dy).coerceIn(0f, bottom - .05f)
+                                else -> bottom = (bottom + dy).coerceIn(top + .05f, 1f)
+                            }
                         }
                     }
+                ) {
+                    val imageBounds = fitImageBounds(size.width, size.height, source.width, source.height)
+                    drawRect(
+                        Color.White,
+                        topLeft = Offset(imageBounds.left + left * imageBounds.width, imageBounds.top + top * imageBounds.height),
+                        size = Size((right-left) * imageBounds.width, (bottom-top) * imageBounds.height),
+                        style = Stroke(width = 4f)
+                    )
                 }
-            ) {
-                val imageBounds = fitImageBounds(size.width, size.height, source.width, source.height)
-                drawRect(
-                    Color.White,
-                    topLeft = Offset(imageBounds.left + left * imageBounds.width, imageBounds.top + top * imageBounds.height),
-                    size = Size((right-left) * imageBounds.width, (bottom-top) * imageBounds.height),
-                    style = Stroke(width = 4f)
-                )
             }
         }
 
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha=.75f)).padding(8.dp)) {
+        Column(Modifier.fillMaxWidth().background(Color.Black.copy(alpha=.88f)).padding(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 TextButton({ resetForRatio(CropRatio.FREE) }) { Text("Serbest") }
                 TextButton({ resetForRatio(CropRatio.SQUARE) }) { Text("1:1") }
