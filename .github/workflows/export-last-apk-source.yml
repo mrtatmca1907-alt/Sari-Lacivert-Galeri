@@ -1,0 +1,31 @@
+name: Export Last APK Gradle Source
+
+on:
+  push:
+    branches: [ atmaca-native-core ]
+    paths:
+      - '.github/workflows/export-last-apk-source.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact last APK source commit
+        uses: actions/checkout@v5
+        with:
+          ref: 1db74328bd570c97bfaf40cf3360c2ed1497c9f3
+
+      - name: Package Gradle source
+        run: |
+          rm -rf .git
+          zip -r ATMACA-Galeri-Gradle-Kaynak-1db7432.zip . -x '*.apk' -x '*/build/*' -x '.gradle/*'
+
+      - name: Upload source ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Galeri-Gradle-Kaynak-1db7432
+          path: ATMACA-Galeri-Gradle-Kaynak-1db7432.zip
+          if-no-files-found: error
