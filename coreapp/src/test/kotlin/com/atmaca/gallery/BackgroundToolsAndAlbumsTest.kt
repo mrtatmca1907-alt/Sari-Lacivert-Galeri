@@ -45,4 +45,9 @@ class BackgroundToolsAndAlbumsTest {
         assertFalse(albumScanShouldContinue(received = 599, pageSize = 600))
         assertFalse(albumScanShouldContinue(received = 0, pageSize = 600))
     }
+
+    @Test fun hiosAlbumPagesAdvanceByOffset() {
+        assertEquals(600, nextAlbumPageOffset(currentOffset = 0, received = 600))
+        assertEquals(1200, nextAlbumPageOffset(currentOffset = 600, received = 600))
+    }
 }
