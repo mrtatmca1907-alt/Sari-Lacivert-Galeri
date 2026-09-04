@@ -32,4 +32,11 @@ class BackgroundToolsAndAlbumsTest {
         assertTrue(result.albums.isEmpty())
         assertTrue(result.completelyFailed)
     }
+
+    @Test fun hiosAlbumQueryFallsBackFromCompoundSortToSimpleAndUnsorted() {
+        assertEquals(
+            listOf("date_added DESC, _id DESC", "date_added DESC", null),
+            albumQuerySortFallbacks()
+        )
+    }
 }
