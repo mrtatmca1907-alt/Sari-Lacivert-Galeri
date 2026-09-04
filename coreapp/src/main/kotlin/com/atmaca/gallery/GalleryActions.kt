@@ -132,6 +132,8 @@ class GalleryActions(context: Context) {
                     ContentValues().apply {
                         put(MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000L)
                         put(MediaStore.MediaColumns.SIZE, temp.length())
+                        put(MediaStore.MediaColumns.WIDTH, bitmap.width)
+                        put(MediaStore.MediaColumns.HEIGHT, bitmap.height)
                     },
                     null,
                     null
@@ -147,6 +149,7 @@ class GalleryActions(context: Context) {
                     }, null, null)
                 }
             }
+            resolver.notifyChange(source.uri, null)
             true
         } finally {
             runCatching { temp.delete() }
