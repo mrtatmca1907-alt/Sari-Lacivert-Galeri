@@ -56,22 +56,20 @@ fun personCropBounds(sourceWidth:Int,sourceHeight:Int,faceLeft:Int,faceTop:Int,f
     val r0=maxOf(faceLeft,faceRight).coerceIn(l0+1,sourceWidth)
     val t0=minOf(faceTop,faceBottom).coerceIn(0,sourceHeight-1)
     val b0=maxOf(faceTop,faceBottom).coerceIn(t0+1,sourceHeight)
-    val w=(r0-l0).coerceAtLeast(1)
-    val h=(b0-t0).coerceAtLeast(1)
-    val left=(l0-w*0.7f).roundToInt().coerceAtLeast(0)
-    val right=(r0+w*0.7f).roundToInt().coerceAtMost(sourceWidth)
-    val top=(t0-h*0.6f).roundToInt().coerceAtLeast(0)
-    val bottom=(b0+h*2.2f).roundToInt().coerceAtMost(sourceHeight)
-    return IntCropRect(left,top,right,bottom)
+    val faceW=(r0-l0).coerceAtLeast(1)
+    val faceH=(b0-t0).coerceAtLeast(1)
+    val targetW=maxOf(faceW*4f, sourceWidth*0.60f).roundToInt().coerceIn(faceW, sourceWidth)
+    val targetH=maxOf(faceH*7.2f, sourceHeight*0.75f).roundToInt().coerceIn(faceH, sourceHeight)
+    val centerX=(l0+r0)/2f
+    var left=(centerX-targetW/2f).roundToInt()
+    left=left.coerceIn(0, (sourceWidth-targetW).coerceAtLeast(0))
+    var top=(t0-faceH*1.2f).roundToInt()
+    top=top.coerceIn(0, (sourceHeight-targetH).coerceAtLeast(0))
+    return IntCropRect(left, top, left+targetW, top+targetH)
 }
 
 fun isViewerDoubleTap(previousUpMs:Long,currentUpMs:Long,distancePx:Float,maxDelayMs:Long=300L,maxDistancePx:Float=80f):Boolean = previousUpMs>0L && currentUpMs>previousUpMs && currentUpMs-previousUpMs<=maxDelayMs && distancePx<=maxDistancePx
-fun calculateViewerDecodeSample(sourceWidth:Int,sourceHeight:Int,viewportWidth:Int,viewportHeight:Int):Int {
-    if(sourceWidth<=0||sourceHeight<=0||viewportWidth<=0||viewportHeight<=0)return 1
-    val sourceEdge=maxOf(sourceWidth,sourceHeight).toLong(); val targetEdge=maxOf(viewportWidth,viewportHeight).toLong()*2L
-    if(targetEdge<=0L)return 1
-    return (sourceEdge/targetEdge).toInt().coerceAtLeast(1)
-}
+fun calculateViewerDecodeSample(sourceWidth:Int,sourceHeight:Int,viewportWidth:Int,viewportHeight:Int):Int = 1
 fun clampViewerScale(scale:Float)=scale.coerceIn(1f,4f)
 fun galleryZoomFactor(rawFactor:Float)=rawFactor.coerceIn(0.72f,1.35f)
 fun dampedZoomFactor(rawFactor:Float)=galleryZoomFactor(rawFactor)
@@ -87,9 +85,14 @@ fun shouldEnablePager(scale:Float)=scale<=1.001f
 fun shouldEnablePager(scale:Float,rotation:Float)=scale<=1.001f
 fun shouldShowViewerControls(scale:Float,gestureActive:Boolean)=!gestureActive&&scale<=1.001f
 fun shouldRenderViewerChrome(captureInProgress:Boolean,controlsVisible:Boolean,scale:Float,gestureActive:Boolean)=!captureInProgress&&controlsVisible&&shouldShowViewerControls(scale,gestureActive)
-fun viewerImageRenderSize(viewportWidth:Float,viewportHeight:Float,imageWidth:Float,imageHeight:Float):ViewerImageRenderSize {
+fun viewerImageRenderSize(viewportWidth:Float,viewportHeight:Float,imageWidth:Float,imageHeight:Float):ViewerImageRenderSize =
+    viewerImageRenderSize(viewportWidth, viewportHeight, imageWidth, imageHeight, 0f)
+fun viewerImageRenderSize(viewportWidth:Float,viewportHeight:Float,imageWidth:Float,imageHeight:Float,rotation:Float):ViewerImageRenderSize {
     if(viewportWidth<=0f||viewportHeight<=0f||imageWidth<=0f||imageHeight<=0f) return ViewerImageRenderSize(0f,0f)
-    val fit=minOf(viewportWidth/imageWidth,viewportHeight/imageHeight)
+    val quarterTurn = ((normalizeViewerRotation(rotation) / 90f).roundToInt() % 2) != 0
+    val rotatedWidth = if(quarterTurn) imageHeight else imageWidth
+    val rotatedHeight = if(quarterTurn) imageWidth else imageHeight
+    val fit=minOf(viewportWidth/rotatedWidth,viewportHeight/rotatedHeight)
     return ViewerImageRenderSize(imageWidth*fit,imageHeight*fit)
 }
 fun viewerPanBounds(viewportWidth:Float,viewportHeight:Float,imageWidth:Float,imageHeight:Float,scale:Float,rotation:Float):ViewerPanBounds{
