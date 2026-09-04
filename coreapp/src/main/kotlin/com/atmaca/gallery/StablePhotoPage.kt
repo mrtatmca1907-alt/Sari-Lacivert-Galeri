@@ -145,12 +145,9 @@ fun StablePhotoPage(
                         } while (event.changes.any { it.pressed })
 
                         if (transformed) {
-                            if (shouldCommitViewerTransform(true)) {
-                                onRotationChanged(localRotation)
-                            }
-                            // Her hareketin sonunda fotoğrafı merkeze ve normal ölçeğe getir.
-                            // Böylece HorizontalPager yeniden devreye girer ve sonraki fotoğrafa
-                            // sağa/sola kaydırma takılı kalmaz.
+                            // Serbest yakınlaştırma/döndürme geçicidir. Parmak bırakılınca
+                            // fotoğraf düğmeyle seçilmiş temel açıya, merkeze ve 1x ölçeğe döner.
+                            localRotation = releasedViewerRotation(rotation)
                             resetZoomOnly()
                             onGestureActive(false)
                         } else if (!moved) {
