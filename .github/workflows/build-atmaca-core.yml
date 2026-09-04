@@ -58,6 +58,9 @@ jobs:
       - name: Apply viewer chrome
         run: python3 coreapp/apply_viewer_chrome.py
 
+      - name: Apply video landscape
+        run: python3 coreapp/apply_video_landscape.py
+
       - name: Verify direct gallery source
         run: python3 coreapp/check_direct_source.py
 
