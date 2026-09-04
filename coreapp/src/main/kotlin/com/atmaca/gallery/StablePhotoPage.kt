@@ -98,7 +98,8 @@ fun StablePhotoPage(
                 viewportWidth.toFloat(),
                 viewportHeight.toFloat(),
                 source.width.toFloat(),
-                source.height.toFloat()
+                source.height.toFloat(),
+                localRotation
             )
             val renderWidth = with(density) { fitted.width.toDp() }
             val renderHeight = with(density) { fitted.height.toDp() }
