@@ -261,14 +261,18 @@ private fun AtmacaToolDialog(tool: AtmacaToolPage, onDismiss: () -> Unit) {
                         Text(if (selectedUris.isEmpty()) "Dosya seç" else "Dosya seçimini değiştir (${selectedUris.size})")
                     }
                     OutlinedButton(
-                        onClick = {
-                            if (toolUsesInternalAlbumPicker(tool)) showInternalAlbumPicker = true
-                            else folderPicker.launch(null)
-                        },
+                        onClick = { showInternalAlbumPicker = true },
                         enabled = !running && !scanning,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (toolUsesInternalAlbumPicker(tool)) "Galeriden klasör seç" else "Klasör seç ve alt klasörleri tara")
+                        Text("Galeriden albüm seç")
+                    }
+                    OutlinedButton(
+                        onClick = { folderPicker.launch(null) },
+                        enabled = !running && !scanning,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Telefon klasörü seç (alt klasörler dahil)")
                     }
 
                     if (scanning) {
