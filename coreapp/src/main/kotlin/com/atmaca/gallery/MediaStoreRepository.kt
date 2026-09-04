@@ -213,9 +213,10 @@ class MediaStoreRepository(context: Context) {
 
         scan(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
         scan(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
-        grouped.values
+        val primary = grouped.values
             .map { GalleryAlbum(it.relativePath, it.name, it.count, it.cover, it.bucketId, it.bucketName) }
-            .sortedBy { it.name.lowercase() }
+        val filesFallback = runCatching { loadAlbums() }.getOrDefault(emptyList())
+        mergeAlbumSources(primary, filesFallback)
     }
 
     suspend fun loadAllInAlbum(album: GalleryAlbum): List<GalleryMedia> = loadAllInAlbumOemSafe(album)
