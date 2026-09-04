@@ -1,0 +1,35 @@
+name: Apply Root Tool Host Fix
+
+on:
+  push:
+    branches: [ atmaca-native-core ]
+    paths:
+      - 'coreapp/apply_root_tool_host_fix.py'
+      - '.github/workflows/apply-root-tool-host-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: atmaca-native-core
+      - name: Apply root tool host fix
+        run: python3 coreapp/apply_root_tool_host_fix.py
+      - name: Commit root tool host fix
+        run: |
+          git config user.name "atmaca-migration-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add coreapp/build.gradle.kts \
+            coreapp/src/main/kotlin/com/atmaca/gallery/BuildIdentity.kt \
+            coreapp/src/main/kotlin/com/atmaca/gallery/OemFixRules.kt \
+            coreapp/src/main/kotlin/com/atmaca/gallery/CompleteSettingsExtras.kt \
+            coreapp/src/main/kotlin/com/atmaca/gallery/ModernSettingsDialog.kt \
+            coreapp/src/main/kotlin/com/atmaca/gallery/GalleryApp.kt \
+            coreapp/src/test/kotlin/com/atmaca/gallery/OemRegressionTest.kt
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: host tools at gallery root and expose album diagnostics"
+          git push origin HEAD:atmaca-native-core
