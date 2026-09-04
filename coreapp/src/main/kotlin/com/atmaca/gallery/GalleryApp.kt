@@ -53,6 +53,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.ContentCopy
@@ -869,6 +871,7 @@ private fun MediaGrid(
     onLoadMore: () -> Unit
 ) {
     val gridState = rememberLazyGridState()
+    val gridScope = rememberCoroutineScope()
     var dragX by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
     var lastDragIndex by remember { mutableIntStateOf(-1) }
@@ -893,6 +896,7 @@ private fun MediaGrid(
             }
     }
 
+    Box(Modifier.fillMaxSize()) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
         state = gridState,
@@ -938,6 +942,26 @@ private fun MediaGrid(
                     CircularProgressIndicator(Modifier.size(28.dp))
                 }
             }
+        }
+    }
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 4.dp)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f), RoundedCornerShape(18.dp))
+        ) {
+            IconButton(
+                onClick = { gridScope.launch { gridState.animateScrollToItem(0) } },
+                enabled = items.isNotEmpty()
+            ) { Icon(Icons.Default.KeyboardArrowUp, "En üste git") }
+            IconButton(
+                onClick = {
+                    gridScope.launch {
+                        if (items.isNotEmpty()) gridState.animateScrollToItem(items.lastIndex)
+                    }
+                },
+                enabled = items.isNotEmpty()
+            ) { Icon(Icons.Default.KeyboardArrowDown, "En alta git") }
         }
     }
 }
@@ -1482,9 +1506,6 @@ private fun MediaViewer(
                         .padding(top = 14.dp, start = 2.dp, end = 2.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White)
-                    }
                     Text(
                         current.name,
                         color = Color.White,
@@ -1572,6 +1593,9 @@ private fun MediaViewer(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Geri", tint = Color.White)
+                    }
                     IconButton(onClick = { toggleFavorite(current) }) {
                         Text(if (current.id.toString() in favoriteIds) "♥" else "♡", color = Color.White, style = MaterialTheme.typography.headlineSmall)
                     }
