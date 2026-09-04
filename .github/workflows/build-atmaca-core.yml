@@ -61,6 +61,9 @@ jobs:
       - name: Apply video landscape
         run: python3 coreapp/apply_video_landscape.py
 
+      - name: Apply rotated viewer fit
+        run: python3 coreapp/apply_rotated_viewer_fit.py
+
       - name: Verify direct gallery source
         run: python3 coreapp/check_direct_source.py
 
