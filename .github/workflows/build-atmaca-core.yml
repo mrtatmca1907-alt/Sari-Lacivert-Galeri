@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - fix/coreapp-140904-media-tools
+      - fix/background-tools-full-albums
     paths:
       - 'coreapp/**'
       - 'settings.gradle.kts'
