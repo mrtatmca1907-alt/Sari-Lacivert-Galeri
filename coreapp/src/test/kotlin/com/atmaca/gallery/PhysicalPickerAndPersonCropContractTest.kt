@@ -28,4 +28,11 @@ class PhysicalPickerAndPersonCropContractTest {
         assertTrue(crop.top <= 220)
         assertTrue(crop.bottom >= 1600)
     }
+
+    @Test
+    fun directFilePickerImagesAreDecodedAsFiles() {
+        val source = File("src/main/kotlin/com/atmaca/gallery/CompleteToolEngine.kt").readText()
+        assertTrue(source.contains("uri.scheme.equals(\"file\", true)"))
+        assertTrue(source.contains("BitmapFactory.decodeFile"))
+    }
 }
