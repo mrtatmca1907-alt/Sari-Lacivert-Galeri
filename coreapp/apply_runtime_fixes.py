@@ -318,7 +318,8 @@ new_album = '''                        val fastPage = repository.loadMixedPageAf
                             albumBucketId = snapshot.albumBucketId,
                             albumBucketName = snapshot.albumBucketName
                         )'''
-if new_album not in view_model_text:
+oem_primary_album = "val oemAll = repository.loadAllInAlbumOemSafe(album)"
+if oem_primary_album not in view_model_text and new_album not in view_model_text:
     if view_model_text.count(old_album) != 1:
         raise SystemExit("view model album paging marker bulunamadi")
     view_model_text = view_model_text.replace(old_album, new_album, 1)
