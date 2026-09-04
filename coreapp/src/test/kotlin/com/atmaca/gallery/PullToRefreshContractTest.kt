@@ -8,11 +8,7 @@ class PullToRefreshContractTest {
     @Test
     fun gallery_supports_pull_down_refresh_without_permanent_button() {
         val source = File("src/main/kotlin/com/atmaca/gallery/GalleryApp.kt").readText()
-        assertTrue(
-            "Galeri aşağı çekilince yenilemeli ve kalıcı yenile düğmesine ihtiyaç duymamalı",
-            source.contains("pullRefresh") ||
-                source.contains("PullToRefreshBox") ||
-                source.contains("nestedScroll") && source.contains("refresh")
-        )
+        assertTrue("Albüm ızgarası gerçek çek-yenile bileşenini kullanmalı", source.contains("PullToRefreshBox("))
+        assertTrue("Çek-yenile albüm sorgusunu yeniden başlatmalı", source.contains("onRefresh = { refreshCurrentSection() }"))
     }
 }
