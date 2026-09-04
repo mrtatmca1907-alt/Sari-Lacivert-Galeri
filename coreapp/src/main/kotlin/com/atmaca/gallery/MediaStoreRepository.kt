@@ -83,6 +83,31 @@ class MediaStoreRepository(context: Context) {
         queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly)
     }
 
+    suspend fun loadMixedPageAfter(
+        afterDateAdded: Long?,
+        afterId: Long?,
+        limit: Int = PAGE_SIZE,
+        albumPath: String? = null,
+        albumBucketId: Long = 0L,
+        albumBucketName: String? = null,
+        trashedOnly: Boolean = false
+    ): List<GalleryMedia> = withContext(Dispatchers.IO) {
+        if (trashedOnly && Build.VERSION.SDK_INT < 30) return@withContext emptyList()
+        val selectionParts = mutableListOf("(${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?)")
+        val selectionArgs = mutableListOf(
+            MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+            MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+        )
+        addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId, albumBucketName)
+        if (afterDateAdded != null && afterId != null) {
+            selectionParts += "(${MediaStore.MediaColumns.DATE_ADDED}<? OR (${MediaStore.MediaColumns.DATE_ADDED}=? AND ${MediaStore.Files.FileColumns._ID}<?))"
+            selectionArgs += afterDateAdded.toString()
+            selectionArgs += afterDateAdded.toString()
+            selectionArgs += afterId.toString()
+        }
+        queryKeysetPage(selectionParts, selectionArgs, limit, trashedOnly)
+    }
+
     private fun addAlbumSelector(
         selectionParts: MutableList<String>,
         selectionArgs: MutableList<String>,
@@ -148,20 +173,33 @@ class MediaStoreRepository(context: Context) {
         )
         val grouped = linkedMapOf<String, Acc>()
 
+        val ALBUM_RICH_PROJECTION = buildList {
+            add(MediaStore.MediaColumns._ID)
+            add(MediaStore.MediaColumns.DISPLAY_NAME)
+            add(MediaStore.MediaColumns.MIME_TYPE)
+            add(MediaStore.MediaColumns.DATE_ADDED)
+            add(MediaStore.Images.ImageColumns.BUCKET_ID)
+            add(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+            if (Build.VERSION.SDK_INT >= 29) add(MediaStore.MediaColumns.RELATIVE_PATH)
+        }.toTypedArray()
+        val ALBUM_CORE_PROJECTION = arrayOf(
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.DATE_ADDED,
+            MediaStore.Images.ImageColumns.BUCKET_ID,
+            MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME
+        )
+
+        fun queryAlbumCollectionOemSafe(collection: Uri, selection: String?, sort: String) =
+            runCatching { resolver.query(collection, ALBUM_RICH_PROJECTION, selection, null, sort) }.getOrNull()
+                ?: runCatching { resolver.query(collection, ALBUM_CORE_PROJECTION, selection, null, sort) }.getOrNull()
+                ?: runCatching { resolver.query(collection, ALBUM_CORE_PROJECTION, null, null, sort) }.getOrNull()
+
         fun scan(collection: Uri, isVideo: Boolean) {
             runCatching {
-                val projection = buildList {
-                    add(MediaStore.MediaColumns._ID)
-                    add(MediaStore.MediaColumns.DISPLAY_NAME)
-                    add(MediaStore.MediaColumns.MIME_TYPE)
-                    add(MediaStore.MediaColumns.DATE_ADDED)
-                    add(MediaStore.Images.ImageColumns.BUCKET_ID)
-                    add(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
-                    if (Build.VERSION.SDK_INT >= 29) add(MediaStore.MediaColumns.RELATIVE_PATH)
-                }.toTypedArray()
                 val selection = if (Build.VERSION.SDK_INT >= 30) "${MediaStore.MediaColumns.IS_TRASHED}=0" else null
                 val sort = "${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.MediaColumns._ID} DESC"
-                resolver.query(collection, projection, selection, null, sort)?.use { cursor ->
+                queryAlbumCollectionOemSafe(collection, selection, sort)?.use { cursor ->
                     val idI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                     val nameI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                     val mimeI = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
@@ -365,6 +403,23 @@ class MediaStoreRepository(context: Context) {
             putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
             putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
             putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
+            if (Build.VERSION.SDK_INT >= 30 && trashedOnly) putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
+        }
+        return queryMedia(args, limit)
+    }
+
+    private fun queryKeysetPage(
+        selectionParts: List<String>,
+        selectionArgs: List<String>,
+        limit: Int,
+        trashedOnly: Boolean
+    ): List<GalleryMedia> {
+        val args = Bundle().apply {
+            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selectionParts.joinToString(" AND "))
+            putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selectionArgs.toTypedArray())
+            putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(MediaStore.MediaColumns.DATE_ADDED, MediaStore.Files.FileColumns._ID))
+            putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
+            putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
             if (Build.VERSION.SDK_INT >= 30 && trashedOnly) putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
         }
         return queryMedia(args, limit)
