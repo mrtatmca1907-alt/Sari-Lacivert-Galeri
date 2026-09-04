@@ -16,7 +16,7 @@ private object ViewerBitmapCache : LruCache<String, Bitmap>(96 * 1024) {
 }
 
 private fun viewerBitmapKey(item: GalleryMedia, viewportWidth: Int, viewportHeight: Int): String =
-    "${item.uri}|${viewportWidth.coerceAtLeast(1)}x${viewportHeight.coerceAtLeast(1)}"
+    "${item.uri}|${item.dateModified}|${item.size}|${viewportWidth.coerceAtLeast(1)}x${viewportHeight.coerceAtLeast(1)}"
 
 suspend fun prefetchViewerBitmap(
     context: Context,
