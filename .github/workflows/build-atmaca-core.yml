@@ -2,6 +2,14 @@ name: Build ATMACA Native Core
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/coreapp-140904-media-tools
+    paths:
+      - 'coreapp/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/build-atmaca-core.yml'
   pull_request:
     branches: [ main ]
     paths:
