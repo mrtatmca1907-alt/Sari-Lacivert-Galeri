@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,8 +41,10 @@ fun InternalToolAlbumPicker(
     var albums by remember { mutableStateOf<List<GalleryAlbum>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var opening by remember { mutableStateOf<String?>(null) }
+    var refreshKey by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshKey) {
+        loading = true
         albums = runCatching { repository.loadAlbumsOemSafe() }.getOrDefault(emptyList())
         loading = false
     }
@@ -54,11 +57,17 @@ fun InternalToolAlbumPicker(
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Galeriden klasör seç", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { refreshKey++ }, enabled = opening == null && !loading) { Text("Yenile") }
                     TextButton(onClick = onDismiss, enabled = opening == null) { Text("Kapat") }
                 }
                 if (loading) {
                     Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.Center) {
                         CircularProgressIndicator()
+                    }
+                } else if (albums.isEmpty()) {
+                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Albüm bulunamadı. Medya iznini kontrol edip Yenile'ye dokun.")
+                        Button(onClick = { refreshKey++ }, modifier = Modifier.padding(top = 12.dp)) { Text("Yenile") }
                     }
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
