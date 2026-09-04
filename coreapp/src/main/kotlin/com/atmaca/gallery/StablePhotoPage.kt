@@ -145,11 +145,13 @@ fun StablePhotoPage(
                         } while (event.changes.any { it.pressed })
 
                         if (transformed) {
-                            clampOffsets(source)
                             if (shouldCommitViewerTransform(true)) {
-                                onScaleChanged(scale)
                                 onRotationChanged(localRotation)
                             }
+                            // Her hareketin sonunda fotoğrafı merkeze ve normal ölçeğe getir.
+                            // Böylece HorizontalPager yeniden devreye girer ve sonraki fotoğrafa
+                            // sağa/sola kaydırma takılı kalmaz.
+                            resetZoomOnly()
                             onGestureActive(false)
                         } else if (!moved) {
                             val distanceFromLast = hypot(
