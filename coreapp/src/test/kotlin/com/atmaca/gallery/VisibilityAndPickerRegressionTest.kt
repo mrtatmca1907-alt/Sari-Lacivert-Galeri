@@ -23,4 +23,8 @@ class VisibilityAndPickerRegressionTest {
     @Test fun albumOpenMustUseSeparateImageAndVideoCollections() {
         assertTrue(albumOpenUsesSeparateMediaCollections())
     }
+    @Test fun rotatedPhotoStillAllowsHorizontalAlbumPagingAfterRelease() {
+        assertTrue(shouldEnablePager(scale = 1f, rotation = 90f))
+        assertTrue(!shouldPhotoConsumeGesture(pointerCount = 1, scale = 1f, rotation = 90f))
+    }
 }
