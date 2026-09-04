@@ -50,8 +50,10 @@ fun albumLookupKeys(relativePath: String?, bucketId: Long, bucketName: String?):
     val cleanPath = relativePath?.trim().orEmpty()
     if (cleanPath.isNotEmpty()) add("path:${normalizeRelativePath(cleanPath)}")
     if (bucketId != 0L) add("bucket:$bucketId")
-    val cleanName = bucketName?.trim().orEmpty()
-    if (cleanName.isNotEmpty()) add("name:$cleanName")
+    if (isEmpty()) {
+        val cleanName = bucketName?.trim().orEmpty()
+        if (cleanName.isNotEmpty()) add("name:$cleanName")
+    }
 }.distinct()
 
 fun galleryScrollbarEdge(): ScrollbarEdge = ScrollbarEdge.RIGHT
