@@ -96,10 +96,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             val snapshot = _state.value
+            val lastLoaded = snapshot.items.lastOrNull()
             runCatching {
                 when (snapshot.mode) {
-                    CollectionMode.MEDIA -> repository.loadMixedPage(
-                        offset = snapshot.items.size,
+                    CollectionMode.MEDIA -> repository.loadMixedPageAfter(
+                        afterDateAdded = lastLoaded?.dateAdded,
+                        afterId = lastLoaded?.id,
                         limit = MediaStoreRepository.PAGE_SIZE
                     )
                     CollectionMode.TAB -> repository.loadPage(
@@ -108,28 +110,29 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         limit = MediaStoreRepository.PAGE_SIZE
                     )
                     CollectionMode.ALBUM -> {
-                        val fastPage = repository.loadMixedPage(
-                            offset = snapshot.items.size,
-                            limit = MediaStoreRepository.PAGE_SIZE,
-                            albumPath = snapshot.albumPath,
-                            albumBucketId = snapshot.albumBucketId,
-                            albumBucketName = snapshot.albumBucketName
+                        val album = GalleryAlbum(
+                            relativePath = snapshot.albumPath.orEmpty(),
+                            name = snapshot.albumBucketName.orEmpty().ifBlank {
+                                snapshot.albumPath?.let(::albumDisplayName) ?: "Depolama"
+                            },
+                            count = 0,
+                            cover = null,
+                            bucketId = snapshot.albumBucketId,
+                            bucketName = snapshot.albumBucketName
                         )
-                        if (fastPage.isNotEmpty() || snapshot.items.isNotEmpty()) {
-                            fastPage
+                        val oemAll = repository.loadAllInAlbumOemSafe(album)
+                        if (oemAll.isNotEmpty()) {
+                            oemAll.drop(snapshot.items.size).take(MediaStoreRepository.PAGE_SIZE)
                         } else {
-                            val album = GalleryAlbum(
-                                relativePath = snapshot.albumPath.orEmpty(),
-                                name = snapshot.albumBucketName.orEmpty().ifBlank {
-                                    snapshot.albumPath?.let(::albumDisplayName) ?: "Depolama"
-                                },
-                                count = 0,
-                                cover = null,
-                                bucketId = snapshot.albumBucketId,
-                                bucketName = snapshot.albumBucketName
+                            val fastPage = repository.loadMixedPageAfter(
+                                afterDateAdded = lastLoaded?.dateAdded,
+                                afterId = lastLoaded?.id,
+                                limit = MediaStoreRepository.PAGE_SIZE,
+                                albumPath = snapshot.albumPath,
+                                albumBucketId = snapshot.albumBucketId,
+                                albumBucketName = snapshot.albumBucketName
                             )
-                            repository.loadAllInAlbumOemSafe(album)
-                                .take(MediaStoreRepository.PAGE_SIZE)
+                            fastPage
                         }
                     }
                     CollectionMode.TRASH -> repository.loadMixedPage(
