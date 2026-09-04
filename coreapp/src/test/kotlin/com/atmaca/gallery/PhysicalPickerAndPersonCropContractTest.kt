@@ -7,10 +7,11 @@ import java.io.File
 
 class PhysicalPickerAndPersonCropContractTest {
     @Test
-    fun internalAlbumPickerDoesNotBlockOnWholeLibraryBeforeShowingFolders() {
+    fun internalAlbumPickerUsesTheCompleteAlbumSnapshot() {
         val source = File("src/main/kotlin/com/atmaca/gallery/InternalToolAlbumPicker.kt").readText()
         assertFalse(source.contains("repository.loadAlbumsOemSafe()"))
-        assertTrue(source.contains("repository.loadMixedPage("))
+        assertFalse(source.contains("repository.loadMixedPage("))
+        assertTrue(source.contains("repository.loadCompleteAlbums()"))
     }
 
     @Test
