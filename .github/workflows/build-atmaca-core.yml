@@ -55,6 +55,9 @@ jobs:
       - name: Apply pull-down refresh
         run: python3 coreapp/apply_pull_refresh.py
 
+      - name: Apply viewer chrome
+        run: python3 coreapp/apply_viewer_chrome.py
+
       - name: Verify direct gallery source
         run: python3 coreapp/check_direct_source.py
 
