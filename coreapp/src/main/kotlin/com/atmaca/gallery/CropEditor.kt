@@ -9,10 +9,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -95,7 +95,7 @@ fun CropEditor(
     }
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().fillMaxHeight(0.82f)) {
             val source = bitmap
             if (source == null) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
