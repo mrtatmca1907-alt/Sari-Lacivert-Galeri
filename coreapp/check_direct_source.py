@@ -20,12 +20,14 @@ def require(text, markers, label):
         if marker not in text: raise SystemExit(f"DIRECT SOURCE FAIL: {label} missing {marker!r}")
 
 require(app,[
-    "enum class HomeSection { MEDIA, ALBUMS, SETTINGS",'label = { Text("Medya") }','label = { Text("Albümler") }','label = { Text("Ayarlar") }',
+    "enum class HomeSection { MEDIA, ALBUMS, SETTINGS","mutableStateOf(HomeSection.ALBUMS)",'Text("Tüm klasör içeriğini göster")','Text("Klasör görünümüne geç")','Text("Sıralama ölçütü")','Text("Medyayı filtrele")',
     "ModernSettingsDialog(","detectDragGesturesAfterLongPress","slideshowPrefetchIndices(","prefetchViewerBitmap(",
     "pendingMutationIds","vm.removeItemsByIds(affectedIds)","var albums by remember { mutableStateOf<List<GalleryAlbum>>(emptyList()) }",
     "LaunchedEffect(albumsRefresh, section, pathAction)","shouldReloadPrimaryMediaAfterCamera(section, success = true)","vm.openAlbum(album)",
     'Text("Screenshot klasörü seç")',"ActivityResultContracts.OpenDocumentTree()",'prefs.edit().putString("screenshot_tree_uri"',"saveScreenshotToTree(context, shot, selectedTree)"
 ],"GalleryApp")
+if "NavigationBarItem(" in app: raise SystemExit("DIRECT SOURCE FAIL: old bottom navigation returned")
+if 'Icon(Icons.Default.Refresh, "Yenile")' in app: raise SystemExit("DIRECT SOURCE FAIL: permanent refresh button returned")
 if "produceState<List<GalleryAlbum>>" in app: raise SystemExit("DIRECT SOURCE FAIL: albums still reset through produceState")
 mutation=app.split("val mutationConsentLauncher",1)[1].split("val cameraLauncher",1)[0]
 for bad in ["refreshToken++","albumsRefresh++","duplicatesRefresh++","vm.reload()"]:
