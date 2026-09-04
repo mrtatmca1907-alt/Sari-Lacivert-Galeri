@@ -41,12 +41,6 @@ fun screenshotSourceSelectionEnabled(): Boolean = true
 
 fun albumOpenUsesSeparateMediaCollections(): Boolean = true
 
-fun shouldLoadMoreForEmptyFilteredPage(
-    totalLoaded: Int,
-    filteredVisible: Int,
-    hasMore: Boolean,
-    loading: Boolean
-): Boolean = totalLoaded > 0 && filteredVisible == 0 && hasMore && !loading
 
 enum class ScrollbarEdge { LEFT, RIGHT }
 
@@ -63,3 +57,21 @@ fun albumLookupKeys(relativePath: String?, bucketId: Long, bucketName: String?):
 }.distinct()
 
 fun galleryScrollbarEdge(): ScrollbarEdge = ScrollbarEdge.RIGHT
+
+fun shouldLoadMoreForEmptyFilteredPage(
+    totalLoaded: Int,
+    filteredVisible: Int,
+    hasMore: Boolean,
+    loading: Boolean
+): Boolean = totalLoaded > 0 && filteredVisible == 0 && hasMore && !loading
+
+fun dragAutoScrollDelta(pointerY: Float, viewportHeight: Float, edgePx: Float): Float {
+    if (viewportHeight <= 0f || edgePx <= 0f) return 0f
+    val topEdge = edgePx
+    val bottomEdge = viewportHeight - edgePx
+    return when {
+        pointerY < topEdge -> -((topEdge - pointerY) / edgePx).coerceIn(0f, 1f)
+        pointerY > bottomEdge -> ((pointerY - bottomEdge) / edgePx).coerceIn(0f, 1f)
+        else -> 0f
+    }
+}
