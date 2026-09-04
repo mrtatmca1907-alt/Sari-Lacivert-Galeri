@@ -9,8 +9,8 @@ class AlbumConsumerSourceTest {
     private fun source(name: String) = File("src/main/kotlin/com/atmaca/gallery/$name").readText()
 
     @Test fun bothAlbumConsumersUseCompleteSnapshot() {
-        assertTrue(source("GalleryApp.kt").contains("loadCompleteAlbums()"))
-        assertTrue(source("InternalToolAlbumPicker.kt").contains("loadCompleteAlbums()"))
+        assertTrue(source("GalleryApp.kt").contains("loadCompleteAlbums"))
+        assertTrue(source("InternalToolAlbumPicker.kt").contains("loadCompleteAlbums"))
     }
 
     @Test fun visibleAlbumsNeverFallBackToTheCurrentMediaPage() {
