@@ -10,6 +10,7 @@ import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import com.google.mlkit.vision.common.InputImage
@@ -24,6 +25,7 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import java.io.File
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -296,11 +298,16 @@ class CompleteToolEngine(private val context: Context) {
     }.getOrNull()
 
     private fun queryNameMime(uri: Uri): Pair<String, String?> {
+        if (uri.scheme.equals("file", true)) {
+            val file = uri.path?.let(::File)
+            return (file?.name.orEmpty()) to null
+        }
         val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE)
         return runCatching {
             resolver.query(uri, projection, null, null, null)?.use { cursor ->
                 if (!cursor.moveToFirst()) return@use "" to null
-                val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)) ?: ""
+                val nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+                val name = if (nameIndex >= 0) cursor.getString(nameIndex).orEmpty() else ""
                 val mimeIndex = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
                 name to if (mimeIndex >= 0) cursor.getString(mimeIndex) else null
             } ?: ("" to null)
@@ -359,6 +366,7 @@ class CompleteToolEngine(private val context: Context) {
     }
 
     private fun moveVideoToOutputFolder(source: Uri, outputPath: String): Boolean {
+        if (source.scheme.equals("file", true)) return moveDirectFileToOutput(source, outputPath)
         if (Build.VERSION.SDK_INT < 29) return false
         val mediaUri = resolveVideoMediaStoreUri(source) ?: return false
         return runCatching {
@@ -372,6 +380,7 @@ class CompleteToolEngine(private val context: Context) {
     }
 
     private fun moveImageToOutputFolder(source: Uri, outputPath: String): Boolean {
+        if (source.scheme.equals("file", true)) return moveDirectFileToOutput(source, outputPath)
         if (Build.VERSION.SDK_INT < 29) return false
         val mediaUri = resolveImageMediaStoreUri(source) ?: return false
         return runCatching {
@@ -383,6 +392,36 @@ class CompleteToolEngine(private val context: Context) {
             ) > 0
         }.getOrDefault(false)
     }
+
+    private fun moveDirectFileToOutput(source: Uri, outputPath: String): Boolean = runCatching {
+        val sourceFile = source.path?.let(::File) ?: return@runCatching false
+        if (!sourceFile.isFile) return@runCatching false
+        val root = Environment.getExternalStorageDirectory()
+        val outputDir = File(root, outputPath.trimStart('/'))
+        if (!outputDir.exists() && !outputDir.mkdirs()) return@runCatching false
+        var target = File(outputDir, sourceFile.name)
+        if (target.canonicalPath == sourceFile.canonicalPath) return@runCatching true
+        if (target.exists()) {
+            val base = sourceFile.nameWithoutExtension
+            val ext = sourceFile.extension.takeIf { it.isNotBlank() }?.let { ".$it" }.orEmpty()
+            var suffix = 2
+            while (target.exists()) {
+                target = File(outputDir, "${base}_orijinal_${suffix}${ext}")
+                suffix++
+            }
+        }
+        sourceFile.renameTo(target) || run {
+            sourceFile.inputStream().use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (target.length() != sourceFile.length()) {
+                target.delete()
+                false
+            } else {
+                sourceFile.delete()
+            }
+        }
+    }.getOrDefault(false)
 
     private fun resolveImageMediaStoreUri(source: Uri): Uri? {
         if (source.authority == MediaStore.AUTHORITY) return source
