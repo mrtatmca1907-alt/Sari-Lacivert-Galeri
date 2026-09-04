@@ -281,7 +281,15 @@ class CompleteToolEngine(private val context: Context) {
     )
 
     private fun decodeBitmap(uri: Uri): Bitmap? = runCatching {
-        if (Build.VERSION.SDK_INT >= 28) {
+        if (uri.scheme.equals("file", true)) {
+            val path = uri.path ?: return@runCatching null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
+            val pixels = bounds.outWidth.toLong().coerceAtLeast(0L) * bounds.outHeight.toLong().coerceAtLeast(0L)
+            val edge = max(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
+            val sample = if (pixels > 24_000_000L) (edge / 5000).coerceAtLeast(1) else 1
+            BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+        } else if (Build.VERSION.SDK_INT >= 28) {
             val source = ImageDecoder.createSource(resolver, uri)
             ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
                 decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
