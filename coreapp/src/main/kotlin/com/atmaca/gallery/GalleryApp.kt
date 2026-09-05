@@ -411,7 +411,6 @@ private fun GalleryHome(vm: GalleryViewModel) {
             val result = runCatching {
                 repository.loadCompleteAlbums { partial ->
                     albums = partial
-                    albumsLoading = false
                     if (partial.isNotEmpty() && message?.startsWith("Albümler okunamadı") == true) message = null
                 }
             }.getOrElse {
