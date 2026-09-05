@@ -77,6 +77,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -87,6 +88,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -174,6 +176,7 @@ private fun PermissionScreen(onRequest: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GalleryHome(vm: GalleryViewModel) {
     val context = LocalContext.current
@@ -404,16 +407,19 @@ private fun GalleryHome(vm: GalleryViewModel) {
     LaunchedEffect(albumsRefresh, section, pathAction) {
         if (section == HomeSection.ALBUMS || pathAction != null) {
             albumsLoading = true
+            if (section == HomeSection.ALBUMS) albums = emptyList()
             val result = runCatching {
                 repository.loadCompleteAlbums { partial ->
                     albums = partial
                     albumsLoading = false
+                    if (partial.isNotEmpty() && message?.startsWith("Albümler okunamadı") == true) message = null
                 }
             }.getOrElse {
                 albumQueryOutcome(emptyList(), imageFailed = true, videoFailed = true)
             }
             albums = result.albums
-            if (result.completelyFailed) message = "Albümler okunamadı. Medya izinlerini kontrol edip Yenile'ye dokun."
+            if (result.completelyFailed) message = "Albümler okunamadı. Ekranı yukarıdan aşağı çekip tekrar dene."
+            else if (message?.startsWith("Albümler okunamadı") == true) message = null
             albumsLoading = false
         }
     }
@@ -517,10 +523,6 @@ private fun GalleryHome(vm: GalleryViewModel) {
         selectedIds = emptySet()
     }
 
-    var pullDistancePx by remember(section, state.mode) { mutableFloatStateOf(0f) }
-    var pullRefreshTriggered by remember(section, state.mode) { mutableStateOf(false) }
-    val pullRefreshThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
-
     fun refreshCurrentSection() {
         selectedIds = emptySet()
         when (section) {
@@ -533,40 +535,11 @@ private fun GalleryHome(vm: GalleryViewModel) {
         }
     }
 
-    val pullRefreshConnection = remember(section, state.mode, pullRefreshThresholdPx) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                if (available.y > 0f && !pullRefreshTriggered) {
-                    pullDistancePx += available.y
-                    if (pullDistancePx >= pullRefreshThresholdPx) {
-                        pullRefreshTriggered = true
-                        refreshCurrentSection()
-                    }
-                } else if (available.y < 0f) {
-                    pullDistancePx = 0f
-                    pullRefreshTriggered = false
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                pullDistancePx = 0f
-                pullRefreshTriggered = false
-                return Velocity.Zero
-            }
-        }
-    }
-
     Scaffold { padding ->
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .nestedScroll(pullRefreshConnection)
         ) {
             GalleryTopBar(
                 title = when {
@@ -651,6 +624,11 @@ private fun GalleryHome(vm: GalleryViewModel) {
                 }
             }
 
+            PullToRefreshBox(
+                isRefreshing = if (section == HomeSection.ALBUMS) albumsLoading else state.loading,
+                onRefresh = { refreshCurrentSection() },
+                modifier = Modifier.weight(1f)
+            ) {
             when (section) {
                 HomeSection.MEDIA, HomeSection.SETTINGS, HomeSection.PHOTOS, HomeSection.VIDEOS, HomeSection.TRASH -> {
                     MediaCollection(
@@ -722,6 +700,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
                     onTrash = { items -> trash(items, true) },
                     onMessage = { message = it }
                 )
+            }
             }
         }
     }

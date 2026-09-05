@@ -177,8 +177,7 @@ class MediaStoreRepository(context: Context) {
         )
         val grouped = linkedMapOf<String, Acc>()
         val pageSize = 600
-        var afterDate: Long? = null
-        var afterId: Long? = null
+        var offset = 0
         var failed = false
         var keepGoing: Boolean
 
@@ -188,7 +187,7 @@ class MediaStoreRepository(context: Context) {
 
         do {
             val page = runCatching {
-                loadMixedPageAfter(afterDateAdded = afterDate, afterId = afterId, limit = pageSize)
+                loadMixedPage(offset = offset, limit = pageSize)
             }.getOrElse {
                 failed = true
                 emptyList()
@@ -209,8 +208,7 @@ class MediaStoreRepository(context: Context) {
                 }
             }
             if (page.isNotEmpty()) {
-                afterDate = page.last().dateAdded
-                afterId = page.last().id
+                offset = nextAlbumPageOffset(offset, page.size)
                 onSnapshot(snapshot())
             }
             keepGoing = !failed && albumScanShouldContinue(page.size, pageSize)

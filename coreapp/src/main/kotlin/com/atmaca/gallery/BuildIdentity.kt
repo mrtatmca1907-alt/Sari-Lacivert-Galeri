@@ -1,7 +1,7 @@
 package com.atmaca.gallery
 
-const val ATMACA_TEST_VERSION_CODE: Int = 140908
-private const val ATMACA_BUILD_BADGE: String = "BUILD 140908"
+const val ATMACA_TEST_VERSION_CODE: Int = 140909
+private const val ATMACA_BUILD_BADGE: String = "BUILD 140909"
 
 fun visibleBuildBadge(): String = ATMACA_BUILD_BADGE
 

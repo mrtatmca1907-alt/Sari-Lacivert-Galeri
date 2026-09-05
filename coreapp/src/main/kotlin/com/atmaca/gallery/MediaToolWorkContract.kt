@@ -38,3 +38,6 @@ internal fun albumQuerySortFallbacks(): List<String?> = listOf(
 
 internal fun albumScanShouldContinue(received: Int, pageSize: Int): Boolean =
     pageSize > 0 && received == pageSize
+
+internal fun nextAlbumPageOffset(currentOffset: Int, received: Int): Int =
+    currentOffset.coerceAtLeast(0) + received.coerceAtLeast(0)
