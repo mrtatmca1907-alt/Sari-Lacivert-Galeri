@@ -47,6 +47,9 @@ jobs:
       - name: Verify direct gallery source
         run: python3 coreapp/check_direct_source.py
 
+      - name: Apply empty album OEM fallback
+        run: python3 coreapp/apply_empty_album_fallback.py
+
       - name: Unit tests
         run: gradle :coreapp:testDebugUnitTest --stacktrace
 
