@@ -12,3 +12,6 @@ fun quickAlbums(items: List<GalleryMedia>): List<GalleryAlbum> =
             )
         }
         .sortedBy { it.name.lowercase() }
+
+fun shouldUseSeparateAlbumCollections(primaryCount: Int, primaryFailed: Boolean): Boolean =
+    primaryFailed || primaryCount == 0
