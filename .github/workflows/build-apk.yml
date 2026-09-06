@@ -31,6 +31,9 @@ jobs:
         with:
           gradle-version: '9.5.0'
 
+      - name: Galeri hiz ve cek-yenile yamasini uygula
+        run: python3 scripts/apply_gallery_speed_patch.py
+
       - name: Unit testleri calistir
         run: gradle :app:testDebugUnitTest --stacktrace
 
