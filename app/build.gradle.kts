@@ -11,8 +11,8 @@ android {
         applicationId = "com.sarilacivert.galeri"
         minSdk = 26
         targetSdk = 36
-        versionCode = 22
-        versionName = "2.1.0-performance-zoom"
+        versionCode = 23
+        versionName = "2.2.0-atmaca-tools"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -65,6 +65,7 @@ dependencies {
 
     implementation("androidx.media3:media3-exoplayer:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("com.google.mlkit:face-detection:16.1.7")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
