@@ -157,6 +157,18 @@ text = replace_once(
     "            loading && items.isEmpty() -> Box(Modifier.padding(padding)) { LoadingState() }\n            items.isEmpty() -> Box(Modifier.padding(padding)) { EmptyState(\"Bu albüm boş\") }",
     "album preserve content while refreshing",
 )
+text = replace_once(
+    text,
+    "    var albumSortMenu by remember { mutableStateOf(false) }\n    Scaffold(",
+    "    var albumSortMenu by remember { mutableStateOf(false) }\n    var toolsOpen by remember { mutableStateOf(false) }\n    Scaffold(",
+    "tools dialog state",
+)
+text = replace_once(
+    text,
+    "            Text(\"Android 13 uyumlu • minSdk 26 • targetSdk 36 • compileSdk 37\", color = TextSecondary, style = MaterialTheme.typography.bodySmall)\n        }\n    }\n}\n\n@Composable\nprivate fun SettingRow",
+    "            Button(onClick = { toolsOpen = true }) { Text(\"ATMACA Araçları\") }\n            Text(\"Android 13 uyumlu • minSdk 26 • targetSdk 36 • compileSdk 37\", color = TextSecondary, style = MaterialTheme.typography.bodySmall)\n        }\n    }\n    if (toolsOpen) {\n        com.sarilacivert.galeri.tools.AtmacaToolsDialog(onDismiss = { toolsOpen = false })\n    }\n}\n\n@Composable\nprivate fun SettingRow",
+    "tools settings button",
+)
 ui.write_text(text, encoding="utf-8")
 
-print("Galeri hiz/yukleme/yukari-asagi yenile yamalari uygulandi.")
+print("Galeri hiz/yukleme/cek-yenile ve ATMACA arac yamalari uygulandi.")
