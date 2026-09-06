@@ -52,6 +52,7 @@ class OemRegressionTest {
         assertEquals("BUILD 140910", visibleBuildBadge())
         assertTrue(appVersionCodeForTest() > 13)
     }
+
     @Test fun android13RootFolderSelectionUsesDirectStorageAccess() {
         assertTrue(requiresDirectStorageAccess(33))
     }
@@ -65,5 +66,12 @@ class OemRegressionTest {
 
     @Test fun galleryFastScrollbarIsOnTheRightEdge() {
         assertEquals(ScrollbarEdge.RIGHT, galleryScrollbarEdge())
+    }
+
+    @Test fun emptyOrFailedFilesCollectionFallsBackToImageAndVideoCollections() {
+        assertTrue(shouldUseSeparateAlbumCollections(primaryCount = 0, primaryFailed = false))
+        assertTrue(shouldUseSeparateAlbumCollections(primaryCount = 0, primaryFailed = true))
+        assertTrue(shouldUseSeparateAlbumCollections(primaryCount = 12, primaryFailed = true))
+        assertFalse(shouldUseSeparateAlbumCollections(primaryCount = 12, primaryFailed = false))
     }
 }
