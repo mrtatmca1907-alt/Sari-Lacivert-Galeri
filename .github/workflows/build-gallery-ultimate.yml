@@ -11,6 +11,13 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
+
+      - name: Prepare launcher icon
+        run: |
+          base64 -d app/src/main/res/drawable/atmaca_icon.webp.b64 > app/src/main/res/drawable/atmaca_icon.webp
+          test -s app/src/main/res/drawable/atmaca_icon.webp
+          rm app/src/main/res/drawable/atmaca_icon.webp.b64
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
