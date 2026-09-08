@@ -28,14 +28,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
-      - name: Apply Ultimate patches
+      - name: Apply Ultimate v1 base patches
         run: python3 scripts/ultimate_gallery_patch.py
+      - name: Apply Ultimate v2 fixes
+        run: python3 scripts/ultimate_v2_patch.py
       - name: Test
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build APK
         run: gradle :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: ATMACA-Galeri-Ultimate-APK
+          name: Galeri-Ultimate-v2-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
