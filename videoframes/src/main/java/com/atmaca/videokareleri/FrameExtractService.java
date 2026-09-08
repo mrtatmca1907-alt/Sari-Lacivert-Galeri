@@ -6,18 +6,26 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.media.MediaMetadataRetriever;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.provider.MediaStore;
 
 import androidx.annotation.Nullable;
 import androidx.documentfile.provider.DocumentFile;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -26,6 +34,7 @@ import java.util.concurrent.Executors;
 
 public class FrameExtractService extends Service {
     public static final String ACTION_START = "com.atmaca.videokareleri.START";
+    public static final String ACTION_START_ALL = "com.atmaca.videokareleri.START_ALL";
     public static final String ACTION_PROGRESS = "com.atmaca.videokareleri.PROGRESS";
     public static final String EXTRA_TREE_URI = "tree_uri";
     public static final String EXTRA_MESSAGE = "message";
@@ -44,15 +53,21 @@ public class FrameExtractService extends Service {
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null || !ACTION_START.equals(intent.getAction())) return START_NOT_STICKY;
+        if (intent == null) return START_NOT_STICKY;
+        if (ACTION_START_ALL.equals(intent.getAction())) {
+            startForeground(NOTIFICATION_ID, notification("Telefondaki videolar bulunuyor…"));
+            executor.execute(this::runAllJob);
+            return START_NOT_STICKY;
+        }
+        if (!ACTION_START.equals(intent.getAction())) return START_NOT_STICKY;
         String raw = intent.getStringExtra(EXTRA_TREE_URI);
         if (raw == null) return START_NOT_STICKY;
         startForeground(NOTIFICATION_ID, notification("Hazırlanıyor…"));
-        executor.execute(() -> runJob(Uri.parse(raw)));
+        executor.execute(() -> runFolderJob(Uri.parse(raw)));
         return START_NOT_STICKY;
     }
 
-    private void runJob(Uri treeUri) {
+    private void runFolderJob(Uri treeUri) {
         acquireWakeLock();
         try {
             DocumentFile root = DocumentFile.fromTreeUri(this, treeUri);
@@ -73,12 +88,12 @@ public class FrameExtractService extends Service {
                 String videoName = video.getName() == null ? "video" : video.getName();
                 updateNotification((videoDone + 1) + "/" + videos.size() + "  " + videoName);
                 try {
-                    processVideo(root, video, videoDone, videos.size());
+                    processDocumentVideo(root, video, videoDone, videos.size());
                     videoDone++;
                     send("Tamamlandı: " + videoName, videoDone, videos.size(), false);
                 } catch (Throwable error) {
                     try {
-                        moveToError(root, video);
+                        moveDocumentToError(root, video);
                         send("HATA klasörüne taşındı: " + videoName, videoDone, videos.size(), false);
                     } catch (Throwable moveError) {
                         send("Hata: " + videoName + " — " + safeMessage(error), videoDone, videos.size(), false);
@@ -89,13 +104,70 @@ public class FrameExtractService extends Service {
         } catch (Throwable e) {
             send("İşlem durdu: " + safeMessage(e), 0, 0, true);
         } finally {
-            releaseWakeLock();
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            stopSelf();
+            finishService();
         }
     }
 
-    private void processVideo(DocumentFile root, DocumentFile video, int videoIndex, int totalVideos) throws Exception {
+    private void runAllJob() {
+        acquireWakeLock();
+        try {
+            List<File> videos = queryAllVideos();
+            if (videos.isEmpty()) {
+                send("Telefonda video bulunamadı", 0, 0, true);
+                return;
+            }
+            send(videos.size() + " video bulundu", 0, videos.size(), false);
+
+            int videoDone = 0;
+            for (File video : videos) {
+                String videoName = video.getName();
+                updateNotification((videoDone + 1) + "/" + videos.size() + "  " + videoName);
+                try {
+                    processFileVideo(video, videoDone, videos.size());
+                    videoDone++;
+                    send("Tamamlandı: " + videoName, videoDone, videos.size(), false);
+                } catch (Throwable error) {
+                    try {
+                        File moved = moveFileToError(video);
+                        scanPaths(video.getAbsolutePath(), moved.getAbsolutePath());
+                        send("HATA klasörüne taşındı: " + videoName, videoDone, videos.size(), false);
+                    } catch (Throwable moveError) {
+                        send("Hata: " + videoName + " — " + safeMessage(error), videoDone, videos.size(), false);
+                    }
+                }
+            }
+            send("Tüm videolar tamamlandı", videos.size(), videos.size(), true);
+        } catch (Throwable e) {
+            send("İşlem durdu: " + safeMessage(e), 0, 0, true);
+        } finally {
+            finishService();
+        }
+    }
+
+    private List<File> queryAllVideos() {
+        List<File> result = new ArrayList<>();
+        String[] projection = new String[]{MediaStore.Video.Media.DATA};
+        try (Cursor c = getContentResolver().query(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                null,
+                null,
+                MediaStore.Video.Media.DATE_ADDED + " ASC")) {
+            if (c == null) return result;
+            int dataCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATA);
+            while (c.moveToNext()) {
+                String path = c.getString(dataCol);
+                if (path == null || path.trim().isEmpty()) continue;
+                String normalized = path.replace('\\', '/');
+                if (normalized.contains("/HATA/")) continue;
+                File f = new File(path);
+                if (f.isFile()) result.add(f);
+            }
+        }
+        return result;
+    }
+
+    private void processDocumentVideo(DocumentFile root, DocumentFile video, int videoIndex, int totalVideos) throws Exception {
         String videoName = video.getName() == null ? "video.mp4" : video.getName();
         String base = FrameRules.baseName(videoName);
         DocumentFile outDir = root.findFile(base);
@@ -105,36 +177,7 @@ public class FrameExtractService extends Service {
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         try {
             retriever.setDataSource(this, video.getUri());
-            String durationRaw = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
-            long durationMs = durationRaw == null ? 0L : Long.parseLong(durationRaw);
-            int frameCount = FrameRules.frameCount(durationMs);
-            if (frameCount <= 0) throw new IllegalStateException("Video süresi okunamadı");
-
-            for (int i = 0; i < frameCount; i++) {
-                long timeUs = i * 1_000_000L;
-                Bitmap frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST);
-                if (frame == null) throw new IllegalStateException((i + 1) + ". kare alınamadı");
-                try {
-                    String frameName = FrameRules.frameName(base, i + 1);
-                    DocumentFile old = outDir.findFile(frameName);
-                    if (old != null) old.delete();
-                    DocumentFile target = outDir.createFile("image/jpeg", frameName);
-                    if (target == null) throw new IllegalStateException("JPEG oluşturulamadı");
-                    try (OutputStream os = getContentResolver().openOutputStream(target.getUri(), "w")) {
-                        if (os == null || !frame.compress(Bitmap.CompressFormat.JPEG, 90, os)) {
-                            throw new IllegalStateException("JPEG yazılamadı");
-                        }
-                    }
-                } finally {
-                    frame.recycle();
-                }
-
-                if (i == 0 || (i + 1) % 10 == 0 || i + 1 == frameCount) {
-                    String msg = String.format(Locale.ROOT, "%d/%d video • %s • %d/%d kare", videoIndex + 1, totalVideos, videoName, i + 1, frameCount);
-                    send(msg, videoIndex, totalVideos, false);
-                    updateNotification(msg);
-                }
-            }
+            extractFramesToDocumentDir(retriever, outDir, base, videoName, videoIndex, totalVideos);
         } finally {
             retriever.release();
         }
@@ -144,27 +187,128 @@ public class FrameExtractService extends Service {
         }
     }
 
-    private void moveToError(DocumentFile root, DocumentFile video) throws Exception {
+    private void extractFramesToDocumentDir(MediaMetadataRetriever retriever, DocumentFile outDir, String base,
+                                            String videoName, int videoIndex, int totalVideos) throws Exception {
+        String durationRaw = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+        long durationMs = durationRaw == null ? 0L : Long.parseLong(durationRaw);
+        int frameCount = FrameRules.frameCount(durationMs);
+        if (frameCount <= 0) throw new IllegalStateException("Video süresi okunamadı");
+
+        for (int i = 0; i < frameCount; i++) {
+            Bitmap frame = retriever.getFrameAtTime(i * 1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST);
+            if (frame == null) throw new IllegalStateException((i + 1) + ". kare alınamadı");
+            try {
+                String frameName = FrameRules.frameName(base, i + 1);
+                DocumentFile old = outDir.findFile(frameName);
+                if (old != null) old.delete();
+                DocumentFile target = outDir.createFile("image/jpeg", frameName);
+                if (target == null) throw new IllegalStateException("JPEG oluşturulamadı");
+                try (OutputStream os = getContentResolver().openOutputStream(target.getUri(), "w")) {
+                    if (os == null || !frame.compress(Bitmap.CompressFormat.JPEG, 90, os)) {
+                        throw new IllegalStateException("JPEG yazılamadı");
+                    }
+                }
+            } finally {
+                frame.recycle();
+            }
+            reportFrameProgress(videoName, videoIndex, totalVideos, i + 1, frameCount);
+        }
+    }
+
+    private void processFileVideo(File video, int videoIndex, int totalVideos) throws Exception {
+        File parent = video.getParentFile();
+        if (parent == null) throw new IllegalStateException("Video klasörü bulunamadı");
+        String videoName = video.getName();
+        String base = FrameRules.baseName(videoName);
+        File outDir = new File(parent, base);
+        if (!outDir.exists() && !outDir.mkdirs()) throw new IllegalStateException("Kare klasörü oluşturulamadı");
+        if (!outDir.isDirectory()) throw new IllegalStateException("Kare klasörü açılamadı");
+
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        try {
+            retriever.setDataSource(video.getAbsolutePath());
+            String durationRaw = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            long durationMs = durationRaw == null ? 0L : Long.parseLong(durationRaw);
+            int frameCount = FrameRules.frameCount(durationMs);
+            if (frameCount <= 0) throw new IllegalStateException("Video süresi okunamadı");
+
+            for (int i = 0; i < frameCount; i++) {
+                Bitmap frame = retriever.getFrameAtTime(i * 1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST);
+                if (frame == null) throw new IllegalStateException((i + 1) + ". kare alınamadı");
+                File target = new File(outDir, FrameRules.frameName(base, i + 1));
+                try (FileOutputStream os = new FileOutputStream(target, false)) {
+                    if (!frame.compress(Bitmap.CompressFormat.JPEG, 90, os)) {
+                        throw new IllegalStateException("JPEG yazılamadı");
+                    }
+                } finally {
+                    frame.recycle();
+                }
+                reportFrameProgress(videoName, videoIndex, totalVideos, i + 1, frameCount);
+            }
+        } finally {
+            retriever.release();
+        }
+
+        String sourcePath = video.getAbsolutePath();
+        if (!video.delete()) throw new IllegalStateException("Video silinemedi");
+        scanDirectory(outDir);
+        scanPaths(sourcePath);
+    }
+
+    private void reportFrameProgress(String videoName, int videoIndex, int totalVideos, int frameNo, int frameCount) {
+        if (frameNo == 1 || frameNo % 10 == 0 || frameNo == frameCount) {
+            String msg = String.format(Locale.ROOT, "%d/%d video • %s • %d/%d kare",
+                    videoIndex + 1, totalVideos, videoName, frameNo, frameCount);
+            send(msg, videoIndex, totalVideos, false);
+            updateNotification(msg);
+        }
+    }
+
+    private void moveDocumentToError(DocumentFile root, DocumentFile video) throws Exception {
         DocumentFile errorDir = root.findFile("HATA");
         if (errorDir == null) errorDir = root.createDirectory("HATA");
         if (errorDir == null) throw new IllegalStateException("HATA klasörü oluşturulamadı");
 
         String original = video.getName() == null ? "hata_video" : video.getName();
-        String targetName = uniqueName(errorDir, original);
+        String targetName = uniqueDocumentName(errorDir, original);
         DocumentFile target = errorDir.createFile(video.getType() == null ? "video/mp4" : video.getType(), targetName);
         if (target == null) throw new IllegalStateException("Hata videosu oluşturulamadı");
 
         try (InputStream in = getContentResolver().openInputStream(video.getUri());
              OutputStream out = getContentResolver().openOutputStream(target.getUri(), "w")) {
             if (in == null || out == null) throw new IllegalStateException("Hata videosu taşınamadı");
-            byte[] buffer = new byte[1024 * 1024];
-            int read;
-            while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
+            copyStream(in, out);
         }
         if (!video.delete()) throw new IllegalStateException("Kaynak hata videosu silinemedi");
     }
 
-    private String uniqueName(DocumentFile dir, String original) {
+    private File moveFileToError(File video) throws Exception {
+        File parent = video.getParentFile();
+        if (parent == null) throw new IllegalStateException("Video klasörü bulunamadı");
+        File errorDir = new File(parent, "HATA");
+        if (!errorDir.exists() && !errorDir.mkdirs()) throw new IllegalStateException("HATA klasörü oluşturulamadı");
+        File target = uniqueFile(errorDir, video.getName());
+
+        try {
+            Files.move(video.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        } catch (Throwable moveError) {
+            if (!video.renameTo(target)) {
+                try (InputStream in = new FileInputStream(video); OutputStream out = new FileOutputStream(target)) {
+                    copyStream(in, out);
+                }
+                if (!video.delete()) throw new IllegalStateException("Kaynak hata videosu silinemedi");
+            }
+        }
+        return target;
+    }
+
+    private void copyStream(InputStream in, OutputStream out) throws Exception {
+        byte[] buffer = new byte[1024 * 1024];
+        int read;
+        while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
+    }
+
+    private String uniqueDocumentName(DocumentFile dir, String original) {
         if (dir.findFile(original) == null) return original;
         String base = FrameRules.baseName(original);
         int dot = original.lastIndexOf('.');
@@ -172,6 +316,32 @@ public class FrameExtractService extends Service {
         int n = 1;
         while (dir.findFile(base + " (" + n + ")" + ext) != null) n++;
         return base + " (" + n + ")" + ext;
+    }
+
+    private File uniqueFile(File dir, String original) {
+        File direct = new File(dir, original);
+        if (!direct.exists()) return direct;
+        String base = FrameRules.baseName(original);
+        int dot = original.lastIndexOf('.');
+        String ext = dot > 0 ? original.substring(dot) : "";
+        int n = 1;
+        File candidate;
+        do {
+            candidate = new File(dir, base + " (" + n++ + ")" + ext);
+        } while (candidate.exists());
+        return candidate;
+    }
+
+    private void scanDirectory(File dir) {
+        File[] files = dir.listFiles();
+        if (files == null || files.length == 0) return;
+        String[] paths = new String[files.length];
+        for (int i = 0; i < files.length; i++) paths[i] = files[i].getAbsolutePath();
+        scanPaths(paths);
+    }
+
+    private void scanPaths(String... paths) {
+        MediaScannerConnection.scanFile(this, paths, null, null);
     }
 
     private void send(String message, int done, int total, boolean finished) {
@@ -213,6 +383,12 @@ public class FrameExtractService extends Service {
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VideoKareleri:Extract");
             wakeLock.acquire();
         } catch (Throwable ignored) {}
+    }
+
+    private void finishService() {
+        releaseWakeLock();
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
     }
 
     private void releaseWakeLock() {
