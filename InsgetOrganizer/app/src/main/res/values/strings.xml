@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Insget Düzenleyici</string>
+    <string name="title">Insget Düzenleyici</string>
+    <string name="paths">Pictures/Insget → fotoğraflar\nMovies/Insget → videolar</string>
+    <string name="permission_needed">Dosya erişim izni gerekli</string>
+    <string name="permission_ready">Dosya erişimi hazır</string>
+    <string name="grant_permission">DOSYA İZNİ VER</string>
+    <string name="organize">DÜZENLE</string>
+</resources>
