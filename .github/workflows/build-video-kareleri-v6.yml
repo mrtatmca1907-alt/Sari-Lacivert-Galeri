@@ -1,0 +1,30 @@
+name: Build Video Kareleri V6
+
+on:
+  push:
+    branches: [video-kareleri-v6]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: yes | sdkmanager "platforms;android-37" "build-tools;37.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Unit tests
+        run: gradle :videoframes:testDebugUnitTest --stacktrace
+      - name: Build APK
+        run: gradle :videoframes:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Video-Kareleri-V6-APK
+          path: videoframes/build/outputs/apk/debug/videoframes-debug.apk
