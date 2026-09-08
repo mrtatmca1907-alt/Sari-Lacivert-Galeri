@@ -10,9 +10,9 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.Settings;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -22,11 +22,15 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
     private static final int REQ_TREE = 1907;
     private static final int REQ_NOTIFY = 1908;
+    private static final int REQ_MEDIA = 1909;
+
     private Uri selectedTree;
     private TextView folderText;
     private TextView statusText;
     private ProgressBar progress;
     private Button startButton;
+    private Button allVideosButton;
+    private boolean pendingAllMode;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -41,7 +45,10 @@ public class MainActivity extends Activity {
                 progress.setProgress(Math.min(done, total));
             }
             boolean finished = intent.getBooleanExtra(FrameExtractService.EXTRA_FINISHED, false);
-            startButton.setEnabled(finished || selectedTree != null);
+            if (finished) {
+                allVideosButton.setEnabled(true);
+                startButton.setEnabled(selectedTree != null);
+            }
         }
     };
 
@@ -73,10 +80,21 @@ public class MainActivity extends Activity {
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView desc = new TextView(this);
-        desc.setText("Seçilen klasördeki videolardan her saniye 1 JPEG çıkarır. Başarılı video silinir; hata veren video HATA klasörüne taşınır.");
+        desc.setText("İki kullanım: telefondaki tüm videoları bul veya sadece seçtiğin klasörü işle. Her saniyeden 1 JPEG çıkarılır.");
         desc.setTextSize(16f);
         desc.setPadding(0, pad, 0, pad);
         root.addView(desc, new LinearLayout.LayoutParams(-1, -2));
+
+        allVideosButton = new Button(this);
+        allVideosButton.setText("Telefondaki Tüm Videoları Bul ve İşle");
+        allVideosButton.setOnClickListener(v -> beginAllMode());
+        root.addView(allVideosButton, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView orText = new TextView(this);
+        orText.setText("veya");
+        orText.setGravity(Gravity.CENTER);
+        orText.setPadding(0, pad / 2, 0, pad / 2);
+        root.addView(orText, new LinearLayout.LayoutParams(-1, -2));
 
         Button select = new Button(this);
         select.setText("Klasör Seç");
@@ -89,9 +107,9 @@ public class MainActivity extends Activity {
         root.addView(folderText, new LinearLayout.LayoutParams(-1, -2));
 
         startButton = new Button(this);
-        startButton.setText("Başlat");
+        startButton.setText("Seçili Klasörü Başlat");
         startButton.setEnabled(false);
-        startButton.setOnClickListener(v -> startWork());
+        startButton.setOnClickListener(v -> startFolderWork());
         root.addView(startButton, new LinearLayout.LayoutParams(-1, -2));
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -110,7 +128,8 @@ public class MainActivity extends Activity {
 
     private void chooseTree() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
         startActivityForResult(i, REQ_TREE);
     }
 
@@ -126,15 +145,90 @@ public class MainActivity extends Activity {
         statusText.setText("Klasör hazır");
     }
 
-    private void startWork() {
+    private void beginAllMode() {
+        pendingAllMode = true;
+        if (!hasMediaPermission()) {
+            requestMediaPermission();
+            return;
+        }
+        continueAllMode();
+    }
+
+    private boolean hasMediaPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            return checkSelfPermission(Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED;
+        }
+        if (Build.VERSION.SDK_INT >= 23) {
+            return checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+        }
+        return true;
+    }
+
+    private void requestMediaPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(new String[]{Manifest.permission.READ_MEDIA_VIDEO}, REQ_MEDIA);
+        } else if (Build.VERSION.SDK_INT >= 23) {
+            requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, REQ_MEDIA);
+        }
+    }
+
+    private void continueAllMode() {
+        if (SourceModeRules.needsAllFilesAccess(true, Build.VERSION.SDK_INT) && !Environment.isExternalStorageManager()) {
+            try {
+                Intent i = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            } catch (Exception e) {
+                startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+            }
+            statusText.setText("Tüm videolar için dosya erişimini aç");
+            return;
+        }
+        pendingAllMode = false;
+        Intent i = new Intent(this, FrameExtractService.class);
+        i.setAction(FrameExtractService.ACTION_START_ALL);
+        startServiceForegroundAware(i);
+        markRunning("Telefondaki videolar hazırlanıyor…");
+    }
+
+    private void startFolderWork() {
         if (selectedTree == null) return;
         Intent i = new Intent(this, FrameExtractService.class);
         i.setAction(FrameExtractService.ACTION_START);
         i.putExtra(FrameExtractService.EXTRA_TREE_URI, selectedTree.toString());
+        startServiceForegroundAware(i);
+        markRunning("Seçili klasör hazırlanıyor…");
+    }
+
+    private void startServiceForegroundAware(Intent i) {
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(i); else startService(i);
+    }
+
+    private void markRunning(String text) {
+        allVideosButton.setEnabled(false);
         startButton.setEnabled(false);
-        statusText.setText("Videolar hazırlanıyor…");
+        statusText.setText(text);
         progress.setIndeterminate(true);
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_MEDIA) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            continueAllMode();
+        } else {
+            pendingAllMode = false;
+            Toast.makeText(this, "Tüm videolar için video okuma izni gerekli", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (pendingAllMode && hasMediaPermission()) {
+            if (!SourceModeRules.needsAllFilesAccess(true, Build.VERSION.SDK_INT) || Environment.isExternalStorageManager()) {
+                continueAllMode();
+            }
+        }
     }
 
     @Override protected void onStart() {
