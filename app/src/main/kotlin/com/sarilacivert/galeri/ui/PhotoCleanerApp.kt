@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -166,7 +165,13 @@ fun PhotoCleanerApp() {
             val loaded = if (savedIds.isNotEmpty()) repository.loadSaved(savedIds)
             else repository.loadNext(store.cursor).also { if (it.isNotEmpty()) store.saveCurrentBatch(it.map(CleanerPhoto::id)) }
             photos.clear(); photos.addAll(loaded)
-            if (loaded.isEmpty()) message = "Gösterilecek fotoğraf kalmadı."
+            if (loaded.isEmpty()) {
+                message = if (savedIds.isNotEmpty()) {
+                    "Bu 100'lük gruptaki fotoğraflar silindi. Devam'a bas."
+                } else {
+                    "Gösterilecek fotoğraf kalmadı."
+                }
+            }
         } finally { loading = false }
     }
 
@@ -210,7 +215,8 @@ fun PhotoCleanerApp() {
                 }
 
                 Button(
-                    modifier = Modifier.fillMaxWidth(), enabled = photos.isNotEmpty() && !loading,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = store.savedBatchIds().isNotEmpty() && !loading,
                     onClick = {
                         store.advance(store.savedBatchIds())
                         photos.clear(); selected.clear(); reloadToken++
