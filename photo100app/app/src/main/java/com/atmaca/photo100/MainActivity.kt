@@ -1,22 +1,18 @@
 package com.atmaca.photo100
 
-import android.Manifest
 import android.app.Activity
-import android.content.ContentResolver
-import android.content.ContentUris
 import android.content.Context
-import android.content.IntentSender
-import android.content.pm.PackageManager
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
-import android.util.Size
+import android.os.Environment
+import android.provider.Settings
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,163 +53,189 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.UUID
 
+private const val PREFS = "photo100_vault_state"
+private const val KEY_INITIAL_COLLECT = "initial_collect_done"
 private const val BATCH_SIZE = 100
-private const val PREFS = "photo100_state"
-private const val KEY_CURSOR = "cursor"
-private const val KEY_IDS = "batch_ids"
-private const val KEY_GROUP = "group"
-
-data class PhotoItem(val id: Long, val uri: Uri, val name: String)
 
 class MainActivity : ComponentActivity() {
+    private var resumeTick by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = lightColorScheme()) {
-                Photo100App()
+                Photo100VaultApp(resumeTick)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumeTick++
     }
 }
 
-private class ProgressStore(context: Context) {
-    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+private class HiddenVault(private val context: Context) {
+    private val externalRoot = Environment.getExternalStorageDirectory()
+    private val root = File(externalRoot, ".Foto100Kasa")
+    private val pending = File(root, "bekleyen")
+    private val current = File(root, "verilen")
+    private val done = File(root, "biten")
 
-    val cursor: Long get() = prefs.getLong(KEY_CURSOR, Long.MAX_VALUE)
-    val group: Int get() = prefs.getInt(KEY_GROUP, 1)
-
-    fun currentIds(): List<Long> = prefs.getString(KEY_IDS, "")
-        .orEmpty()
-        .split(',')
-        .mapNotNull { it.toLongOrNull() }
-
-    fun saveBatch(ids: List<Long>) {
-        prefs.edit().putString(KEY_IDS, ids.joinToString(",")).apply()
+    init {
+        ensureFolders()
     }
 
-    fun nextBatch() {
-        val ids = currentIds()
-        if (ids.isEmpty()) return
-        prefs.edit()
-            .putLong(KEY_CURSOR, BatchProgress.nextCursor(ids, cursor))
-            .putString(KEY_IDS, "")
-            .putInt(KEY_GROUP, group + 1)
-            .apply()
+    private fun ensureFolders() {
+        root.mkdirs()
+        pending.mkdirs()
+        current.mkdirs()
+        done.mkdirs()
+        File(root, ".nomedia").runCatching { if (!exists()) createNewFile() }
     }
-}
 
-private class PhotoRepo(private val resolver: ContentResolver) {
-    private val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+    fun pendingCount(): Int = photoFiles(pending).size
+    fun currentCount(): Int = photoFiles(current).size
+    fun doneCount(): Int = photoFiles(done).size
+    fun totalCount(): Int = pendingCount() + currentCount() + doneCount()
+    fun currentBatch(): List<File> = photoFiles(current).sortedBy { it.name }
 
-    suspend fun loadNext(cursor: Long): List<PhotoItem> = withContext(Dispatchers.IO) {
-        val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME)
-        val selection = if (cursor == Long.MAX_VALUE) null else "${MediaStore.Images.Media._ID} < ?"
-        val args = if (selection == null) null else arrayOf(cursor.toString())
-        val out = ArrayList<PhotoItem>(BATCH_SIZE)
+    fun collectAllPhotos(): Int {
+        ensureFolders()
+        var moved = 0
+        val stalePaths = ArrayList<String>(200)
 
-        resolver.query(
-            collection,
-            projection,
-            selection,
-            args,
-            "${MediaStore.Images.Media._ID} DESC"
-        )?.use { c ->
-            val idIx = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val nameIx = c.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            while (c.moveToNext() && out.size < BATCH_SIZE) {
-                val id = c.getLong(idIx)
-                out += PhotoItem(id, ContentUris.withAppendedId(collection, id), c.getString(nameIx).orEmpty())
+        externalRoot.walkTopDown()
+            .onEnter { HiddenStoreRules.shouldEnter(it.absolutePath) }
+            .filter { it.isFile && HiddenStoreRules.isPhoto(it.name) }
+            .forEach { source ->
+                if (source.absolutePath.startsWith(root.absolutePath)) return@forEach
+                val originalPath = source.absolutePath
+                if (moveInto(source, pending)) {
+                    moved++
+                    stalePaths += originalPath
+                    if (stalePaths.size >= 200) {
+                        rescanMissing(stalePaths)
+                        stalePaths.clear()
+                    }
+                }
             }
-        }
-        out
+
+        if (stalePaths.isNotEmpty()) rescanMissing(stalePaths)
+        return moved
     }
 
-    suspend fun loadSaved(ids: List<Long>): List<PhotoItem> = withContext(Dispatchers.IO) {
-        if (ids.isEmpty()) return@withContext emptyList()
-        val placeholders = ids.joinToString(",") { "?" }
-        val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME)
-        val found = ArrayList<PhotoItem>()
-        resolver.query(
-            collection,
-            projection,
-            "${MediaStore.Images.Media._ID} IN ($placeholders)",
-            ids.map(Long::toString).toTypedArray(),
-            null
-        )?.use { c ->
-            val idIx = c.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val nameIx = c.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            while (c.moveToNext()) {
-                val id = c.getLong(idIx)
-                found += PhotoItem(id, ContentUris.withAppendedId(collection, id), c.getString(nameIx).orEmpty())
+    fun give100(): List<File> {
+        val existing = currentBatch()
+        if (existing.isNotEmpty()) return existing
+
+        photoFiles(pending)
+            .sortedBy { it.name }
+            .take(BATCH_SIZE)
+            .forEach { moveInto(it, current) }
+        return currentBatch()
+    }
+
+    fun finishCurrentAndGiveNext(): List<File> {
+        currentBatch().forEach { moveInto(it, done) }
+        return give100()
+    }
+
+    fun delete(files: Collection<File>): Int {
+        var deleted = 0
+        files.forEach { if (it.exists() && it.delete()) deleted++ }
+        return deleted
+    }
+
+    private fun photoFiles(dir: File): List<File> =
+        dir.listFiles()?.filter { it.isFile && HiddenStoreRules.isPhoto(it.name) }.orEmpty()
+
+    private fun moveInto(source: File, destinationDir: File): Boolean {
+        destinationDir.mkdirs()
+        val target = uniqueTarget(destinationDir, source.name)
+        if (source.renameTo(target)) return true
+        return runCatching {
+            source.inputStream().use { input ->
+                target.outputStream().use { output -> input.copyTo(output, 1024 * 1024) }
             }
+            if (!source.delete()) {
+                target.delete()
+                false
+            } else true
+        }.getOrElse {
+            target.delete()
+            false
         }
-        val order = ids.withIndex().associate { it.value to it.index }
-        found.sortedBy { order[it.id] ?: Int.MAX_VALUE }
+    }
+
+    private fun uniqueTarget(dir: File, originalName: String): File {
+        val clean = originalName.ifBlank { "foto" }
+        var candidate = File(dir, clean)
+        if (!candidate.exists()) return candidate
+        val base = clean.substringBeforeLast('.', clean)
+        val ext = clean.substringAfterLast('.', "")
+        do {
+            val suffix = UUID.randomUUID().toString().take(8)
+            candidate = File(dir, if (ext.isBlank()) "${base}_$suffix" else "${base}_$suffix.$ext")
+        } while (candidate.exists())
+        return candidate
+    }
+
+    private fun rescanMissing(paths: List<String>) {
+        MediaScannerConnection.scanFile(context, paths.toTypedArray(), null, null)
     }
 }
 
 @Composable
-private fun Photo100App() {
+private fun Photo100VaultApp(resumeTick: Int) {
     val context = LocalContext.current
     val activity = context as Activity
-    val store = remember { ProgressStore(context) }
-    val repo = remember { PhotoRepo(context.contentResolver) }
-    val photos = remember { mutableStateListOf<PhotoItem>() }
-    val selected = remember { mutableStateListOf<Long>() }
+    val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    val vault = remember { HiddenVault(context) }
+    val photos = remember { mutableStateListOf<File>() }
+    val selected = remember { mutableStateListOf<String>() }
 
-    var permitted by remember { mutableStateOf(hasImagePermission(context)) }
-    var loading by remember { mutableStateOf(false) }
+    var accessGranted by remember { mutableStateOf(hasAllFilesAccess()) }
+    var collecting by remember { mutableStateOf(false) }
+    var loadingBatch by remember { mutableStateOf(false) }
+    var collectedOnce by remember { mutableStateOf(prefs.getBoolean(KEY_INITIAL_COLLECT, false)) }
     var message by remember { mutableStateOf("") }
-    var refresh by remember { mutableIntStateOf(0) }
-    var groupNo by remember { mutableIntStateOf(store.group) }
-    var hasSavedBatch by remember { mutableStateOf(store.currentIds().isNotEmpty()) }
+    var pendingCount by remember { mutableIntStateOf(0) }
+    var doneCount by remember { mutableIntStateOf(0) }
+    var totalCount by remember { mutableIntStateOf(0) }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        permitted = granted
-        if (!granted) message = "Fotoğrafları göstermek için izin gerekli."
+    suspend fun refreshCounts() {
+        val counts = withContext(Dispatchers.IO) {
+            Triple(vault.pendingCount(), vault.doneCount(), vault.totalCount())
+        }
+        pendingCount = counts.first
+        doneCount = counts.second
+        totalCount = counts.third
     }
 
-    val deleteLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            selected.clear()
-            refresh++
-            message = "Silindi. Hazırsan DEVAM'a bas."
-        } else {
-            message = "Silme iptal edildi."
-        }
-    }
+    LaunchedEffect(resumeTick) {
+        accessGranted = hasAllFilesAccess()
+        if (!accessGranted) return@LaunchedEffect
 
-    LaunchedEffect(permitted, refresh) {
-        if (!permitted) return@LaunchedEffect
-        loading = true
-        try {
-            val saved = store.currentIds()
-            hasSavedBatch = saved.isNotEmpty()
-            val loaded = if (saved.isNotEmpty()) {
-                repo.loadSaved(saved)
-            } else {
-                repo.loadNext(store.cursor).also { batch ->
-                    if (batch.isNotEmpty()) {
-                        store.saveBatch(batch.map { it.id })
-                        hasSavedBatch = true
-                    }
-                }
-            }
-            photos.clear()
-            photos.addAll(loaded)
-            groupNo = store.group
-            if (loaded.isEmpty() && !hasSavedBatch) message = "Gösterilecek fotoğraf kalmadı."
-        } finally {
-            loading = false
+        if (!collectedOnce) {
+            collecting = true
+            message = "Telefondaki fotoğraflar gizli kasaya taşınıyor…"
+            val moved = withContext(Dispatchers.IO) { vault.collectAllPhotos() }
+            prefs.edit().putBoolean(KEY_INITIAL_COLLECT, true).apply()
+            collectedOnce = true
+            collecting = false
+            message = "$moved fotoğraf kasaya alındı. Hazır olduğunda VER'e bas."
         }
+
+        val current = withContext(Dispatchers.IO) { vault.currentBatch() }
+        photos.clear()
+        photos.addAll(current)
+        refreshCounts()
     }
 
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -224,92 +246,140 @@ private fun Photo100App() {
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("100'lü Foto Ayıklama", style = MaterialTheme.typography.headlineSmall)
-            Text("Grup $groupNo • Gösterilen ${photos.size}/100 • Seçili ${selected.size}")
+            Text("Foto100 Gizli Kasa", style = MaterialTheme.typography.headlineSmall)
 
-            if (!permitted) {
-                Button(onClick = { permissionLauncher.launch(requiredPermission()) }) {
-                    Text("Fotoğraf izni ver")
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(onClick = {
-                        if (photos.isNotEmpty() && selected.size == photos.size) selected.clear()
-                        else {
-                            selected.clear()
-                            selected.addAll(photos.map { it.id })
-                        }
-                    }) {
-                        Text(if (photos.isNotEmpty() && selected.size == photos.size) "Seçimi kaldır" else "Hepsini seç")
-                    }
-
-                    Button(
-                        enabled = selected.isNotEmpty(),
-                        onClick = {
-                            val uris = photos.filter { it.id in selected }.map { it.uri }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                runCatching {
-                                    val sender: IntentSender = MediaStore.createDeleteRequest(
-                                        context.contentResolver,
-                                        uris
-                                    ).intentSender
-                                    deleteLauncher.launch(IntentSenderRequest.Builder(sender).build())
-                                }.onFailure { message = "Silme başlatılamadı: ${it.message.orEmpty()}" }
-                            } else {
-                                uris.forEach { context.contentResolver.delete(it, null, null) }
-                                selected.clear()
-                                refresh++
-                                message = "Silindi. Hazırsan DEVAM'a bas."
-                            }
-                        }
-                    ) {
-                        Text("Seçilenleri sil")
-                    }
-                }
-
+            if (!accessGranted) {
+                Text("Tüm fotoğrafları bulup gizli kasaya taşıyabilmek için dosya erişimi gerekli.")
                 Button(
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = hasSavedBatch && !loading,
-                    onClick = {
-                        store.nextBatch()
-                        photos.clear()
-                        selected.clear()
-                        hasSavedBatch = false
-                        groupNo = store.group
-                        message = "Sonraki 100 yükleniyor…"
-                        refresh++
-                    }
+                    onClick = { openAllFilesSettings(context) }
                 ) {
-                    Text("DEVAM — SONRAKİ 100")
+                    Text("DOSYA ERİŞİMİ VER")
+                }
+            } else {
+                Text("Kasada: $totalCount • Bekleyen: $pendingCount • Biten: $doneCount • Şu an verilen: ${photos.size}")
+
+                if (collecting) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CircularProgressIndicator()
+                        Text("Fotoğraflar toplanıyor ve galeriden gizleniyor…")
+                    }
+                } else {
+                    if (photos.isEmpty()) {
+                        Button(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = pendingCount > 0 && !loadingBatch,
+                            onClick = {
+                                loadingBatch = true
+                                selected.clear()
+                                message = "100 fotoğraf hazırlanıyor…"
+                                activity.runOnUiThread { }
+                            }
+                        ) {
+                            Text("VER — 100 FOTOĞRAF")
+                        }
+
+                        LaunchedEffect(loadingBatch) {
+                            if (!loadingBatch) return@LaunchedEffect
+                            val batch = withContext(Dispatchers.IO) { vault.give100() }
+                            photos.clear()
+                            photos.addAll(batch)
+                            refreshCounts()
+                            loadingBatch = false
+                            message = if (batch.isEmpty()) "Bekleyen fotoğraf kalmadı." else "${batch.size} fotoğraf verildi."
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(onClick = {
+                                if (selected.size == photos.size) selected.clear()
+                                else {
+                                    selected.clear()
+                                    selected.addAll(photos.map { it.absolutePath })
+                                }
+                            }) {
+                                Text(if (selected.size == photos.size) "Seçimi kaldır" else "Hepsini seç")
+                            }
+
+                            Button(
+                                enabled = selected.isNotEmpty(),
+                                onClick = {
+                                    val chosen = photos.filter { it.absolutePath in selected }
+                                    val removed = vault.delete(chosen)
+                                    photos.removeAll(chosen.toSet())
+                                    selected.clear()
+                                    message = "$removed fotoğraf silindi."
+                                }
+                            ) {
+                                Text("Seçilenleri sil")
+                            }
+                        }
+
+                        Button(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !loadingBatch,
+                            onClick = { loadingBatch = true }
+                        ) {
+                            Text("VER — SONRAKİ 100")
+                        }
+
+                        LaunchedEffect(loadingBatch, photos.size) {
+                            if (!loadingBatch || photos.isEmpty()) return@LaunchedEffect
+                            val batch = withContext(Dispatchers.IO) { vault.finishCurrentAndGiveNext() }
+                            photos.clear()
+                            photos.addAll(batch)
+                            selected.clear()
+                            refreshCounts()
+                            loadingBatch = false
+                            message = if (batch.isEmpty()) "Tüm fotoğraflar bitti." else "${batch.size} yeni fotoğraf verildi."
+                        }
+                    }
+
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            collecting = true
+                            message = "Yeni fotoğraflar aranıyor…"
+                        }
+                    ) {
+                        Text("YENİ FOTOĞRAFLARI TOPLA")
+                    }
+
+                    LaunchedEffect(collecting, collectedOnce) {
+                        if (!collecting || !collectedOnce) return@LaunchedEffect
+                        val moved = withContext(Dispatchers.IO) { vault.collectAllPhotos() }
+                        collecting = false
+                        refreshCounts()
+                        message = if (moved == 0) "Yeni fotoğraf bulunmadı." else "$moved yeni fotoğraf kasaya alındı."
+                    }
                 }
             }
 
             if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                if (loading) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        items(photos, key = { it.id }) { photo ->
-                            PhotoCell(
-                                photo = photo,
-                                selected = photo.id in selected,
-                                onClick = {
-                                    if (photo.id in selected) selected.remove(photo.id)
-                                    else selected.add(photo.id)
-                                }
-                            )
-                        }
+            if (photos.isNotEmpty()) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    items(photos, key = { it.absolutePath }) { photo ->
+                        PhotoCell(
+                            file = photo,
+                            selected = photo.absolutePath in selected,
+                            onClick = {
+                                if (photo.absolutePath in selected) selected.remove(photo.absolutePath)
+                                else selected.add(photo.absolutePath)
+                            }
+                        )
                     }
+                }
+            } else if (accessGranted && !collecting) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(if (pendingCount > 0) "Hazır. VER'e bas." else "Bekleyen fotoğraf yok.")
                 }
             }
         }
@@ -317,26 +387,11 @@ private fun Photo100App() {
 }
 
 @Composable
-private fun PhotoCell(photo: PhotoItem, selected: Boolean, onClick: () -> Unit) {
-    val context = LocalContext.current
-    var bitmap by remember(photo.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
+private fun PhotoCell(file: File, selected: Boolean, onClick: () -> Unit) {
+    var bitmap by remember(file.absolutePath) { mutableStateOf<Bitmap?>(null) }
 
-    LaunchedEffect(photo.id) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    context.contentResolver.loadThumbnail(photo.uri, Size(220, 220), null)
-                } else {
-                    @Suppress("DEPRECATION")
-                    MediaStore.Images.Thumbnails.getThumbnail(
-                        context.contentResolver,
-                        photo.id,
-                        MediaStore.Images.Thumbnails.MINI_KIND,
-                        null
-                    )
-                }
-            }.getOrNull()
-        }
+    LaunchedEffect(file.absolutePath) {
+        bitmap = withContext(Dispatchers.IO) { decodeThumbnail(file) }
     }
 
     Box(
@@ -354,7 +409,7 @@ private fun PhotoCell(photo: PhotoItem, selected: Boolean, onClick: () -> Unit) 
         bitmap?.let {
             Image(
                 bitmap = it.asImageBitmap(),
-                contentDescription = photo.name,
+                contentDescription = file.name,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
@@ -372,9 +427,26 @@ private fun PhotoCell(photo: PhotoItem, selected: Boolean, onClick: () -> Unit) 
     }
 }
 
-private fun requiredPermission(): String =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_IMAGES
-    else Manifest.permission.READ_EXTERNAL_STORAGE
+private fun decodeThumbnail(file: File): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
-private fun hasImagePermission(context: Context): Boolean =
-    ContextCompat.checkSelfPermission(context, requiredPermission()) == PackageManager.PERMISSION_GRANTED
+    var sample = 1
+    while (bounds.outWidth / sample > 320 || bounds.outHeight / sample > 320) sample *= 2
+    val options = BitmapFactory.Options().apply { inSampleSize = sample.coerceAtLeast(1) }
+    return runCatching { BitmapFactory.decodeFile(file.absolutePath, options) }.getOrNull()
+}
+
+private fun hasAllFilesAccess(): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+
+private fun openAllFilesSettings(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+    val appIntent = Intent(
+        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+        Uri.parse("package:${context.packageName}")
+    )
+    runCatching { context.startActivity(appIntent) }
+        .onFailure { context.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+}
