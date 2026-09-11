@@ -1,4 +1,4 @@
-name: Build Video Kareleri V6 Turbo
+name: Build Video Kareleri V6 Turbo Fix
 
 on:
   push:
@@ -20,21 +20,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
-      - name: Apply turbo patch
+      - name: Apply turbo-safe patch
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('videoframes/src/main/java/com/atmaca/videokareleri/FrameExtractService.java')
           s = p.read_text()
-          s = s.replace('MediaMetadataRetriever.OPTION_CLOSEST)', 'MediaMetadataRetriever.OPTION_CLOSEST_SYNC)')
-          s = s.replace('Bitmap.CompressFormat.JPEG, 90, os', 'Bitmap.CompressFormat.JPEG, 82, os')
+          s = s.replace('Bitmap.CompressFormat.JPEG, 90, os', 'Bitmap.CompressFormat.JPEG, 85, os')
           s = s.replace('frameNo % 10 == 0', 'frameNo % 50 == 0')
           p.write_text(s)
 
           g = Path('videoframes/build.gradle.kts')
           t = g.read_text()
-          t = t.replace('versionCode = 6', 'versionCode = 7')
-          t = t.replace('versionName = "6.0"', 'versionName = "6.2-turbo"')
+          t = t.replace('applicationId = "com.atmaca.videokareleri"', 'applicationId = "com.atmaca.videokareleri.turbo"')
+          t = t.replace('versionCode = 6', 'versionCode = 8')
+          t = t.replace('versionName = "6.0"', 'versionName = "6.3-turbo-fix"')
           g.write_text(t)
           PY
       - name: Unit tests
@@ -43,5 +44,5 @@ jobs:
         run: gradle :videoframes:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: Video-Kareleri-V6.2-Turbo-APK
+          name: Video-Kareleri-V6.3-Turbo-Fix-APK
           path: videoframes/build/outputs/apk/debug/videoframes-debug.apk
