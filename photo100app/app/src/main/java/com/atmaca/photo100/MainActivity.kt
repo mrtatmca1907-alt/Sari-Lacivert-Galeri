@@ -238,7 +238,9 @@ private fun Photo100VaultApp(resumeTick: Int) {
 
             if (!accessGranted) {
                 Text("Önce dosya erişimini aç.")
-                Button(Modifier.fillMaxWidth(), onClick = { openAllFilesSettings(context) }) { Text("DOSYA ERİŞİMİ VER") }
+                Button(onClick = { openAllFilesSettings(context) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("DOSYA ERİŞİMİ VER")
+                }
             }
 
             Text("Kasada: $totalCount • Bekleyen: $pendingCount • Biten: $doneCount • Verilen: ${photos.size}")
