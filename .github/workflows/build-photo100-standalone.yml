@@ -1,0 +1,47 @@
+name: Build Standalone Photo100 APK
+
+on:
+  push:
+    branches: [ photo100-standalone ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: photo100app
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v5
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: API 37 kur
+        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+
+      - name: Gradle 9.5 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Testleri calistir
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      - name: APK derle
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: APK artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Photo100-Standalone-APK
+          path: photo100app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
