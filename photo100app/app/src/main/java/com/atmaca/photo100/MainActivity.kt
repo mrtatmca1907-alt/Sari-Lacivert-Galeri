@@ -1,6 +1,5 @@
 package com.atmaca.photo100
 
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -64,20 +63,11 @@ private const val BATCH_SIZE = 100
 
 class MainActivity : ComponentActivity() {
     private var resumeTick by mutableIntStateOf(0)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme(colorScheme = lightColorScheme()) {
-                Photo100VaultApp(resumeTick)
-            }
-        }
+        setContent { MaterialTheme(colorScheme = lightColorScheme()) { Photo100VaultApp(resumeTick) } }
     }
-
-    override fun onResume() {
-        super.onResume()
-        resumeTick++
-    }
+    override fun onResume() { super.onResume(); resumeTick++ }
 }
 
 private class HiddenVault(private val context: Context) {
@@ -96,8 +86,8 @@ private class HiddenVault(private val context: Context) {
 
     fun pendingCount(): Int = photoFiles(pending).size
     fun doneCount(): Int = photoFiles(done).size
-    fun totalCount(): Int = pendingCount() + currentBatch().size + doneCount()
     fun currentBatch(): List<File> = photoFiles(current).sortedBy { it.name }
+    fun totalCount(): Int = pendingCount() + currentBatch().size + doneCount()
 
     fun collectAllPhotos(): Int {
         ensureFolders()
@@ -123,7 +113,8 @@ private class HiddenVault(private val context: Context) {
     }
 
     fun give100(): List<File> {
-        currentBatch().let { if (it.isNotEmpty()) return it }
+        val existing = currentBatch()
+        if (existing.isNotEmpty()) return existing
         photoFiles(pending).sortedBy { it.name }.take(BATCH_SIZE).forEach { moveInto(it, current) }
         return currentBatch()
     }
@@ -139,8 +130,7 @@ private class HiddenVault(private val context: Context) {
         return deleted
     }
 
-    private fun photoFiles(dir: File): List<File> =
-        dir.listFiles()?.filter { it.isFile && HiddenStoreRules.isPhoto(it.name) }.orEmpty()
+    private fun photoFiles(dir: File): List<File> = dir.listFiles()?.filter { it.isFile && HiddenStoreRules.isPhoto(it.name) }.orEmpty()
 
     private fun moveInto(source: File, destination: File): Boolean {
         destination.mkdirs()
@@ -159,8 +149,8 @@ private class HiddenVault(private val context: Context) {
         val base = clean.substringBeforeLast('.', clean)
         val ext = clean.substringAfterLast('.', "")
         do {
-            val s = UUID.randomUUID().toString().take(8)
-            out = File(dir, if (ext.isBlank()) "${base}_$s" else "${base}_$s.$ext")
+            val suffix = UUID.randomUUID().toString().take(8)
+            out = File(dir, if (ext.isBlank()) "${base}_$suffix" else "${base}_$suffix.$ext")
         } while (out.exists())
         return out
     }
@@ -176,9 +166,10 @@ private fun Photo100VaultApp(resumeTick: Int) {
 
     var accessGranted by remember { mutableStateOf(hasAllFilesAccess()) }
     var collecting by remember { mutableStateOf(false) }
-    var batchLoading by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
     var collectedOnce by remember { mutableStateOf(prefs.getBoolean(KEY_INITIAL_COLLECT, false)) }
     var collectRequested by remember { mutableStateOf(false) }
+    var giveRequested by remember { mutableStateOf(false) }
     var nextRequested by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var pendingCount by remember { mutableIntStateOf(0) }
@@ -200,9 +191,9 @@ private fun Photo100VaultApp(resumeTick: Int) {
 
     LaunchedEffect(collectRequested) {
         if (!collectRequested || !accessGranted || collecting) return@LaunchedEffect
-        collecting = true
         collectRequested = false
-        message = "Telefondaki fotoğraflar gizli kasaya taşınıyor…"
+        collecting = true
+        message = "Tüm fotoğraflar bulunup gizli kasaya taşınıyor…"
         val moved = withContext(Dispatchers.IO) { vault.collectAllPhotos() }
         prefs.edit().putBoolean(KEY_INITIAL_COLLECT, true).apply()
         collectedOnce = true
@@ -211,51 +202,55 @@ private fun Photo100VaultApp(resumeTick: Int) {
         message = "$moved fotoğraf kasaya alındı. VER'e bas."
     }
 
-    LaunchedEffect(batchLoading) {
-        if (!batchLoading || !accessGranted) return@LaunchedEffect
+    LaunchedEffect(giveRequested) {
+        if (!giveRequested || !accessGranted || busy || collecting) return@LaunchedEffect
+        giveRequested = false; busy = true
         val batch = withContext(Dispatchers.IO) { vault.give100() }
-        photos.clear(); photos.addAll(batch); selected.clear()
-        refreshCounts(); batchLoading = false
+        photos.clear(); photos.addAll(batch); selected.clear(); refreshCounts(); busy = false
         message = if (batch.isEmpty()) "Bekleyen fotoğraf kalmadı." else "${batch.size} fotoğraf verildi."
     }
 
     LaunchedEffect(nextRequested) {
-        if (!nextRequested || !accessGranted) return@LaunchedEffect
-        nextRequested = false
-        batchLoading = true
+        if (!nextRequested || !accessGranted || busy || collecting) return@LaunchedEffect
+        nextRequested = false; busy = true
         val batch = withContext(Dispatchers.IO) { vault.finishAndGiveNext() }
-        photos.clear(); photos.addAll(batch); selected.clear()
-        refreshCounts(); batchLoading = false
+        photos.clear(); photos.addAll(batch); selected.clear(); refreshCounts(); busy = false
         message = if (batch.isEmpty()) "Tüm fotoğraflar bitti." else "${batch.size} yeni fotoğraf verildi."
     }
 
     Surface(Modifier.fillMaxSize()) {
         Column(
-            Modifier.fillMaxSize().statusBarsPadding().padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            Modifier.fillMaxSize().statusBarsPadding().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text("Foto100 Gizli Kasa", style = MaterialTheme.typography.headlineSmall)
 
-            if (!accessGranted) {
-                Text("Önce dosya erişimini aç.")
-                Button(onClick = { openAllFilesSettings(context) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("DOSYA ERİŞİMİ VER")
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !busy && !collecting,
+                onClick = {
+                    when {
+                        !accessGranted -> openAllFilesSettings(context)
+                        photos.isNotEmpty() -> nextRequested = true
+                        pendingCount > 0 -> giveRequested = true
+                        !collectedOnce -> collectRequested = true
+                        else -> message = "Bekleyen fotoğraf yok."
+                    }
                 }
+            ) {
+                Text(if (photos.isNotEmpty()) "VER — SONRAKİ 100" else "VER — 100 FOTOĞRAF")
+            }
+
+            if (!accessGranted) {
+                Text("İlk kullanımda VER'e basınca dosya erişimi açılır. İzni verip uygulamaya dön.")
             }
 
             Text("Kasada: $totalCount • Bekleyen: $pendingCount • Biten: $doneCount • Verilen: ${photos.size}")
 
-            Button(
-                modifier = Modifier.fillMaxWidth(),
-                enabled = accessGranted && !collecting && !batchLoading && photos.isEmpty() && pendingCount > 0,
-                onClick = { batchLoading = true }
-            ) {
-                Text("VER — 100 FOTOĞRAF")
-            }
-
-            if (collecting) {
+            if (collecting || busy) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator(); Text("Fotoğraflar kasaya taşınıyor… VER birazdan aktif olacak.")
+                    CircularProgressIndicator()
+                    Text(if (collecting) "Fotoğraflar gizli kasaya taşınıyor…" else "100 foto hazırlanıyor…")
                 }
             }
 
@@ -274,17 +269,11 @@ private fun Photo100VaultApp(resumeTick: Int) {
                         message = "$removed fotoğraf silindi."
                     }) { Text("Seçilenleri sil") }
                 }
-
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !batchLoading && !collecting,
-                    onClick = { nextRequested = true }
-                ) { Text("VER — SONRAKİ 100") }
             }
 
             OutlinedButton(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = accessGranted && !collecting && !batchLoading,
+                enabled = accessGranted && !collecting && !busy,
                 onClick = { collectRequested = true }
             ) { Text("YENİ FOTOĞRAFLARI TOPLA") }
 
@@ -301,9 +290,9 @@ private fun Photo100VaultApp(resumeTick: Int) {
                         }
                     }
                 }
-            } else if (accessGranted && !collecting) {
+            } else if (accessGranted && !collecting && !busy) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(if (pendingCount > 0) "Hazır. Yukarıdaki VER tuşuna bas." else "Bekleyen fotoğraf yok.")
+                    Text(if (pendingCount > 0) "Hazır. Üstteki VER tuşuna bas." else "Gizli kasa hazırlanıyor veya bekleyen fotoğraf yok.")
                 }
             }
         }
