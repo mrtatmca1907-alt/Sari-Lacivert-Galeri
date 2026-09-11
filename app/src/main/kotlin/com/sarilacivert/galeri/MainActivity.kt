@@ -4,8 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
-import com.sarilacivert.galeri.ui.GalleryApp
 import com.sarilacivert.galeri.ui.GalleryTheme
+import com.sarilacivert.galeri.ui.PhotoCleanerApp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             GalleryTheme {
-                GalleryApp()
+                PhotoCleanerApp()
             }
         }
     }
