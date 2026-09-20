@@ -48,15 +48,15 @@ jobs:
 
       - name: APK ve SHA256 hazirla
         run: |
-          cp zippackager/app/build/outputs/apk/debug/app-debug.apk zippackager/ATMACA-ZIP-Paketleyici-1.0.apk
-          sha256sum zippackager/ATMACA-ZIP-Paketleyici-1.0.apk > zippackager/ATMACA-ZIP-Paketleyici-1.0.apk.sha256
+          cp zippackager/app/build/outputs/apk/debug/app-debug.apk zippackager/ATMACA-ZIP-Paketleyici-1.1.apk
+          sha256sum zippackager/ATMACA-ZIP-Paketleyici-1.1.apk > zippackager/ATMACA-ZIP-Paketleyici-1.1.apk.sha256
 
       - name: Artifact yukle
         uses: actions/upload-artifact@v4
         with:
-          name: ATMACA-ZIP-Paketleyici-1.0
+          name: ATMACA-ZIP-Paketleyici-1.1
           path: |
-            zippackager/ATMACA-ZIP-Paketleyici-1.0.apk
-            zippackager/ATMACA-ZIP-Paketleyici-1.0.apk.sha256
+            zippackager/ATMACA-ZIP-Paketleyici-1.1.apk
+            zippackager/ATMACA-ZIP-Paketleyici-1.1.apk.sha256
           if-no-files-found: error
           retention-days: 30

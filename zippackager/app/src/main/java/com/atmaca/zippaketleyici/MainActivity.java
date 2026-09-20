@@ -8,26 +8,28 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.DocumentsContract;
+import android.os.Environment;
+import android.provider.Settings;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+
 public class MainActivity extends Activity {
-    private static final int REQ_TREE = 1907;
-    private static final int REQ_ZIP = 1908;
+    private static final int REQ_DIR = 1907;
+    private static final int REQ_STORAGE = 1908;
     private static final String PREFS = "zip_state";
 
-    private Uri sourceTree;
+    private String sourcePath;
+    private boolean waitingForAllFiles;
     private TextView sourceView;
     private TextView statusView;
     private TextView progressView;
@@ -46,11 +48,8 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(0, 30, 72));
         buildUi();
 
-        String saved = getSharedPreferences(PREFS, MODE_PRIVATE).getString("source_uri", null);
-        if (saved != null && !saved.isEmpty()) {
-            sourceTree = Uri.parse(saved);
-            sourceView.setText("Seçili klasör: " + displayName(sourceTree));
-        }
+        sourcePath = getSharedPreferences(PREFS, MODE_PRIVATE).getString("source_path", null);
+        updateSourceLabel();
         refreshState();
 
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -76,7 +75,7 @@ public class MainActivity extends Activity {
         title.setPadding(0, 0, 0, dp(18));
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView info = text("Seçtiğin klasörü ve içindeki tüm alt klasörleri tek ZIP yapar. Kaynak dosyalara dokunmaz; silmez ve taşımaz.");
+        TextView info = text("Dahili depolamanın kökü dahil istediğin klasörü seçer. Kaynak dosyalara dokunmaz; silmez ve taşımaz.");
         info.setTextSize(16);
         root.addView(info);
 
@@ -89,7 +88,7 @@ public class MainActivity extends Activity {
         root.addView(selectButton);
 
         startButton = button("2) ZIP OLUŞTUR");
-        startButton.setOnClickListener(v -> chooseOutput());
+        startButton.setOnClickListener(v -> startZip());
         root.addView(startButton);
 
         cancelButton = button("DURDUR");
@@ -110,7 +109,7 @@ public class MainActivity extends Activity {
         progressView.setTextSize(15);
         root.addView(progressView);
 
-        TextView note = text("Bütünlük kontrolü: işlem bittikten sonra ZIP baştan sona tekrar okunur ve CRC kontrolü yapılır. Doğrulama geçmeden işlem tamamlanmış sayılmaz.");
+        TextView note = text("ZIP kayıt yeri: Dahili depolama / ATMACA_ZIP\n\nİşlem bittikten sonra ZIP baştan sona tekrar okunur ve CRC kontrolü yapılır. Doğrulama geçmeden tamamlanmış sayılmaz.");
         note.setPadding(0, dp(24), 0, 0);
         root.addView(note);
 
@@ -141,71 +140,92 @@ public class MainActivity extends Activity {
     }
 
     private void chooseFolder() {
-        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
-                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION |
-                Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
-        startActivityForResult(i, REQ_TREE);
+        if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+            waitingForAllFiles = true;
+            try {
+                Intent i = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivityForResult(i, REQ_STORAGE);
+            } catch (Exception e) {
+                startActivityForResult(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION), REQ_STORAGE);
+            }
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT < 30 &&
+                checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_STORAGE);
+            return;
+        }
+
+        launchPicker();
     }
 
-    private void chooseOutput() {
-        if (sourceTree == null) {
+    private void launchPicker() {
+        waitingForAllFiles = false;
+        startActivityForResult(new Intent(this, DirectoryPickerActivity.class), REQ_DIR);
+    }
+
+    private void startZip() {
+        if (sourcePath == null || sourcePath.isEmpty()) {
             Toast.makeText(this, "Önce klasör seç.", Toast.LENGTH_SHORT).show();
             return;
         }
-        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        i.setType("application/zip");
-        i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.putExtra(Intent.EXTRA_TITLE, ZipNames.safeSegment(displayName(sourceTree)) + ".zip");
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
-                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        startActivityForResult(i, REQ_ZIP);
+
+        File f = new File(sourcePath);
+        if (!f.isDirectory() || !f.canRead()) {
+            Toast.makeText(this, "Seçilen klasör okunamıyor.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        Intent service = new Intent(this, ZipService.class);
+        service.setAction(ZipService.ACTION_START);
+        service.putExtra(ZipService.EXTRA_SOURCE_PATH, sourcePath);
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(service); else startService(service);
+        refreshState();
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
-        Uri uri = data.getData();
 
-        if (requestCode == REQ_TREE) {
-            int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            try { getContentResolver().takePersistableUriPermission(uri, flags); } catch (Exception ignored) {}
-            sourceTree = uri;
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("source_uri", uri.toString()).apply();
-            sourceView.setText("Seçili klasör: " + displayName(uri));
-        } else if (requestCode == REQ_ZIP) {
-            int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            try { getContentResolver().takePersistableUriPermission(uri, flags); } catch (Exception ignored) {}
-
-            Intent service = new Intent(this, ZipService.class);
-            service.setAction(ZipService.ACTION_START);
-            service.putExtra(ZipService.EXTRA_SOURCE, sourceTree.toString());
-            service.putExtra(ZipService.EXTRA_OUTPUT, uri.toString());
-            service.putExtra(ZipService.EXTRA_NAME, displayName(sourceTree));
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(service); else startService(service);
-            refreshState();
+        if (requestCode == REQ_DIR && resultCode == RESULT_OK && data != null) {
+            String path = data.getStringExtra(DirectoryPickerActivity.EXTRA_PATH);
+            if (path != null && !path.isEmpty()) {
+                sourcePath = path;
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("source_path", path).apply();
+                updateSourceLabel();
+                refreshState();
+            }
         }
     }
 
-    private String displayName(Uri treeUri) {
-        try {
-            Uri docUri = treeUri;
-            if (DocumentsContract.isTreeUri(treeUri)) {
-                String id = DocumentsContract.getTreeDocumentId(treeUri);
-                docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, id);
-            }
-            try (Cursor c = getContentResolver().query(docUri,
-                    new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME},
-                    null, null, null)) {
-                if (c != null && c.moveToFirst()) {
-                    String n = c.getString(0);
-                    if (n != null && !n.isEmpty()) return n;
-                }
-            }
-        } catch (Exception ignored) {}
-        return "ATMACA";
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_STORAGE && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            launchPicker();
+        }
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (waitingForAllFiles && Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()) {
+            launchPicker();
+        }
+        refreshState();
+    }
+
+    private void updateSourceLabel() {
+        if (sourceView == null) return;
+        if (sourcePath == null || sourcePath.isEmpty()) {
+            sourceView.setText("Klasör seçilmedi");
+            return;
+        }
+        File f = new File(sourcePath);
+        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
+        sourceView.setText(sourcePath.equals(root)
+                ? "Seçili klasör: DAHİLİ DEPOLAMA KÖKÜ\n" + sourcePath
+                : "Seçili klasör: " + f.getName() + "\n" + sourcePath);
     }
 
     @Override protected void onStart() {
@@ -237,7 +257,7 @@ public class MainActivity extends Activity {
                     (current.isEmpty() ? "" : "\nŞu an: " + current));
         }
         if (selectButton != null) selectButton.setEnabled(!running);
-        if (startButton != null) startButton.setEnabled(!running && sourceTree != null);
+        if (startButton != null) startButton.setEnabled(!running && sourcePath != null);
         if (cancelButton != null) cancelButton.setEnabled(running);
     }
 

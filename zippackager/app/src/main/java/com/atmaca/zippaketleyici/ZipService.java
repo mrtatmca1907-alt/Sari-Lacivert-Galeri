@@ -5,26 +5,23 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.ContentResolver;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.database.Cursor;
-import android.net.Uri;
+import android.os.Environment;
 import android.os.IBinder;
-import android.os.ParcelFileDescriptor;
 import android.os.PowerManager;
-import android.provider.DocumentsContract;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.ArrayDeque;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -33,16 +30,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 public class ZipService extends Service {
     public static final String ACTION_START = "com.atmaca.zippaketleyici.START";
     public static final String ACTION_CANCEL = "com.atmaca.zippaketleyici.CANCEL";
     public static final String ACTION_PROGRESS = "com.atmaca.zippaketleyici.PROGRESS";
-    public static final String EXTRA_SOURCE = "source";
-    public static final String EXTRA_OUTPUT = "output";
-    public static final String EXTRA_NAME = "name";
+    public static final String EXTRA_SOURCE_PATH = "source_path";
 
     private static final String CHANNEL = "zip_work";
     private static final int NOTIFICATION_ID = 1907;
@@ -76,10 +71,8 @@ public class ZipService extends Service {
 
         if (intent == null || !ACTION_START.equals(intent.getAction()) || running) return START_NOT_STICKY;
 
-        String s = intent.getStringExtra(EXTRA_SOURCE);
-        String o = intent.getStringExtra(EXTRA_OUTPUT);
-        String n = intent.getStringExtra(EXTRA_NAME);
-        if (s == null || o == null) {
+        String sourcePath = intent.getStringExtra(EXTRA_SOURCE_PATH);
+        if (sourcePath == null || sourcePath.isEmpty()) {
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -90,41 +83,43 @@ public class ZipService extends Service {
         startForeground(NOTIFICATION_ID, notification("Hazırlanıyor", "0 dosya"));
         setState(true, "Paketleme başlıyor…", "", 0, 0, 0);
 
-        Uri source = Uri.parse(s);
-        Uri output = Uri.parse(o);
-        String displayName = (n == null || n.isEmpty()) ? "ATMACA" : n;
-        executor.execute(() -> runJob(source, output, displayName));
+        executor.execute(() -> runJob(new File(sourcePath)));
         return START_NOT_STICKY;
     }
 
-    private void runJob(Uri sourceTree, Uri outputUri, String displayName) {
+    private void runJob(File source) {
         PowerManager.WakeLock wake = null;
-        boolean success = false;
+        File output = null;
         try {
+            source = source.getCanonicalFile();
+            if (!source.isDirectory() || !source.canRead()) throw new IOException("Kaynak klasör okunamıyor");
+
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (pm != null) {
                 wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ATMACA:Zip");
                 wake.acquire();
             }
 
-            writeZip(sourceTree, outputUri);
+            File outDir = new File(Environment.getExternalStorageDirectory(), "ATMACA_ZIP");
+            if (!outDir.exists() && !outDir.mkdirs()) throw new IOException("ATMACA_ZIP klasörü oluşturulamadı");
+
+            output = chooseOutput(outDir, source);
+            writeZip(source, output);
             if (cancel.get()) throw new Cancelled();
 
-            setState(true, "ZIP doğrulanıyor…", "", files, dirs, bytes);
+            setState(true, "ZIP doğrulanıyor…", output.getName(), files, dirs, bytes);
             updateNotification("ZIP doğrulanıyor", files + " dosya");
 
-            verifyZip(outputUri, entries, files, bytes);
-            if (!hasValidEndRecord(outputUri)) throw new IOException("ZIP merkez dizin sonu bulunamadı");
+            verifyZip(output, entries, files, bytes);
 
-            success = true;
-            setState(false, "TAMAMLANDI ✓ ZIP sağlam", "", files, dirs, bytes);
+            setState(false, "TAMAMLANDI ✓ ZIP sağlam", output.getAbsolutePath(), files, dirs, bytes);
             updateNotification("Tamamlandı", files + " dosya • ZIP doğrulandı");
         } catch (Cancelled e) {
-            deleteOutput(outputUri);
+            if (output != null) safeDelete(output);
             setState(false, "DURDURULDU • yarım ZIP silindi", "", files, dirs, bytes);
             updateNotification("Durduruldu", "Yarım ZIP silindi");
         } catch (Throwable e) {
-            deleteOutput(outputUri);
+            if (output != null) safeDelete(output);
             String msg = e.getMessage();
             if (msg == null || msg.trim().isEmpty()) msg = e.getClass().getSimpleName();
             setState(false, "HATA • ZIP tamamlanmadı", msg, files, dirs, bytes);
@@ -137,79 +132,96 @@ public class ZipService extends Service {
         }
     }
 
-    private void writeZip(Uri sourceTree, Uri outputUri) throws Exception {
-        ContentResolver r = getContentResolver();
-        String rootId = DocumentsContract.getTreeDocumentId(sourceTree);
+    private File chooseOutput(File outDir, File source) throws IOException {
+        String rootPath = Environment.getExternalStorageDirectory().getCanonicalPath();
+        String base;
+        if (source.getCanonicalPath().equals(rootPath)) base = "DAHILI_DEPOLAMA";
+        else {
+            base = ZipNames.safeSegment(source.getName());
+            if (base.isEmpty() || "_".equals(base)) base = "ATMACA";
+        }
+
+        File candidate = new File(outDir, base + ".zip");
+        int n = 2;
+        while (candidate.exists()) {
+            candidate = new File(outDir, base + " (" + n + ").zip");
+            n++;
+        }
+        return candidate.getCanonicalFile();
+    }
+
+    private void writeZip(File source, File output) throws Exception {
+        String sourceCanonical = source.getCanonicalPath();
+        String outputCanonical = output.getCanonicalPath();
+
         ArrayDeque<Node> stack = new ArrayDeque<>();
-        stack.push(new Node(rootId, ""));
+        stack.push(new Node(source, ""));
 
-        try (OutputStream raw = r.openOutputStream(outputUri, "w")) {
-            if (raw == null) throw new IOException("ZIP hedefi açılamadı");
-            try (ZipOutputStream zip = new ZipOutputStream(new BufferedOutputStream(raw, 1024 * 1024))) {
-                // Sıkıştırma yapma: tek geçiş, yüksek hız, zaten sıkışmış foto/video için gereksiz CPU yok.
-                zip.setLevel(Deflater.NO_COMPRESSION);
+        try (ZipOutputStream zip = new ZipOutputStream(
+                new BufferedOutputStream(new FileOutputStream(output), 1024 * 1024))) {
+            zip.setLevel(Deflater.NO_COMPRESSION);
 
-                while (!stack.isEmpty()) {
+            while (!stack.isEmpty()) {
+                if (cancel.get()) throw new Cancelled();
+
+                Node dir = stack.pop();
+                File[] children = dir.file.listFiles();
+                if (children == null) throw new IOException("Klasör okunamadı: " + dir.file.getAbsolutePath());
+                Arrays.sort(children, Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+
+                Map<String, Integer> names = new HashMap<>();
+                for (File child : children) {
                     if (cancel.get()) throw new Cancelled();
-                    Node dir = stack.pop();
-                    Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(sourceTree, dir.docId);
-                    String[] projection = {
-                            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                            DocumentsContract.Document.COLUMN_MIME_TYPE,
-                            DocumentsContract.Document.COLUMN_LAST_MODIFIED
-                    };
 
-                    Map<String, Integer> names = new HashMap<>();
-                    try (Cursor c = r.query(children, projection, null, null, null)) {
-                        if (c == null) throw new IOException("Klasör okunamadı: " + dir.relative);
-                        while (c.moveToNext()) {
-                            if (cancel.get()) throw new Cancelled();
+                    File canonical;
+                    try { canonical = child.getCanonicalFile(); }
+                    catch (IOException e) { throw new IOException("Dosya yolu okunamadı: " + child.getAbsolutePath(), e); }
 
-                            String childId = c.getString(0);
-                            String rawName = c.getString(1);
-                            String mime = c.getString(2);
-                            long modified = c.isNull(3) ? 0L : c.getLong(3);
-                            String base = ZipNames.safeSegment(rawName);
+                    String childCanonical = canonical.getCanonicalPath();
+                    if (childCanonical.equals(outputCanonical)) continue;
+                    if (!insideSource(sourceCanonical, childCanonical)) continue;
 
-                            int seen = names.containsKey(base) ? names.get(base) + 1 : 1;
-                            names.put(base, seen);
-                            String unique = ZipNames.duplicateName(base, seen);
-                            String relative = dir.relative.isEmpty() ? unique : dir.relative + "/" + unique;
-                            Uri childUri = DocumentsContract.buildDocumentUriUsingTree(sourceTree, childId);
+                    String base = ZipNames.safeSegment(child.getName());
+                    int seen = names.containsKey(base) ? names.get(base) + 1 : 1;
+                    names.put(base, seen);
+                    String unique = ZipNames.duplicateName(base, seen);
+                    String relative = dir.relative.isEmpty() ? unique : dir.relative + "/" + unique;
 
-                            if (sameDocument(childUri, outputUri)) continue;
-
-                            if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                                String entryName = relative + "/";
-                                ZipEntry ze = new ZipEntry(entryName);
-                                if (modified > 0) ze.setTime(modified);
-                                zip.putNextEntry(ze);
-                                zip.closeEntry();
-                                entries++;
-                                dirs++;
-                                stack.push(new Node(childId, relative));
-                                publish(relative);
-                            } else {
-                                writeFile(r, zip, childUri, relative, modified);
-                            }
-                        }
-                    } catch (SecurityException se) {
-                        throw new IOException("Erişim reddedildi: " + dir.relative, se);
+                    if (canonical.isDirectory()) {
+                        ZipEntry ze = new ZipEntry(relative + "/");
+                        long lm = canonical.lastModified();
+                        if (lm > 0) ze.setTime(lm);
+                        zip.putNextEntry(ze);
+                        zip.closeEntry();
+                        entries++;
+                        dirs++;
+                        stack.push(new Node(canonical, relative));
+                        publish(relative);
+                    } else if (canonical.isFile()) {
+                        writeFile(zip, canonical, relative);
                     }
                 }
-                zip.finish();
             }
+            zip.finish();
         }
     }
 
-    private void writeFile(ContentResolver r, ZipOutputStream zip, Uri fileUri, String relative, long modified) throws Exception {
+    private boolean insideSource(String sourceCanonical, String childCanonical) {
+        if (childCanonical.equals(sourceCanonical)) return true;
+        String prefix = sourceCanonical.endsWith(File.separator)
+                ? sourceCanonical : sourceCanonical + File.separator;
+        return childCanonical.startsWith(prefix);
+    }
+
+    private void writeFile(ZipOutputStream zip, File file, String relative) throws Exception {
+        if (!file.canRead()) throw new IOException("Dosya okunamıyor: " + file.getAbsolutePath());
+
         ZipEntry ze = new ZipEntry(relative);
-        if (modified > 0) ze.setTime(modified);
+        long lm = file.lastModified();
+        if (lm > 0) ze.setTime(lm);
         zip.putNextEntry(ze);
 
-        try (InputStream in = r.openInputStream(fileUri)) {
-            if (in == null) throw new IOException("Dosya açılamadı: " + relative);
+        try (InputStream in = new BufferedInputStream(new FileInputStream(file), 1024 * 1024)) {
             byte[] buffer = new byte[1024 * 1024];
             int n;
             while ((n = in.read(buffer)) != -1) {
@@ -229,24 +241,26 @@ public class ZipService extends Service {
         publish(relative);
     }
 
-    private void verifyZip(Uri outputUri, long expectedEntries, long expectedFiles, long expectedBytes) throws Exception {
+    private void verifyZip(File output, long expectedEntries, long expectedFiles, long expectedBytes) throws Exception {
         long gotEntries = 0;
         long gotFiles = 0;
         long gotBytes = 0;
 
-        try (InputStream raw = getContentResolver().openInputStream(outputUri)) {
-            if (raw == null) throw new IOException("ZIP doğrulama için açılamadı");
-            try (ZipInputStream zin = new ZipInputStream(new BufferedInputStream(raw, 1024 * 1024))) {
-                ZipEntry e;
-                byte[] buffer = new byte[1024 * 1024];
-                long last = 0;
-                while ((e = zin.getNextEntry()) != null) {
-                    if (cancel.get()) throw new Cancelled();
-                    gotEntries++;
-                    if (!e.isDirectory()) {
-                        gotFiles++;
+        try (ZipFile zf = new ZipFile(output)) {
+            Enumeration<? extends ZipEntry> en = zf.entries();
+            byte[] buffer = new byte[1024 * 1024];
+            long last = 0;
+
+            while (en.hasMoreElements()) {
+                if (cancel.get()) throw new Cancelled();
+                ZipEntry e = en.nextElement();
+                gotEntries++;
+
+                if (!e.isDirectory()) {
+                    gotFiles++;
+                    try (InputStream in = new BufferedInputStream(zf.getInputStream(e), 1024 * 1024)) {
                         int n;
-                        while ((n = zin.read(buffer)) != -1) {
+                        while ((n = in.read(buffer)) != -1) {
                             gotBytes += n;
                             if (System.currentTimeMillis() - last > 700) {
                                 setState(true, "ZIP doğrulanıyor…", e.getName(), files, dirs, bytes);
@@ -254,7 +268,6 @@ public class ZipService extends Service {
                             }
                         }
                     }
-                    zin.closeEntry();
                 }
             }
         }
@@ -262,70 +275,6 @@ public class ZipService extends Service {
         if (gotEntries != expectedEntries || gotFiles != expectedFiles || gotBytes != expectedBytes) {
             throw new IOException("Doğrulama sayıları eşleşmedi");
         }
-    }
-
-    private boolean hasValidEndRecord(Uri outputUri) throws IOException {
-        final int maxTail = 65557;
-        try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(outputUri, "r")) {
-            if (pfd == null) return false;
-            try (FileInputStream in = new FileInputStream(pfd.getFileDescriptor())) {
-                FileChannel ch = in.getChannel();
-                long size = ch.size();
-                int count = (int) Math.min((long) maxTail, size);
-                if (count < 22) return false;
-                ByteBuffer bb = ByteBuffer.allocate(count);
-                ch.position(size - count);
-                while (bb.hasRemaining() && ch.read(bb) != -1) {}
-                return validEocd(bb.array(), bb.position());
-            }
-        } catch (Exception seekFailed) {
-            return hasValidEndRecordSequential(outputUri);
-        }
-    }
-
-    private boolean hasValidEndRecordSequential(Uri outputUri) throws IOException {
-        final int cap = 65557;
-        byte[] ring = new byte[cap];
-        long total = 0;
-        try (InputStream in = new BufferedInputStream(getContentResolver().openInputStream(outputUri), 1024 * 1024)) {
-            byte[] buf = new byte[1024 * 1024];
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                for (int i = 0; i < n; i++) ring[(int) ((total + i) % cap)] = buf[i];
-                total += n;
-            }
-        }
-        int len = (int) Math.min((long) cap, total);
-        byte[] tail = new byte[len];
-        long start = Math.max(0, total - len);
-        for (int i = 0; i < len; i++) tail[i] = ring[(int) ((start + i) % cap)];
-        return validEocd(tail, len);
-    }
-
-    private boolean validEocd(byte[] b, int len) {
-        for (int i = len - 22; i >= 0; i--) {
-            if ((b[i] & 0xff) == 0x50 && (b[i + 1] & 0xff) == 0x4b &&
-                    (b[i + 2] & 0xff) == 0x05 && (b[i + 3] & 0xff) == 0x06) {
-                int comment = (b[i + 20] & 0xff) | ((b[i + 21] & 0xff) << 8);
-                if (i + 22 + comment == len) return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean sameDocument(Uri a, Uri b) {
-        if (a == null || b == null) return false;
-        if (a.equals(b)) return true;
-        if (!safeEquals(a.getAuthority(), b.getAuthority())) return false;
-        try {
-            return DocumentsContract.getDocumentId(a).equals(DocumentsContract.getDocumentId(b));
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private boolean safeEquals(String a, String b) {
-        return a == null ? b == null : a.equals(b);
     }
 
     private void publish(String current) {
@@ -374,8 +323,8 @@ public class ZipService extends Service {
         if (nm != null) nm.notify(NOTIFICATION_ID, notification(title, text));
     }
 
-    private void deleteOutput(Uri uri) {
-        try { DocumentsContract.deleteDocument(getContentResolver(), uri); } catch (Throwable ignored) {}
+    private void safeDelete(File file) {
+        try { if (file.exists()) file.delete(); } catch (Throwable ignored) {}
     }
 
     private String prettyBytes(long b) {
@@ -401,10 +350,10 @@ public class ZipService extends Service {
     }
 
     private static final class Node {
-        final String docId;
+        final File file;
         final String relative;
-        Node(String docId, String relative) {
-            this.docId = docId;
+        Node(File file, String relative) {
+            this.file = file;
             this.relative = relative;
         }
     }
