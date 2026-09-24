@@ -1,6 +1,8 @@
 name: Build ATMACA Native Core
 
 on:
+  push:
+    branches: [ hios13-gallery-fast ]
   workflow_dispatch:
   pull_request:
     branches: [ main ]
