@@ -31,7 +31,12 @@ jobs:
 
       - name: Install API 37
         run: |
-          "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" "platforms;android-37.0" "build-tools;37.0.0"
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/android-tools.zip
+          unzip -q /tmp/android-tools.zip -d /tmp/android-tools
+          mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
+          mv /tmp/android-tools/cmdline-tools/* "$ANDROID_HOME/cmdline-tools/latest/"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Gradle 9.5
         uses: gradle/actions/setup-gradle@v4
