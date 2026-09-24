@@ -24,8 +24,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Android SDK location
+        run: echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
 
       - name: Install API 37
         run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
