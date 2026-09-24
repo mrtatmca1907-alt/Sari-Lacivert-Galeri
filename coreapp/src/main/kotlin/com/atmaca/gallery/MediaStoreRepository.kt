@@ -52,7 +52,9 @@ class MediaStoreRepository(context: Context) {
         albumPath: String? = null,
         albumBucketId: Long = 0L,
         albumBucketName: String? = null,
-        trashedOnly: Boolean = false
+        trashedOnly: Boolean = false,
+        beforeDate: Long? = null,
+        beforeId: Long? = null
     ): List<GalleryMedia> = withContext(Dispatchers.IO) {
         if (trashedOnly && Build.VERSION.SDK_INT < 30) return@withContext emptyList()
         val wantedType = when (tab) {
@@ -62,7 +64,8 @@ class MediaStoreRepository(context: Context) {
         val selectionParts = mutableListOf("${MediaStore.Files.FileColumns.MEDIA_TYPE}=?")
         val selectionArgs = mutableListOf(wantedType.toString())
         addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId, albumBucketName)
-        queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly)
+        addPageCursor(selectionParts, selectionArgs, beforeDate, beforeId)
+        queryPage(selectionParts, selectionArgs, 0, limit, trashedOnly)
     }
 
     suspend fun loadMixedPage(
@@ -71,7 +74,9 @@ class MediaStoreRepository(context: Context) {
         albumPath: String? = null,
         albumBucketId: Long = 0L,
         albumBucketName: String? = null,
-        trashedOnly: Boolean = false
+        trashedOnly: Boolean = false,
+        beforeDate: Long? = null,
+        beforeId: Long? = null
     ): List<GalleryMedia> = withContext(Dispatchers.IO) {
         if (trashedOnly && Build.VERSION.SDK_INT < 30) return@withContext emptyList()
         val selectionParts = mutableListOf("(${MediaStore.Files.FileColumns.MEDIA_TYPE}=? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE}=?)")
@@ -80,12 +85,13 @@ class MediaStoreRepository(context: Context) {
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
         )
         addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId, albumBucketName)
+        addPageCursor(selectionParts, selectionArgs, beforeDate, beforeId)
         val indexed = if (!useDirectCollections) {
-            runCatching { queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly) }.getOrNull()
+            runCatching { queryPage(selectionParts, selectionArgs, 0, limit, trashedOnly) }.getOrNull()
         } else null
-        if (indexed != null && (indexed.isNotEmpty() || offset > 0)) indexed
+        if (indexed != null && indexed.isNotEmpty()) indexed
         else {
-            val direct = loadFromMediaCollections(offset, limit, albumPath, albumBucketId, albumBucketName, trashedOnly)
+            val direct = loadFromMediaCollections(limit, albumPath, albumBucketId, albumBucketName, trashedOnly, beforeDate, beforeId)
             if (direct.isNotEmpty()) useDirectCollections = true
             direct
         }
@@ -96,10 +102,10 @@ class MediaStoreRepository(context: Context) {
     private var useDirectCollections = false
 
     private fun loadFromMediaCollections(
-        offset: Int, limit: Int, albumPath: String?, albumBucketId: Long,
-        albumBucketName: String?, trashedOnly: Boolean
+        limit: Int, albumPath: String?, albumBucketId: Long,
+        albumBucketName: String?, trashedOnly: Boolean, beforeDate: Long?, beforeId: Long?
     ): List<GalleryMedia> {
-        val request = (offset + limit).coerceAtMost(100_000)
+        val request = limit
         val all = ArrayList<GalleryMedia>(request.coerceAtMost(200))
         fun readCollection(uri: Uri, video: Boolean) {
             val projection = buildList {
@@ -121,6 +127,7 @@ class MediaStoreRepository(context: Context) {
             if (Build.VERSION.SDK_INT >= 30 && !trashedOnly) where += "${MediaStore.MediaColumns.IS_TRASHED}=0"
             if (trashedOnly && Build.VERSION.SDK_INT >= 30) where += "${MediaStore.MediaColumns.IS_TRASHED}=1"
             addAlbumSelector(where, values, albumPath, albumBucketId, albumBucketName)
+            addPageCursor(where, values, beforeDate, beforeId)
             val queryArgs = Bundle().apply {
                 if (where.isNotEmpty()) putString(ContentResolver.QUERY_ARG_SQL_SELECTION, where.joinToString(" AND "))
                 if (values.isNotEmpty()) putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, values.toTypedArray())
@@ -169,7 +176,15 @@ class MediaStoreRepository(context: Context) {
         readCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
         readCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
         return all.sortedWith(compareByDescending<GalleryMedia> { it.dateAdded }.thenByDescending { it.id })
-            .drop(offset).take(limit)
+            .take(limit)
+    }
+
+    private fun addPageCursor(parts: MutableList<String>, args: MutableList<String>, date: Long?, id: Long?) {
+        if (date == null || id == null) return
+        parts += "(${MediaStore.MediaColumns.DATE_ADDED} < ? OR (${MediaStore.MediaColumns.DATE_ADDED} = ? AND ${MediaStore.MediaColumns._ID} < ?))"
+        args += date.toString()
+        args += date.toString()
+        args += id.toString()
     }
 
     private fun addAlbumSelector(
