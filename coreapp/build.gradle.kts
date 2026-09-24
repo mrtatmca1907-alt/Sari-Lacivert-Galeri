@@ -8,11 +8,11 @@ android {
     compileSdk { version = release(37) }
 
     defaultConfig {
-        applicationId = "com.atmaca.gallery"
+        applicationId = "com.atmaca.gallery.hios13"
         minSdk = 26
         targetSdk = 36
-        versionCode = 140911
-        versionName = "0.7.7-hios13-fast-gallery"
+        versionCode = 140912
+        versionName = "0.7.8-hios13-all-albums"
     }
 
     compileOptions {
