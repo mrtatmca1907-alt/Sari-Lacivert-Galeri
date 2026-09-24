@@ -265,7 +265,9 @@ class MediaStoreRepository(context: Context) {
                 }.toTypedArray()
                 val selection = if (Build.VERSION.SDK_INT >= 30) "${MediaStore.MediaColumns.IS_TRASHED}=0" else null
                 val sort = "${MediaStore.MediaColumns.DATE_ADDED} DESC, ${MediaStore.MediaColumns._ID} DESC"
-                resolver.query(collection, projection, selection, null, sort)?.use { cursor ->
+                val albumCursor = runCatching { resolver.query(collection, projection, selection, null, sort) }.getOrNull()
+                    ?: resolver.query(collection, projection, null, null, sort)
+                albumCursor?.use { cursor ->
                     val idI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                     val nameI = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                     val mimeI = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
