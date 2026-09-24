@@ -80,7 +80,96 @@ class MediaStoreRepository(context: Context) {
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
         )
         addAlbumSelector(selectionParts, selectionArgs, albumPath, albumBucketId, albumBucketName)
-        queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly)
+        val indexed = if (!useDirectCollections) {
+            runCatching { queryPage(selectionParts, selectionArgs, offset, limit, trashedOnly) }.getOrNull()
+        } else null
+        if (indexed != null && (indexed.isNotEmpty() || offset > 0)) indexed
+        else {
+            val direct = loadFromMediaCollections(offset, limit, albumPath, albumBucketId, albumBucketName, trashedOnly)
+            if (direct.isNotEmpty()) useDirectCollections = true
+            direct
+        }
+    }
+
+    // Some Android 13 OEM MediaStore.Files providers return an empty mixed view
+    // while Images and Video are populated. Query those indexed collections directly.
+    private var useDirectCollections = false
+
+    private fun loadFromMediaCollections(
+        offset: Int, limit: Int, albumPath: String?, albumBucketId: Long,
+        albumBucketName: String?, trashedOnly: Boolean
+    ): List<GalleryMedia> {
+        val request = (offset + limit).coerceAtMost(100_000)
+        val all = ArrayList<GalleryMedia>(request.coerceAtMost(200))
+        fun readCollection(uri: Uri, video: Boolean) {
+            val projection = buildList {
+                add(MediaStore.MediaColumns._ID)
+                add(MediaStore.MediaColumns.DISPLAY_NAME)
+                add(MediaStore.MediaColumns.MIME_TYPE)
+                add(MediaStore.MediaColumns.DATE_ADDED)
+                add(MediaStore.MediaColumns.DATE_MODIFIED)
+                add(MediaStore.MediaColumns.WIDTH)
+                add(MediaStore.MediaColumns.HEIGHT)
+                add(MediaStore.Images.ImageColumns.BUCKET_ID)
+                add(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+                if (Build.VERSION.SDK_INT >= 29) add(MediaStore.MediaColumns.RELATIVE_PATH)
+                add(MediaStore.MediaColumns.SIZE)
+                if (video) add(MediaStore.Video.VideoColumns.DURATION)
+            }.toTypedArray()
+            val where = mutableListOf<String>()
+            val values = mutableListOf<String>()
+            if (Build.VERSION.SDK_INT >= 30 && !trashedOnly) where += "${MediaStore.MediaColumns.IS_TRASHED}=0"
+            if (trashedOnly && Build.VERSION.SDK_INT >= 30) where += "${MediaStore.MediaColumns.IS_TRASHED}=1"
+            addAlbumSelector(where, values, albumPath, albumBucketId, albumBucketName)
+            val queryArgs = Bundle().apply {
+                if (where.isNotEmpty()) putString(ContentResolver.QUERY_ARG_SQL_SELECTION, where.joinToString(" AND "))
+                if (values.isNotEmpty()) putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, values.toTypedArray())
+                putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(MediaStore.MediaColumns.DATE_ADDED, MediaStore.MediaColumns._ID))
+                putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
+                putInt(ContentResolver.QUERY_ARG_LIMIT, request)
+            }
+            runCatching {
+                resolver.query(uri, projection, queryArgs, null)?.use { cursor ->
+                    val id = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    val name = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                    val date = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+                    val modified = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+                    val mime = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
+                    val width = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
+                    val height = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
+                    val bucket = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_ID)
+                    val bucketNameIndex = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
+                    val path = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+                    val size = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
+                    val duration = cursor.getColumnIndex(MediaStore.Video.VideoColumns.DURATION)
+                    while (cursor.moveToNext()) {
+                        val mediaId = cursor.getLong(id)
+                        all += GalleryMedia(
+                            id = mediaId,
+                            uri = ContentUris.withAppendedId(uri, mediaId),
+                            name = cursor.getString(name).orEmpty(),
+                            mimeType = if (mime >= 0) cursor.getString(mime) else null,
+                            isVideo = video,
+                            dateAdded = cursor.getLong(date),
+                            dateModified = if (modified >= 0) cursor.getLong(modified) else 0,
+                            dateTaken = 0,
+                            width = if (width >= 0) cursor.getInt(width) else 0,
+                            height = if (height >= 0) cursor.getInt(height) else 0,
+                            bucketId = if (bucket >= 0) cursor.getLong(bucket) else 0,
+                            bucketName = if (bucketNameIndex >= 0) cursor.getString(bucketNameIndex) else null,
+                            relativePath = if (path >= 0) cursor.getString(path).orEmpty() else "",
+                            size = if (size >= 0) cursor.getLong(size) else 0,
+                            durationMs = if (duration >= 0) cursor.getLong(duration) else 0,
+                            isTrashed = trashedOnly
+                        )
+                    }
+                }
+            }
+        }
+        readCollection(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
+        readCollection(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
+        return all.sortedWith(compareByDescending<GalleryMedia> { it.dateAdded }.thenByDescending { it.id })
+            .drop(offset).take(limit)
     }
 
     private fun addAlbumSelector(
