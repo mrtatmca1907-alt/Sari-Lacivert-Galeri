@@ -140,6 +140,13 @@ fun AtmacaGalleryApp(vm: GalleryViewModel = viewModel()) {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissionTick++ }
 
+    var autoRequested by remember { mutableStateOf(false) }
+    LaunchedEffect(granted) {
+        if (!granted && !autoRequested) {
+            autoRequested = true
+            launcher.launch(required.toTypedArray())
+        }
+    }
     if (!granted) {
         PermissionScreen { launcher.launch(required.toTypedArray()) }
         return
@@ -222,6 +229,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
     var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
     var albums by remember { mutableStateOf<List<GalleryAlbum>>(emptyList()) }
     var albumsLoading by remember { mutableStateOf(false) }
+    var loadedAlbumRevision by remember { mutableIntStateOf(-1) }
 
     val selected = remember(selectedIds, state.items) {
         state.items.filter { it.id in selectedIds }
@@ -335,7 +343,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
             HomeSection.PHOTOS -> vm.switchTab(GalleryTab.PHOTOS)
             HomeSection.VIDEOS -> vm.switchTab(GalleryTab.VIDEOS)
             HomeSection.TRASH -> vm.openTrash()
-            HomeSection.ALBUMS -> albumsRefresh++
+            HomeSection.ALBUMS -> Unit
             HomeSection.DUPLICATES -> duplicatesRefresh++
         }
     }
@@ -394,9 +402,11 @@ private fun GalleryHome(vm: GalleryViewModel) {
 
     LaunchedEffect(albumsRefresh, section, pathAction) {
         if (section == HomeSection.ALBUMS || pathAction != null) {
+            if (loadedAlbumRevision == albumsRefresh && albums.isNotEmpty()) return@LaunchedEffect
             albumsLoading = true
             val fresh = runCatching { repository.loadAlbumsOemSafe() }.getOrDefault(emptyList())
             albums = albumListWhileRefreshing(albums, fresh, refreshing = false)
+            loadedAlbumRevision = albumsRefresh
             albumsLoading = false
         }
     }
@@ -515,13 +525,13 @@ private fun GalleryHome(vm: GalleryViewModel) {
                 NavigationBarItem(
                     selected = section == HomeSection.MEDIA,
                     onClick = { section = HomeSection.MEDIA },
-                    icon = { Text("▣") },
+                    icon = { Icon(Icons.Default.Collections, null) },
                     label = { Text("Medya") }
                 )
                 NavigationBarItem(
                     selected = section == HomeSection.ALBUMS,
                     onClick = { section = HomeSection.ALBUMS },
-                    icon = { Icon(Icons.Default.Collections, null) },
+                    icon = { Icon(Icons.Default.Folder, null) },
                     label = { Text("Albümler") }
                 )
                 NavigationBarItem(
@@ -932,8 +942,8 @@ private fun MediaGrid(
                     onDragCancel = { lastDragIndex = -1 }
                 )
             },
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         itemsIndexed(
             items = items,
@@ -970,7 +980,7 @@ private fun MediaTile(
     val clickModifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
     Box(
         clickModifier
-            .clip(RoundedCornerShape(3.dp))
+            .clip(RoundedCornerShape(9.dp))
             .background(Color(0xFF17233A))
     ) {
         MediaThumbnail(item)?.let { bitmap ->
@@ -1000,18 +1010,6 @@ private fun MediaTile(
                 )
             }
         }
-        Text(
-            mediaNameOverlay(item.name),
-            color = Color.White,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.58f))
-                .padding(horizontal = 5.dp, vertical = 3.dp)
-        )
         if (selected) {
             Box(
                 Modifier
@@ -1029,18 +1027,18 @@ private fun MediaTile(
     }
 }
 
-private object ThumbnailCache : LruCache<String, Bitmap>(64 * 1024) {
+private object ThumbnailCache : LruCache<String, Bitmap>(48 * 1024) {
     override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
 }
 
 @Composable
 private fun MediaThumbnail(item: GalleryMedia): Bitmap? {
     val context = LocalContext.current
-    val key = "${item.uri}:360"
+    val key = "${item.uri}:224"
     val bitmap by produceState<Bitmap?>(initialValue = ThumbnailCache.get(key), key) {
         if (value == null) {
             value = withContext(Dispatchers.IO) {
-                loadThumbnailCompat(context, item, 360)?.also { ThumbnailCache.put(key, it) }
+                loadThumbnailCompat(context, item, 224)?.also { ThumbnailCache.put(key, it) }
             }
         }
     }
@@ -1077,9 +1075,9 @@ private fun AlbumGrid(albums: List<GalleryAlbum>, onOpen: (GalleryAlbum) -> Unit
     }
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
-        modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         itemsIndexed(albums, key = { _, album -> albumGridKey(album) }) { _, album ->
             Column(
@@ -1091,7 +1089,7 @@ private fun AlbumGrid(albums: List<GalleryAlbum>, onOpen: (GalleryAlbum) -> Unit
                     Modifier
                         .fillMaxWidth()
                         .aspectRatio(1.35f)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(20.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     album.cover?.let { cover ->
