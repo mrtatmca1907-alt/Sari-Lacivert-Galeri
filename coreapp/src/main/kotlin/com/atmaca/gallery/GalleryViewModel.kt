@@ -96,20 +96,27 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             val snapshot = _state.value
+            val lastItem = snapshot.items.lastOrNull()
             runCatching {
                 when (snapshot.mode) {
                     CollectionMode.MEDIA -> repository.loadMixedPage(
                         offset = snapshot.items.size,
-                        limit = MediaStoreRepository.PAGE_SIZE
+                        limit = MediaStoreRepository.PAGE_SIZE,
+                        beforeDate = lastItem?.dateAdded,
+                        beforeId = lastItem?.id
                     )
                     CollectionMode.TAB -> repository.loadPage(
                         tab = snapshot.tab,
                         offset = snapshot.items.size,
-                        limit = MediaStoreRepository.PAGE_SIZE
+                        limit = MediaStoreRepository.PAGE_SIZE,
+                        beforeDate = lastItem?.dateAdded,
+                        beforeId = lastItem?.id
                     )
                     CollectionMode.ALBUM -> repository.loadMixedPage(
                         offset = snapshot.items.size,
                         limit = MediaStoreRepository.PAGE_SIZE,
+                        beforeDate = lastItem?.dateAdded,
+                        beforeId = lastItem?.id,
                         albumPath = snapshot.albumPath,
                         albumBucketId = snapshot.albumBucketId,
                         albumBucketName = snapshot.albumBucketName
@@ -117,6 +124,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     CollectionMode.TRASH -> repository.loadMixedPage(
                         offset = snapshot.items.size,
                         limit = MediaStoreRepository.PAGE_SIZE,
+                        beforeDate = lastItem?.dateAdded,
+                        beforeId = lastItem?.id,
                         trashedOnly = true
                     )
                 }
