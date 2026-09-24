@@ -18,10 +18,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
-                    primary = Color(0xFFFFD600),
-                    secondary = Color(0xFF1D3F91),
-                    background = Color(0xFF071226),
-                    surface = Color(0xFF0E1D38)
+                    primary = Color(0xFF89B9FF),
+                    secondary = Color(0xFFB9C8E4),
+                    background = Color(0xFF101318),
+                    surface = Color(0xFF181C23)
                 )
             ) {
                 Surface(Modifier.fillMaxSize()) {
