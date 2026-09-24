@@ -749,7 +749,7 @@ private fun GalleryTopBar(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                visibleBuildBadge(),
+                "Fotoğrafların ve videoların",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1
@@ -856,7 +856,7 @@ private fun MediaCollection(
         }
 
         state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Burada medya yok")
+            Text("Henüz fotoğraf veya video görünmüyor")
         }
 
         visibleItems.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1070,7 +1070,7 @@ private fun loadThumbnailCompat(context: Context, item: GalleryMedia, edge: Int)
 @Composable
 private fun AlbumGrid(albums: List<GalleryAlbum>, onOpen: (GalleryAlbum) -> Unit) {
     if (albums.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Albüm bulunamadı") }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Henüz albüm görünmüyor") }
         return
     }
     LazyVerticalGrid(
