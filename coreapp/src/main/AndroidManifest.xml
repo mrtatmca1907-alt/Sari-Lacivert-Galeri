@@ -13,11 +13,11 @@
         android:allowBackup="true"
         android:icon="@drawable/atmaca_launcher"
         android:roundIcon="@drawable/atmaca_launcher"
-        android:label="ATMACA Galeri"
+        android:label="ATMACA Galeri HiOS13"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
-            android:name=".MainActivity"
+            android:name="com.atmaca.gallery.MainActivity"
             android:exported="true"
             android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|keyboardHidden">
