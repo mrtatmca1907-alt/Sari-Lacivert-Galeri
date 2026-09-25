@@ -38,7 +38,9 @@ class VerifiedMediaLibrary(
 
     suspend fun load(onBatch: suspend (List<GalleryMedia>) -> Unit = {}): VerifiedLibrary = withContext(Dispatchers.IO) {
         val all = ArrayList<GalleryMedia>()
+        val seen = HashSet<Uri>()
         var skipped = 0
+        var needsFilesFallback = false
         val errors = ArrayList<String>()
         val collections = listOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI to false,
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI to true)
@@ -50,6 +52,7 @@ class VerifiedMediaLibrary(
                     coroutineContext.ensureActive()
                     var smallestId: Long? = null
                     var rows = 0
+                    var rawRows = 0
                     query(collection, beforeId)?.use { cursor ->
                         val pending = ArrayList<GalleryMedia>(64)
                         suspend fun flush() {
@@ -63,13 +66,15 @@ class VerifiedMediaLibrary(
                                 } }.awaitAll().flatten()
                             }
                             skipped += pending.size - verified.size
-                            all.addAll(verified)
-                            if (verified.isNotEmpty()) onBatch(verified)
+                            val newItems = verified.filter { seen.add(it.uri) }
+                            all.addAll(newItems)
+                            if (newItems.isNotEmpty()) onBatch(newItems)
                             pending.clear()
                         }
                         val columns = IndexedColumns(cursor)
                         while (cursor.moveToNext()) {
                             coroutineContext.ensureActive()
+                            rawRows++
                             val item = columns.read(cursor, collection, video)
                             if (beforeId != null && item.id >= beforeId) continue
                             smallestId = minOf(smallestId ?: item.id, item.id)
@@ -80,13 +85,64 @@ class VerifiedMediaLibrary(
                         }
                         if (pending.isNotEmpty()) flush()
                     } ?: error("Medya sağlayıcısı liste döndürmedi")
-                    if (rows == 0) break
+                    if (rows == 0) {
+                        if (beforeId != null && rawRows > 0) needsFilesFallback = true
+                        break
+                    }
                     beforeId = smallestId
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 errors += "${if (video) "Videolar" else "Fotoğraflar"}: ${e.message ?: "okunamadı"}"
+            }
+        }
+        if (needsFilesFallback) {
+            val beforeFallbackCount = all.size
+            try {
+                // Some providers ignore the ID condition on Images/Video. Files can
+                // expose the rest through a separate MediaStore collection.
+                resolver.query(MediaStore.Files.getContentUri("external"), null, null, null,
+                    "${MediaStore.MediaColumns._ID} DESC")?.use { cursor ->
+                    val type = cursor.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
+                    if (type < 0) error("Files medya türü sütunu yok")
+                    val columns = IndexedColumns(cursor)
+                    val pending = ArrayList<GalleryMedia>(64)
+                    suspend fun flush() {
+                        val verified = coroutineScope {
+                            pending.chunked(16).map { chunk -> async {
+                                chunk.filter { item -> coroutineContext.ensureActive(); isReadable(item.uri) }
+                            } }.awaitAll().flatten()
+                        }
+                        skipped += pending.size - verified.size
+                        val newItems = verified.filter { seen.add(it.uri) }
+                        all.addAll(newItems)
+                        if (newItems.isNotEmpty()) onBatch(newItems)
+                        pending.clear()
+                    }
+                    while (cursor.moveToNext()) {
+                        coroutineContext.ensureActive()
+                        val mediaType = cursor.getInt(type)
+                        if (mediaType != MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE &&
+                            mediaType != MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) continue
+                        val isVideo = mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO
+                        val collection = if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                            else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                        if (columns.pending(cursor)) continue
+                        val item = columns.read(cursor, collection, isVideo)
+                        if (item.uri in seen) continue
+                        pending += item
+                        if (pending.size == 64) flush()
+                    }
+                    if (pending.isNotEmpty()) flush()
+                } ?: error("Files listesi mevcut değil")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errors += "Medya listesinin devamı okunamadı: ${e.message ?: "bilinmeyen hata"}"
+            }
+            if (all.size == beforeFallbackCount && all.size <= 240) {
+                errors += "Cihaz medya sağlayıcısı 120 kayıt sınırını aşan sonuçları döndürmedi"
             }
         }
         VerifiedLibrary(all.distinctBy { it.uri }, skipped, errors)
