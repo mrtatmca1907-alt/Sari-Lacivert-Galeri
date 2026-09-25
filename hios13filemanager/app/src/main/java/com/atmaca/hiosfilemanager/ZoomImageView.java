@@ -142,6 +142,20 @@ public class ZoomImageView extends ImageView {
         return true;
     }
 
+    private void animateResetZoom() {
+        if (getDrawable() == null) return;
+        final float startScale = scale;
+        if (Math.abs(startScale - 1f) < 0.01f) {
+            resetZoom();
+            return;
+        }
+        animate().cancel();
+        animate()
+                .setDuration(140)
+                .withEndAction(this::resetZoom)
+                .start();
+    }
+
     private void configureBaseMatrix() {
         Drawable d = getDrawable();
         if (d == null || getWidth() <= 0 || getHeight() <= 0) return;
