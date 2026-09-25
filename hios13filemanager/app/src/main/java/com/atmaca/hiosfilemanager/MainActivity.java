@@ -63,6 +63,7 @@ public class MainActivity extends Activity {
     private FileAdapter adapter;
     private TextView pathView;
     private TextView statusView;
+    private TextView storageView;
     private LinearLayout selectionBar;
     private Button pasteButton;
     private EditText searchBox;
@@ -80,10 +81,43 @@ public class MainActivity extends Activity {
         if (hasStorageAccess()) loadDirectory(currentDir);
     }
 
+    @Override
+    public void onBackPressed() {
+        if (!selected.isEmpty()) {
+            selected.clear();
+            adapter.notifyDataSetChanged();
+            updateSelectionBar();
+            return;
+        }
+        if (!clipboard.isEmpty()) {
+            clipboard.clear();
+            pasteButton.setVisibility(View.GONE);
+            toast("Kopyalama/taşıma iptal edildi");
+            return;
+        }
+        File root = new File("/storage/emulated/0");
+        if (!currentDir.getAbsolutePath().equals(root.getAbsolutePath())) {
+            File parent = currentDir.getParentFile();
+            if (parent != null && parent.canRead() && parent.getAbsolutePath().startsWith(root.getAbsolutePath())) {
+                currentDir = parent;
+                searchBox.setText("");
+                loadDirectory(currentDir);
+                return;
+            }
+            currentDir = root;
+            searchBox.setText("");
+            loadDirectory(currentDir);
+            return;
+        }
+        super.onBackPressed();
+    }
+
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
+        root.setFocusableInTouchMode(true);
+        root.requestFocus();
 
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -135,6 +169,14 @@ public class MainActivity extends Activity {
         folder.setOnClickListener(v -> createFolderDialog());
         tools.addView(folder, marginParams(dp(92), dp(44)));
         root.addView(tools);
+
+        storageView = new TextView(this);
+        storageView.setPadding(dp(14), dp(8), dp(14), dp(8));
+        storageView.setTextColor(NAVY);
+        storageView.setTextSize(12);
+        storageView.setTypeface(Typeface.DEFAULT_BOLD);
+        storageView.setBackgroundColor(Color.rgb(233, 239, 248));
+        root.addView(storageView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)));
 
         pasteButton = actionButton("Buraya Yapıştır");
         pasteButton.setVisibility(View.GONE);
@@ -262,6 +304,11 @@ public class MainActivity extends Activity {
     private void loadDirectory(File dir) {
         if (dir == null) return;
         pathView.setText(dir.getAbsolutePath());
+        File storageRoot = new File("/storage/emulated/0");
+        long total = storageRoot.getTotalSpace();
+        long free = storageRoot.getUsableSpace();
+        long used = Math.max(0, total - free);
+        storageView.setText("Depolama  •  " + formatBytes(used) + " kullanılıyor  •  " + formatBytes(free) + " boş");
         statusView.setText("Yükleniyor…");
         selected.clear();
         updateSelectionBar();
@@ -511,6 +558,17 @@ public class MainActivity extends Activity {
         return formatBytes(f.length()) + " • " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(f.lastModified()));
     }
 
+    private String fileIcon(File f) {
+        if (f.isDirectory()) return "▣";
+        String ext = f.getName().toLowerCase(Locale.ROOT);
+        if (ext.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|heic|heif)$")) return "▧";
+        if (ext.matches(".*\\.(mp4|mkv|avi|mov|webm|3gp|m4v|ts)$")) return "▶";
+        if (ext.matches(".*\\.(mp3|wav|flac|aac|m4a|ogg)$")) return "♪";
+        if (ext.matches(".*\\.(zip|rar|7z|tar|gz|apk)$")) return "◆";
+        if (ext.matches(".*\\.(pdf|doc|docx|txt|rtf)$")) return "▤";
+        return "•";
+    }
+
     private String formatBytes(long bytes) {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024L * 1024) return (bytes / 1024) + " KB";
@@ -538,7 +596,8 @@ public class MainActivity extends Activity {
                 LinearLayout row = new LinearLayout(MainActivity.this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(dp(12), dp(8), dp(12), dp(8));
+                row.setPadding(dp(12), dp(10), dp(12), dp(10));
+                row.setMinimumHeight(dp(68));
 
                 TextView icon = new TextView(MainActivity.this);
                 icon.setTextSize(28);
@@ -566,10 +625,15 @@ public class MainActivity extends Activity {
             } else h = (Holder) convertView.getTag();
 
             File f = shownItems.get(position);
-            h.icon.setText(f.isDirectory() ? "📁" : "📄");
+            h.icon.setText(fileIcon(f));
+            h.icon.setTextColor(f.isDirectory() ? YELLOW : BLUE);
             h.name.setText(f.getName().isEmpty() ? f.getAbsolutePath() : f.getName());
             h.detail.setText(detail(f));
-            convertView.setBackgroundColor(selected.contains(f.getAbsolutePath()) ? Color.rgb(255, 244, 181) : Color.WHITE);
+            if (selected.contains(f.getAbsolutePath())) {
+                convertView.setBackgroundColor(Color.rgb(255, 244, 181));
+            } else {
+                convertView.setBackgroundColor(position % 2 == 0 ? Color.WHITE : Color.rgb(244, 247, 252));
+            }
             return convertView;
         }
     }
