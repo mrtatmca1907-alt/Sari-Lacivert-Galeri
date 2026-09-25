@@ -6,6 +6,8 @@
     <application
         android:allowBackup="false"
         android:label="ATMACA Hızlı Klasör Silici V2"
+        android:icon="@drawable/atmaca_folder_fast_icon"
+        android:roundIcon="@drawable/atmaca_folder_fast_icon"
         android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"
