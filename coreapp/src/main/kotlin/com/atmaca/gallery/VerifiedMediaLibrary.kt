@@ -20,7 +20,20 @@ import kotlin.coroutines.coroutineContext
 data class VerifiedLibrary(val items: List<GalleryMedia>, val skipped: Int, val errors: List<String>)
 
 /** Reads MediaStore metadata, never walks storage directories or starts MediaScanner. */
-class VerifiedMediaLibrary(private val resolver: ContentResolver) {
+class VerifiedMediaLibrary(
+    private val resolver: ContentResolver,
+    private val isReadable: (Uri) -> Boolean = { uri ->
+        try {
+            resolver.openFileDescriptor(uri, "r")?.use { it.statSize != 0L } ?: false
+        } catch (_: java.io.IOException) {
+            false
+        } catch (_: SecurityException) {
+            false
+        } catch (_: IllegalArgumentException) {
+            false
+        }
+    }
+) {
     constructor(context: Context) : this(context.applicationContext.contentResolver)
 
     suspend fun load(onBatch: suspend (List<GalleryMedia>) -> Unit = {}): VerifiedLibrary = withContext(Dispatchers.IO) {
@@ -40,7 +53,7 @@ class VerifiedMediaLibrary(private val resolver: ContentResolver) {
                             pending.chunked(16).map { chunk -> async {
                                 chunk.filter { item ->
                                     coroutineContext.ensureActive()
-                                    readable(item.uri)
+                                    isReadable(item.uri)
                                 }
                             } }.awaitAll().flatten()
                         }
@@ -104,16 +117,6 @@ class VerifiedMediaLibrary(private val resolver: ContentResolver) {
         preferred?.close()
         // Some OEMs silently ignore MATCH_INCLUDE or reject optional columns.
         return resolver.query(uri, null, null, null, "${MediaStore.MediaColumns._ID} DESC")
-    }
-
-    private fun readable(uri: Uri): Boolean = try {
-        resolver.openFileDescriptor(uri, "r")?.use { it.statSize != 0L } ?: false
-    } catch (_: java.io.IOException) {
-        false
-    } catch (_: SecurityException) {
-        false
-    } catch (_: IllegalArgumentException) {
-        false
     }
 
     private class IndexedColumns(cursor: Cursor) {

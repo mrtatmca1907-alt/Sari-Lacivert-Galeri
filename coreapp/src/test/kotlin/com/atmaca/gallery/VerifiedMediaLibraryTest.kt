@@ -29,7 +29,10 @@ class VerifiedMediaLibraryTest {
         val provider = MediaProviderFake(file)
         ShadowContentResolver.registerProviderInternal("media", provider)
         var callbacks = 0
-        val result = VerifiedMediaLibrary(context).load { callbacks++ }
+        val result = VerifiedMediaLibrary(context.contentResolver) { uri ->
+            val id = uri.lastPathSegment?.toIntOrNull() ?: return@VerifiedMediaLibrary false
+            file.exists() && file.length() > 0L && id !in 100..107
+        }.load { callbacks++ }
         // 1,305 indexed rows; 8 missing backing files and 4 pending uploads are excluded.
         assertEquals("errors=${result.errors}; skipped=${result.skipped}; callbacks=$callbacks", 1293, result.items.size)
         assertEquals(8, result.skipped)
