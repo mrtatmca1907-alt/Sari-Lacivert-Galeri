@@ -48,6 +48,9 @@ import android.util.LruCache;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends Activity {
     private static final int NAVY = Color.rgb(7, 27, 58);
@@ -56,7 +59,11 @@ public class MainActivity extends Activity {
     private static final int BG = Color.rgb(247, 249, 252);
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private final ExecutorService thumbs = Executors.newFixedThreadPool(2);
+    private final ThreadPoolExecutor thumbs = new ThreadPoolExecutor(
+            2, 2, 15, TimeUnit.SECONDS,
+            new LinkedBlockingDeque<>(32),
+            new ThreadPoolExecutor.DiscardOldestPolicy()
+    );
     private final LruCache<String, Bitmap> thumbCache = new LruCache<String, Bitmap>(24 * 1024) {
         @Override protected int sizeOf(String key, Bitmap value) {
             return value.getByteCount() / 1024;
@@ -90,6 +97,14 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (hasStorageAccess()) loadDirectory(currentDir);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        thumbs.shutdownNow();
+        io.shutdownNow();
+        thumbCache.evictAll();
     }
 
     @Override
@@ -328,12 +343,13 @@ public class MainActivity extends Activity {
 
         io.execute(() -> {
             File[] raw = dir.listFiles();
-            List<File> next = new ArrayList<>();
+            List<File> next = new ArrayList<>(raw == null ? 0 : raw.length);
             if (raw != null) next.addAll(Arrays.asList(raw));
             next.sort(Comparator
                     .comparing((File f) -> !f.isDirectory())
                     .thenComparing(f -> f.getName().toLowerCase(Locale.ROOT)));
             runOnUiThread(() -> {
+                if (!currentDir.getAbsolutePath().equals(dir.getAbsolutePath())) return;
                 allItems.clear();
                 allItems.addAll(next);
                 applyFilter(searchBox.getText().toString());
@@ -650,6 +666,7 @@ public class MainActivity extends Activity {
             } else h = (Holder) convertView.getTag();
 
             File f = shownItems.get(position);
+            h.icon.setTag(null);
             h.icon.setImageDrawable(null);
             h.icon.setBackgroundColor(f.isDirectory() ? Color.rgb(255, 244, 181) : Color.rgb(233, 239, 248));
             if (isImageFile(f)) {
