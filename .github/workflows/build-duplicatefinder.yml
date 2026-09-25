@@ -1,4 +1,4 @@
-name: Build ATMACA Hizli Klasor Silici APK
+name: Build Cift Medya Bulucu APK
 
 on:
   workflow_dispatch:
@@ -23,6 +23,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Android SDK kur
+        uses: android-actions/setup-android@v3
+
+      - name: API 35 kur
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Gradle 8.10.2 kur
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -35,6 +41,6 @@ jobs:
       - name: APK artifact yukle
         uses: actions/upload-artifact@v4
         with:
-          name: ATMACA-Hizli-Klasor-Silici-APK
+          name: Cift-Foto-Video-Bulucu-APK
           path: duplicatefinder/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
