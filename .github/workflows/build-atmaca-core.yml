@@ -45,6 +45,14 @@ jobs:
       - name: Unit tests
         run: gradle :coreapp:testDebugUnitTest --stacktrace
 
+      - name: Upload unit test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-diagnostics
+          path: coreapp/build/test-results/testDebugUnitTest
+          if-no-files-found: ignore
+
       - name: Build debug APK
         run: gradle :coreapp:assembleDebug --stacktrace
 
