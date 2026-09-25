@@ -31,7 +31,7 @@ class VerifiedMediaLibraryTest {
         var callbacks = 0
         val result = VerifiedMediaLibrary(context).load { callbacks++ }
         // 1,305 indexed rows; 8 missing backing files and 4 pending uploads are excluded.
-        assertEquals(1293, result.items.size)
+        assertEquals("errors=${result.errors}; skipped=${result.skipped}; callbacks=$callbacks", 1293, result.items.size)
         assertEquals(8, result.skipped)
         assertTrue(callbacks > 10)
         assertFalse(result.items.any { it.id in 100L..107L || it.id in 108L..111L })
