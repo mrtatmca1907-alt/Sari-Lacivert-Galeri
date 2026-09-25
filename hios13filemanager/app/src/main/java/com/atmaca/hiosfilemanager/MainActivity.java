@@ -1,6 +1,7 @@
 package com.atmaca.hiosfilemanager;
 
 import android.Manifest;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.ActivityNotFoundException;
@@ -25,7 +26,6 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.activity.ComponentActivity;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
@@ -44,7 +44,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class MainActivity extends ComponentActivity {
+public class MainActivity extends Activity {
     private static final int NAVY = Color.rgb(7, 27, 58);
     private static final int BLUE = Color.rgb(14, 58, 120);
     private static final int YELLOW = Color.rgb(245, 196, 0);
