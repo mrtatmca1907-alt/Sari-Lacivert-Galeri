@@ -71,7 +71,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
             }
 
             override fun onScaleEnd(detector: ScaleGestureDetector) {
-                if (userScale < 1.015f) resetTransform()
+                resetTransform()
             }
         }
     )
@@ -198,12 +198,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
                         if (dx > 0f) onPreviousAction?.invoke() else onNextAction?.invoke()
                     }
                 }
-                if (userScale <= 1.015f) {
-                    userScale = 1f
-                    translateX = 0f
-                    translateY = 0f
-                    updateImageMatrix()
-                }
+                if (hadMultiTouch || userScale <= 1.015f) resetTransform()
             }
 
             MotionEvent.ACTION_CANCEL -> {
