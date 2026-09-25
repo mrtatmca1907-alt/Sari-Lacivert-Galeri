@@ -16,6 +16,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -26,6 +28,7 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -89,6 +92,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        String startPath = getIntent().getStringExtra("startPath");
+        if (startPath != null && !startPath.isEmpty()) currentDir = new File(startPath);
         buildUi();
         ensureStorageAccess();
     }
@@ -158,21 +163,21 @@ public class MainActivity extends Activity {
         LinearLayout titleCol = new LinearLayout(this);
         titleCol.setOrientation(LinearLayout.VERTICAL);
         TextView title = new TextView(this);
-        title.setText("ATMACA HiOS Dosyalar");
+        title.setText("Dosyalar");
         title.setTextColor(Color.WHITE);
         title.setTextSize(18);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         pathView = new TextView(this);
         pathView.setTextColor(Color.rgb(205, 217, 235));
-        pathView.setTextSize(11);
+        pathView.setTextSize(12);
         pathView.setSingleLine(true);
         titleCol.addView(title);
         titleCol.addView(pathView);
         top.addView(titleCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        Button refresh = smallButton("↻");
-        refresh.setOnClickListener(v -> loadDirectory(currentDir));
-        top.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(44)));
+        Button more = smallButton("⋮");
+        more.setOnClickListener(v -> showOptionsMenu(more));
+        top.addView(more, new LinearLayout.LayoutParams(dp(48), dp(44)));
         root.addView(top);
 
         LinearLayout tools = new LinearLayout(this);
@@ -187,13 +192,13 @@ public class MainActivity extends Activity {
         searchBox.setBackgroundColor(Color.WHITE);
         tools.addView(searchBox, new LinearLayout.LayoutParams(0, dp(46), 1f));
 
-        Button search = actionButton("Ara");
-        search.setOnClickListener(v -> applyFilter(searchBox.getText().toString()));
-        tools.addView(search, marginParams(dp(64), dp(44)));
-
-        Button folder = actionButton("+ Klasör");
-        folder.setOnClickListener(v -> createFolderDialog());
-        tools.addView(folder, marginParams(dp(92), dp(44)));
+        searchBox.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                applyFilter(s == null ? "" : s.toString());
+            }
+            @Override public void afterTextChanged(Editable s) {}
+        });
         root.addView(tools);
 
         storageView = new TextView(this);
@@ -225,6 +230,8 @@ public class MainActivity extends Activity {
                 loadDirectory(f);
             } else if (isImageFile(f)) {
                 openImageViewer(f);
+            } else if (isVideoFile(f)) {
+                openVideoViewer(f);
             } else {
                 openFile(f);
             }
@@ -332,6 +339,8 @@ public class MainActivity extends Activity {
     private void loadDirectory(File dir) {
         if (dir == null) return;
         pathView.setText(dir.getAbsolutePath());
+        String visibleName = dir.getAbsolutePath().equals("/storage/emulated/0") ? "Ana bellek" : dir.getName();
+        if (visibleName == null || visibleName.isEmpty()) visibleName = "Dosyalar";
         File storageRoot = new File("/storage/emulated/0");
         long total = storageRoot.getTotalSpace();
         long free = storageRoot.getUsableSpace();
@@ -509,11 +518,92 @@ public class MainActivity extends Activity {
         return n.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|avif)$");
     }
 
+    private boolean isVideoFile(File file) {
+        String n = file.getName().toLowerCase(Locale.ROOT);
+        return n.matches(".*\\.(mp4|mkv|avi|mov|webm|3gp|m4v|ts)$");
+    }
+
+    private void openVideoViewer(File file) {
+        Intent i = new Intent(this, VideoPlayerActivity.class);
+        i.putExtra("file", file.getAbsolutePath());
+        startActivity(i);
+    }
+
     private void openImageViewer(File file) {
         Intent i = new Intent(this, ImageViewerActivity.class);
         i.putExtra("directory", currentDir.getAbsolutePath());
         i.putExtra("file", file.getAbsolutePath());
         startActivity(i);
+    }
+
+    private void showOptionsMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.getMenu().add("Yeni klasör");
+        menu.getMenu().add("Tümünü seç");
+        menu.getMenu().add("Paylaş");
+        menu.getMenu().add("Slayt başlat");
+        menu.getMenu().add("Yenile");
+        menu.getMenu().add("Ada göre sırala");
+        menu.getMenu().add("Tarihe göre sırala");
+        menu.setOnMenuItemClickListener(item -> {
+            String t = item.getTitle().toString();
+            if (t.equals("Yeni klasör")) createFolderDialog();
+            else if (t.equals("Tümünü seç")) selectAll();
+            else if (t.equals("Paylaş")) shareSelected();
+            else if (t.equals("Slayt başlat")) startSlideshow();
+            else if (t.equals("Yenile")) loadDirectory(currentDir);
+            else if (t.equals("Ada göre sırala")) sortByName();
+            else if (t.equals("Tarihe göre sırala")) sortByDate();
+            return true;
+        });
+        menu.show();
+    }
+
+    private void selectAll() {
+        selected.clear();
+        for (File f : shownItems) selected.add(f.getAbsolutePath());
+        adapter.notifyDataSetChanged();
+        updateSelectionBar();
+    }
+
+    private void shareSelected() {
+        List<File> files = selectedFiles();
+        if (files.isEmpty()) { toast("Önce dosya seç"); return; }
+        ArrayList<Uri> uris = new ArrayList<>();
+        for (File f : files) {
+            if (!f.isFile()) continue;
+            try { uris.add(FileProvider.getUriForFile(this, getPackageName() + ".provider", f)); }
+            catch (Exception ignored) {}
+        }
+        if (uris.isEmpty()) { toast("Paylaşılabilir dosya yok"); return; }
+        Intent i = new Intent(Intent.ACTION_SEND_MULTIPLE);
+        i.setType("*/*");
+        i.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(i, "Paylaş"));
+    }
+
+    private void startSlideshow() {
+        File first = null;
+        for (File f : shownItems) if (isImageFile(f)) { first = f; break; }
+        if (first == null) { toast("Bu klasörde resim yok"); return; }
+        Intent i = new Intent(this, ImageViewerActivity.class);
+        i.putExtra("directory", currentDir.getAbsolutePath());
+        i.putExtra("file", first.getAbsolutePath());
+        i.putExtra("slideshow", true);
+        startActivity(i);
+    }
+
+    private void sortByName() {
+        allItems.sort(Comparator.comparing((File f) -> !f.isDirectory())
+                .thenComparing(f -> f.getName().toLowerCase(Locale.ROOT)));
+        applyFilter(searchBox.getText().toString());
+    }
+
+    private void sortByDate() {
+        allItems.sort(Comparator.comparing((File f) -> !f.isDirectory())
+                .thenComparingLong(File::lastModified).reversed());
+        applyFilter(searchBox.getText().toString());
     }
 
     private void openFile(File file) {
