@@ -432,7 +432,6 @@ private fun VideoViewer(
                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                 useController = true
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                setOnClickListener { onTap() }
 
                 var downX = 0f
                 var downY = 0f
@@ -454,6 +453,7 @@ private fun VideoViewer(
                                 if (dx > 0f) onPrevious() else onNext()
                                 true
                             } else {
+                                if (abs(dx) < 20f && abs(dy) < 20f) onTap()
                                 false
                             }
                         }
