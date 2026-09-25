@@ -1,13 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <application
-        android:allowBackup="true"
-        android:label="Çift Medya Bulucu"
+        android:allowBackup="false"
+        android:label="ATMACA Hızlı Klasör Silici V2"
         android:theme="@style/AppTheme">
         <activity
             android:name=".MainActivity"
@@ -18,5 +16,4 @@
             </intent-filter>
         </activity>
     </application>
-
 </manifest>
