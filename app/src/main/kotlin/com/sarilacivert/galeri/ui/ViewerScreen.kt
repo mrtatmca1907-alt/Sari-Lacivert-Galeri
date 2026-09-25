@@ -89,7 +89,7 @@ fun ViewerScreen(
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf(initialItems) }
     var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (initialItems.size - 1).coerceAtLeast(0))) }
-    var barsVisible by remember { mutableStateOf(true) }
+    var barsVisible by remember { mutableStateOf(false) }
     var slideshow by remember { mutableStateOf(startSlideshow) }
     var showInfo by remember { mutableStateOf(false) }
     var infoText by remember { mutableStateOf("") }
@@ -429,6 +429,7 @@ private fun VideoViewer(
         factory = { ctx ->
             PlayerView(ctx).apply {
                 this.player = player
+                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                 useController = true
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                 setOnClickListener { onTap() }
