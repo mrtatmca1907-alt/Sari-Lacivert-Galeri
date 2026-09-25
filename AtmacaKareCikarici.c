@@ -1,3 +1,4 @@
+// ATMACA v4 - video adli kareler, kaldigi yerden devam, tek is parcacikli FFmpeg
 #define UNICODE
 #define _UNICODE
 #include <windows.h>
@@ -260,7 +261,7 @@ static LRESULT CALLBACK wndproc(HWND hwnd,UINT msg,WPARAM w,LPARAM l){
         startButton=CreateWindowW(L"BUTTON",L"BAŞLAT",WS_CHILD|WS_VISIBLE,16,155,160,36,hwnd,(HMENU)ID_START,NULL,NULL);
         CreateWindowW(L"STATIC",L"En az bir kare çıkan video işlem sonunda doğrudan silinir. Kare çıkmayan video kalır.",WS_CHILD|WS_VISIBLE,190,158,540,40,hwnd,NULL,NULL,NULL);
         logEdit=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"Hazır.\r\n",WS_CHILD|WS_VISIBLE|ES_MULTILINE|ES_READONLY|WS_VSCROLL|ES_AUTOVSCROLL,16,210,720,340,hwnd,(HMENU)ID_LOG,NULL,NULL);
-
+        HFONT font=(HFONT)GetStockObject(DEFAULT_GUI_FONT);for(int i=ID_INPUT;i<=ID_LOG;i++){HWND child=GetDlgItem(hwnd,i);if(child)SendMessageW(child,WM_SETFONT,(WPARAM)font,TRUE);}
         return 0;}
     case WM_COMMAND:
         if(LOWORD(w)==ID_BROWSE_INPUT){choose_folder(inputEdit);return 0;}
