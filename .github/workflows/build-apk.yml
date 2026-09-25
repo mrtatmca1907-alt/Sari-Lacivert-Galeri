@@ -27,7 +27,7 @@ jobs:
           java-version: '17'
 
       - name: API 37 kur
-        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+        run: /usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Gradle 9.5 kur
         uses: gradle/actions/setup-gradle@v4
