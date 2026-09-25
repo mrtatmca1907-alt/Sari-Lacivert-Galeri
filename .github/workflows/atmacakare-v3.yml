@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -54,7 +57,7 @@ jobs:
         shell: pwsh
         run: |
           rc /nologo app.rc
-          cl /nologo /O2 /MT /W3 /utf-8 /DUNICODE /D_UNICODE AtmacaKareCikarici.c app.res /Fe:AtmacaCore.exe /link /SUBSYSTEM:WINDOWS user32.lib shell32.lib ole32.lib comdlg32.lib
+          cl /nologo /O2 /MT /W3 /utf-8 /DUNICODE /D_UNICODE AtmacaKareCikarici.c app.res /Fe:AtmacaCore.exe /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib shell32.lib ole32.lib comdlg32.lib
       - name: Embed FFmpeg
         shell: pwsh
         run: |
@@ -70,7 +73,10 @@ jobs:
           $src.Dispose()
           $dst.Dispose()
           Get-Item $out | Format-List Name,Length
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ATMACA-Video-Kare-Cikarici-v3
-          path: ATMACA-Video-Kare-Cikarici-v3.exe
+      - name: Publish EXE release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "atmacakare-v4-$env:GITHUB_RUN_NUMBER"
+          gh release create $tag 'ATMACA-Video-Kare-Cikarici-v3.exe' --title "ATMACA Video Kare Cikarici v4" --notes "Video adli kareler, kaldigi yerden devam, daha dusuk CPU kullanimi."
