@@ -134,6 +134,9 @@ public class ZoomImageView extends ImageView {
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 dragging = false;
+                if (scale > 1.05f) {
+                    postDelayed(this::resetZoom, 80);
+                }
                 break;
         }
         return true;
