@@ -22,8 +22,8 @@ def require(text, markers, label):
 require(app,[
     "enum class HomeSection { MEDIA, ALBUMS, SETTINGS",'label = { Text("Medya") }','label = { Text("Albümler") }','label = { Text("Ayarlar") }',
     "ModernSettingsDialog(","detectDragGesturesAfterLongPress","slideshowPrefetchIndices(","prefetchViewerBitmap(",
-    "pendingMutationIds","vm.removeItemsByIds(affectedIds)","var albums by remember { mutableStateOf<List<GalleryAlbum>>(emptyList()) }",
-    "LaunchedEffect(albumsRefresh, section, pathAction)","shouldReloadPrimaryMediaAfterCamera(section, success = true)","vm.openAlbum(album)",
+    "pendingMutationIds","vm.removeItemsByIds(affectedIds)","val albums = state.albums",
+    "LaunchedEffect(albumsRefresh)","shouldReloadPrimaryMediaAfterCamera(section, success = true)","vm.openAlbum(album)",
     'Text("Screenshot klasörü seç")',"ActivityResultContracts.OpenDocumentTree()",'prefs.edit().putString("screenshot_tree_uri"',"saveScreenshotToTree(context, shot, selectedTree)"
 ],"GalleryApp")
 if "produceState<List<GalleryAlbum>>" in app: raise SystemExit("DIRECT SOURCE FAIL: albums still reset through produceState")
@@ -33,7 +33,9 @@ for bad in ["refreshToken++","albumsRefresh++","duplicatesRefresh++","vm.reload(
 camera=app.split("val cameraLauncher",1)[1].split("fun runAfterWriteAccess",1)[0]
 if "vm.reload()" in camera: raise SystemExit("DIRECT SOURCE FAIL: camera return full reload")
 
-require(vm,["fun removeItemsByIds(ids: Set<Long>)","val albumBucketId: Long = 0L","val albumBucketName: String? = null","albumBucketId = album.bucketId","albumBucketName = album.bucketName ?: album.name","albumBucketName = snapshot.albumBucketName"],"GalleryViewModel")
+require(vm,["fun removeItemsByIds(ids: Set<Long>)","val albumBucketId: Long = 0L","val albumBucketName: String? = null","albumBucketId = album.bucketId","albumBucketName = album.bucketName ?: album.name","VerifiedMediaLibrary(application)","verifiedAlbums(inventory)"],"GalleryViewModel")
+verified=(root/"VerifiedMediaLibrary.kt").read_text(encoding="utf-8")
+require(verified,["resolver.openFileDescriptor(uri, \"r\")","MediaStore.Images.Media.EXTERNAL_CONTENT_URI", "MediaStore.Video.Media.EXTERNAL_CONTENT_URI", "verifiedAlbums(items", "if (pending.size == 64) flush()"], "verified media")
 require(repo,["val bucketId: Long = 0L","val bucketName: String? = null","albumIdentityKey(rawPath, item.bucketId, item.bucketName)","albumLocator(albumPath, albumBucketId, albumBucketName)","BUCKET_DISPLAY_NAME","albumBucketName: String? = null"],"MediaStoreRepository")
 require(photo,["isViewerDoubleTap(","nextDoubleTapScale(","zoomOffsetAroundFocus(","loadHighResolutionBitmap("],"StablePhotoPage")
 require(settings,["DialogProperties(usePlatformDefaultWidth = false)","LazyColumn(","SettingsChoiceRow("],"ModernSettingsDialog")

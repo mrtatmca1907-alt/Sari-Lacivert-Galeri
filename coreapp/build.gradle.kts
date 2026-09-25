@@ -8,11 +8,11 @@ android {
     compileSdk { version = release(37) }
 
     defaultConfig {
-        applicationId = "com.atmaca.gallery.hios13"
+        applicationId = "com.atmaca.gallery.hios13verified"
         minSdk = 26
         targetSdk = 36
-        versionCode = 140912
-        versionName = "0.7.8-hios13-all-albums"
+        versionCode = 140913
+        versionName = "0.7.9-hios13-verified"
     }
 
     compileOptions {
@@ -41,5 +41,7 @@ dependencies {
     implementation("androidx.work:work-runtime:2.11.2")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

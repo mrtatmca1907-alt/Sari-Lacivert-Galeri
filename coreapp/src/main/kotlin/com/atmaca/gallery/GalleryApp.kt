@@ -114,6 +114,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -139,6 +142,18 @@ fun AtmacaGalleryApp(vm: GalleryViewModel = viewModel()) {
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissionTick++ }
+
+    DisposableEffect(context) {
+        val owner = context as? LifecycleOwner
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                permissionTick++
+                if (required.all { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) vm.refreshOnResume()
+            }
+        }
+        owner?.lifecycle?.addObserver(observer)
+        onDispose { owner?.lifecycle?.removeObserver(observer) }
+    }
 
     var autoRequested by remember { mutableStateOf(false) }
     LaunchedEffect(granted) {
@@ -227,9 +242,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var cropItem by remember { mutableStateOf<GalleryMedia?>(null) }
-    var albums by remember { mutableStateOf<List<GalleryAlbum>>(emptyList()) }
-    var albumsLoading by remember { mutableStateOf(false) }
-    var loadedAlbumRevision by remember { mutableIntStateOf(-1) }
+    val albums = state.albums
 
     val selected = remember(selectedIds, state.items) {
         state.items.filter { it.id in selectedIds }
@@ -400,15 +413,8 @@ private fun GalleryHome(vm: GalleryViewModel) {
         }
     }
 
-    LaunchedEffect(albumsRefresh, section, pathAction) {
-        if (section == HomeSection.ALBUMS || pathAction != null) {
-            if (loadedAlbumRevision == albumsRefresh && albums.isNotEmpty()) return@LaunchedEffect
-            albumsLoading = true
-            val fresh = runCatching { repository.loadAlbumsOemSafe() }.getOrDefault(emptyList())
-            albums = albumListWhileRefreshing(albums, fresh, refreshing = false)
-            loadedAlbumRevision = albumsRefresh
-            albumsLoading = false
-        }
+    LaunchedEffect(albumsRefresh) {
+        if (albumsRefresh > 0) vm.reload()
     }
 
     if (pathAction != null) {
@@ -571,7 +577,6 @@ private fun GalleryHome(vm: GalleryViewModel) {
                     when (section) {
                         HomeSection.ALBUMS -> {
                             albumsRefresh++
-                            if (state.mode == CollectionMode.ALBUM) vm.reload()
                         }
                         HomeSection.DUPLICATES -> duplicatesRefresh++
                         else -> refreshToken++
@@ -595,6 +600,23 @@ private fun GalleryHome(vm: GalleryViewModel) {
                         Text("Çöp kutusunu boşalt")
                     }
                 }
+            }
+
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(if (section == HomeSection.ALBUMS && state.mode != CollectionMode.ALBUM)
+                    "${albums.size} albüm" else "${state.items.size} öğe",
+                    style = MaterialTheme.typography.labelMedium)
+                if (state.loading) {
+                    Spacer(Modifier.width(10.dp))
+                    CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Yükleniyor…", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            if (state.error != null && state.items.isNotEmpty()) {
+                Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall)
             }
 
             if (selected.isNotEmpty()) {
@@ -701,7 +723,7 @@ private fun GalleryHome(vm: GalleryViewModel) {
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                             AlbumGrid(
-                                albums = if (albums.isNotEmpty()) albums else quickAlbums(state.items),
+                                albums = albums,
                                 onOpen = { album -> vm.openAlbum(album) }
                             )
                         }
@@ -749,7 +771,7 @@ private fun GalleryTopBar(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                "Fotoğrafların ve videoların",
+                "HiOS 13 · 0.7.9",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1
@@ -1034,7 +1056,7 @@ private object ThumbnailCache : LruCache<String, Bitmap>(48 * 1024) {
 @Composable
 private fun MediaThumbnail(item: GalleryMedia): Bitmap? {
     val context = LocalContext.current
-    val key = "${item.uri}:224"
+    val key = "${item.uri}:${item.dateModified}:${item.size}:224"
     val bitmap by produceState<Bitmap?>(initialValue = ThumbnailCache.get(key), key) {
         if (value == null) {
             value = withContext(Dispatchers.IO) {
@@ -1891,3 +1913,4 @@ private fun formatBytes(bytes: Long): String {
     if (mb < 1024.0) return "%.1f MB".format(mb)
     return "%.2f GB".format(mb / 1024.0)
 }
+
