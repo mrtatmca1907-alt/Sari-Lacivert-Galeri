@@ -1,0 +1,54 @@
+name: Build ATMACA HiOS13 File Manager
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - hios13-filemanager-new
+    paths:
+      - 'hios13filemanager/**'
+      - '.github/workflows/build-hios13-filemanager.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v5
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK 35 kur
+        uses: android-actions/setup-android@v3
+
+      - name: Platformu hazirla
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.11.1 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: APK derle
+        working-directory: hios13filemanager
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: APK adini duzelt
+        run: cp hios13filemanager/app/build/outputs/apk/debug/app-debug.apk ATMACA-HiOS13-Dosya-Yoneticisi.apk
+
+      - name: APK artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-HiOS13-Dosya-Yoneticisi-APK
+          path: ATMACA-HiOS13-Dosya-Yoneticisi.apk
+          if-no-files-found: error
+          retention-days: 30
