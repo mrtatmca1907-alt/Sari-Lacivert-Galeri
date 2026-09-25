@@ -74,7 +74,14 @@ public class ImageViewerActivity extends Activity {
 
         buildUi();
         if (images.isEmpty()) finish();
-        else showIndex(index);
+        else {
+            showIndex(index);
+            if (getIntent().getBooleanExtra("slideshow", false)) {
+                slideshow = true;
+                slideshowButton.setText("Durdur");
+                handler.postDelayed(slideTask, 3000);
+            }
+        }
     }
 
     private void buildUi() {
