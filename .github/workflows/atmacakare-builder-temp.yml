@@ -1,0 +1,69 @@
+name: Temporary ATMACA Windows Builder
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "AtmacaKareCikarici.c"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Download FFmpeg
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-dist
+          $ff = Get-ChildItem ffmpeg-dist -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          if (-not $ff) { throw 'ffmpeg.exe bulunamadi' }
+          Copy-Item $ff.FullName ffmpeg.exe
+          $size = (Get-Item ffmpeg.exe).Length
+          $src = Get-Content AtmacaKareCikarici.c -Raw
+          $src = $src -replace '#define FFMPEG_BYTES\s+\d+ULL', "#define FFMPEG_BYTES $($size)ULL"
+          Set-Content AtmacaKareCikarici.c $src -Encoding UTF8
+      - name: Create icon
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $bmp = New-Object System.Drawing.Bitmap 256,256
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+          $navy = [System.Drawing.Color]::FromArgb(7,28,74)
+          $yellow = [System.Drawing.Color]::FromArgb(255,214,0)
+          $g.Clear($navy)
+          $brush = New-Object System.Drawing.SolidBrush $yellow
+          $font = New-Object System.Drawing.Font('Segoe UI Black',150,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel)
+          $fmt = New-Object System.Drawing.StringFormat
+          $fmt.Alignment = [System.Drawing.StringAlignment]::Center
+          $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
+          $g.DrawString('A',$font,$brush,(New-Object System.Drawing.RectangleF(0,0,256,245)),$fmt)
+          $hicon = $bmp.GetHicon()
+          $icon = [System.Drawing.Icon]::FromHandle($hicon)
+          $fs = [System.IO.File]::Create('app.ico')
+          $icon.Save($fs)
+          $fs.Close(); $g.Dispose(); $font.Dispose(); $brush.Dispose(); $bmp.Dispose()
+          @'
+          1 ICON "app.ico"
+          '@ | Set-Content app.rc -Encoding ASCII
+      - name: Compile
+        shell: pwsh
+        run: |
+          rc /nologo app.rc
+          cl /nologo /O2 /MT /W3 /utf-8 /DUNICODE /D_UNICODE AtmacaKareCikarici.c app.res /Fe:AtmacaCore.exe /link /SUBSYSTEM:WINDOWS user32.lib shell32.lib ole32.lib comdlg32.lib
+      - name: Embed FFmpeg
+        shell: pwsh
+        run: |
+          $out = 'ATMACA-Video-Kare-Cikarici-v3.exe'
+          $dst = [System.IO.File]::Open($out,[System.IO.FileMode]::Create,[System.IO.FileAccess]::Write)
+          $src = [System.IO.File]::OpenRead('AtmacaCore.exe'); $src.CopyTo($dst); $src.Dispose()
+          $marker = [System.Text.Encoding]::ASCII.GetBytes('ATMACA_FFMPEG_V1')
+          $dst.Write($marker,0,$marker.Length)
+          $src = [System.IO.File]::OpenRead('ffmpeg.exe'); $src.CopyTo($dst); $src.Dispose(); $dst.Dispose()
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Video-Kare-Cikarici-v3
+          path: ATMACA-Video-Kare-Cikarici-v3.exe
