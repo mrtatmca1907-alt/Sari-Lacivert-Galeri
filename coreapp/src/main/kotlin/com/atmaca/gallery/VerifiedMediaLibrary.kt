@@ -45,32 +45,44 @@ class VerifiedMediaLibrary(
         for ((collection, video) in collections) {
             coroutineContext.ensureActive()
             try {
-                query(collection)?.use { cursor ->
-                    val pending = ArrayList<GalleryMedia>(64)
-                    suspend fun flush() {
-                        // At most four file descriptors open at once; no bitmap decoding here.
-                        val verified = coroutineScope {
-                            pending.chunked(16).map { chunk -> async {
-                                chunk.filter { item ->
-                                    coroutineContext.ensureActive()
-                                    isReadable(item.uri)
-                                }
-                            } }.awaitAll().flatten()
+                var beforeId: Long? = null
+                while (true) {
+                    coroutineContext.ensureActive()
+                    var smallestId: Long? = null
+                    var rows = 0
+                    query(collection, beforeId)?.use { cursor ->
+                        val pending = ArrayList<GalleryMedia>(64)
+                        suspend fun flush() {
+                            // Four file descriptors open at once; never decode the original bitmap.
+                            val verified = coroutineScope {
+                                pending.chunked(16).map { chunk -> async {
+                                    chunk.filter { item ->
+                                        coroutineContext.ensureActive()
+                                        isReadable(item.uri)
+                                    }
+                                } }.awaitAll().flatten()
+                            }
+                            skipped += pending.size - verified.size
+                            all.addAll(verified)
+                            if (verified.isNotEmpty()) onBatch(verified)
+                            pending.clear()
                         }
-                        skipped += pending.size - verified.size
-                        all.addAll(verified)
-                        if (verified.isNotEmpty()) onBatch(verified)
-                        pending.clear()
-                    }
-                    val columns = IndexedColumns(cursor)
-                    while (cursor.moveToNext()) {
-                        coroutineContext.ensureActive()
-                        if (columns.pending(cursor)) continue
-                        pending += columns.read(cursor, collection, video)
-                        if (pending.size == 64) flush()
-                    }
-                    if (pending.isNotEmpty()) flush()
-                } ?: error("Medya sağlayıcısı liste döndürmedi")
+                        val columns = IndexedColumns(cursor)
+                        while (cursor.moveToNext()) {
+                            coroutineContext.ensureActive()
+                            val item = columns.read(cursor, collection, video)
+                            if (beforeId != null && item.id >= beforeId) continue
+                            smallestId = minOf(smallestId ?: item.id, item.id)
+                            rows++
+                            if (columns.pending(cursor)) continue
+                            pending += item
+                            if (pending.size == 64) flush()
+                        }
+                        if (pending.isNotEmpty()) flush()
+                    } ?: error("Medya sağlayıcısı liste döndürmedi")
+                    if (rows == 0) break
+                    beforeId = smallestId
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -80,7 +92,7 @@ class VerifiedMediaLibrary(
         VerifiedLibrary(all.distinctBy { it.uri }, skipped, errors)
     }
 
-    private fun query(uri: Uri): Cursor? {
+    private fun query(uri: Uri, beforeId: Long?): Cursor? {
         val projection = buildList {
             add(MediaStore.MediaColumns._ID)
             add(MediaStore.MediaColumns.DISPLAY_NAME)
@@ -100,9 +112,13 @@ class VerifiedMediaLibrary(
             if (Build.VERSION.SDK_INT >= 30) add(MediaStore.MediaColumns.IS_TRASHED)
             if (uri == MediaStore.Video.Media.EXTERNAL_CONTENT_URI) add(MediaStore.Video.VideoColumns.DURATION)
         }.toTypedArray()
-        // No LIMIT, OFFSET or date boundary: traverse the full indexed cursor exactly once.
+        // No OFFSET: ask for older IDs until empty even if HiOS caps each result at 120.
         val args = Bundle().apply {
             putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "${MediaStore.MediaColumns._ID} DESC")
+            if (beforeId != null) {
+                putString(ContentResolver.QUERY_ARG_SQL_SELECTION, "${MediaStore.MediaColumns._ID} < ?")
+                putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, arrayOf(beforeId.toString()))
+            }
             if (Build.VERSION.SDK_INT >= 30) {
                 putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
                 putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_EXCLUDE)
@@ -113,10 +129,12 @@ class VerifiedMediaLibrary(
         } catch (e: IllegalArgumentException) {
             null
         }
-        if (preferred != null && preferred.count > 0) return preferred
+        if (preferred != null && (beforeId != null || preferred.count > 0)) return preferred
         preferred?.close()
         // Some OEMs silently ignore MATCH_INCLUDE or reject optional columns.
-        return resolver.query(uri, null, null, null, "${MediaStore.MediaColumns._ID} DESC")
+        return resolver.query(uri, null,
+            if (beforeId == null) null else "${MediaStore.MediaColumns._ID} < ?",
+            beforeId?.let { arrayOf(it.toString()) }, "${MediaStore.MediaColumns._ID} DESC")
     }
 
     private class IndexedColumns(cursor: Cursor) {

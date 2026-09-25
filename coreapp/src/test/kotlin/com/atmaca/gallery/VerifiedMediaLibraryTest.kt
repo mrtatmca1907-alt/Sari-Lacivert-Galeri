@@ -41,10 +41,12 @@ class VerifiedMediaLibraryTest {
         assertEquals(5, result.items.count { it.isTrashed })
         assertEquals(1288, verifiedAlbums(result.items).sumOf { it.count })
         assertEquals(2, verifiedAlbums(result.items).size)
+        assertTrue("Expected repeated bounded queries past 1,080", provider.imageQueries >= 11)
         assertTrue(result.errors.isEmpty())
     }
 
     private class MediaProviderFake(private val dataFile: File) : ContentProvider() {
+        var imageQueries = 0
         override fun onCreate() = true
         override fun getType(uri: Uri): String? = null
         override fun insert(uri: Uri, values: ContentValues?): Uri? = null
@@ -55,7 +57,10 @@ class VerifiedMediaLibraryTest {
             val columns = projection ?: error("unexpected projection")
             val cursor = MatrixCursor(columns)
             val video = uri.pathSegments.contains("video")
-            val ids = if (video) 1301..1305 else 1..1300
+            if (!video) imageQueries++
+            val beforeId = selectionArgs?.lastOrNull()?.toIntOrNull() ?: Int.MAX_VALUE
+            val ids = (if (video) 1301..1305 else 1..1300)
+                .filter { it < beforeId }.asReversed().take(120)
             for (id in ids) {
                 cursor.addRow(columns.map { key -> when (key) {
                     MediaStore.MediaColumns._ID -> id.toLong()
