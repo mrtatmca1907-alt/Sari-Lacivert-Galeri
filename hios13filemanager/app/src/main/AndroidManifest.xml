@@ -20,8 +20,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"/>
         </provider>
+        <activity android:name=".ImageViewerActivity" android:screenOrientation="sensor" />
+        <activity android:name=".VideoPlayerActivity" android:configChanges="orientation|screenSize" android:screenOrientation="sensor" />
+        <activity android:name=".MainActivity" android:exported="false" />
         <activity
-            android:name=".MainActivity"
+            android:name=".HomeActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
