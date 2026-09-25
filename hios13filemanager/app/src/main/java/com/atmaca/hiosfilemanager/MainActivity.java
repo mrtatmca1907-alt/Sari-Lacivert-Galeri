@@ -7,6 +7,8 @@ import android.app.ProgressDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
@@ -21,6 +23,7 @@ import android.webkit.MimeTypeMap;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -41,6 +44,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import android.util.LruCache;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -51,6 +56,12 @@ public class MainActivity extends Activity {
     private static final int BG = Color.rgb(247, 249, 252);
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final ExecutorService thumbs = Executors.newFixedThreadPool(2);
+    private final LruCache<String, Bitmap> thumbCache = new LruCache<String, Bitmap>(24 * 1024) {
+        @Override protected int sizeOf(String key, Bitmap value) {
+            return value.getByteCount() / 1024;
+        }
+    };
     private final List<File> allItems = new ArrayList<>();
     private final List<File> shownItems = new ArrayList<>();
     private final Set<String> selected = new HashSet<>();
@@ -197,6 +208,8 @@ public class MainActivity extends Activity {
             } else if (f.isDirectory()) {
                 currentDir = f;
                 loadDirectory(f);
+            } else if (isImageFile(f)) {
+                openImageViewer(f);
             } else {
                 openFile(f);
             }
@@ -475,6 +488,18 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
+    private boolean isImageFile(File file) {
+        String n = file.getName().toLowerCase(Locale.ROOT);
+        return n.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|avif)$");
+    }
+
+    private void openImageViewer(File file) {
+        Intent i = new Intent(this, ImageViewerActivity.class);
+        i.putExtra("directory", currentDir.getAbsolutePath());
+        i.putExtra("file", file.getAbsolutePath());
+        startActivity(i);
+    }
+
     private void openFile(File file) {
         try {
             Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".provider", file);
@@ -599,10 +624,10 @@ public class MainActivity extends Activity {
                 row.setPadding(dp(12), dp(10), dp(12), dp(10));
                 row.setMinimumHeight(dp(68));
 
-                TextView icon = new TextView(MainActivity.this);
-                icon.setTextSize(28);
-                icon.setGravity(Gravity.CENTER);
-                row.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(52)));
+                ImageView icon = new ImageView(MainActivity.this);
+                icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                icon.setPadding(dp(3), dp(3), dp(3), dp(3));
+                row.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(56)));
 
                 LinearLayout col = new LinearLayout(MainActivity.this);
                 col.setOrientation(LinearLayout.VERTICAL);
@@ -625,8 +650,14 @@ public class MainActivity extends Activity {
             } else h = (Holder) convertView.getTag();
 
             File f = shownItems.get(position);
-            h.icon.setText(fileIcon(f));
-            h.icon.setTextColor(f.isDirectory() ? YELLOW : BLUE);
+            h.icon.setImageDrawable(null);
+            h.icon.setBackgroundColor(f.isDirectory() ? Color.rgb(255, 244, 181) : Color.rgb(233, 239, 248));
+            if (isImageFile(f)) {
+                loadThumb(f, h.icon);
+            } else {
+                h.icon.setScaleType(ImageView.ScaleType.CENTER);
+                h.icon.setImageResource(f.isDirectory() ? android.R.drawable.ic_menu_gallery : android.R.drawable.ic_menu_save);
+            }
             h.name.setText(f.getName().isEmpty() ? f.getAbsolutePath() : f.getName());
             h.detail.setText(detail(f));
             if (selected.contains(f.getAbsolutePath())) {
@@ -638,8 +669,42 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void loadThumb(File file, ImageView view) {
+        String key = file.getAbsolutePath() + ":" + file.lastModified();
+        view.setTag(key);
+        Bitmap cached = thumbCache.get(key);
+        if (cached != null) {
+            view.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            view.setImageBitmap(cached);
+            return;
+        }
+        view.setScaleType(ImageView.ScaleType.CENTER);
+        view.setImageResource(android.R.drawable.ic_menu_gallery);
+        thumbs.execute(() -> {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+            int sample = 1;
+            while ((bounds.outWidth / sample) > 180 || (bounds.outHeight / sample) > 180) sample *= 2;
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inSampleSize = Math.max(1, sample);
+            opts.inPreferredConfig = Bitmap.Config.RGB_565;
+            Bitmap bm = BitmapFactory.decodeFile(file.getAbsolutePath(), opts);
+            if (bm != null) {
+                thumbCache.put(key, bm);
+                runOnUiThread(() -> {
+                    if (key.equals(view.getTag())) {
+                        view.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                        view.setImageBitmap(bm);
+                    }
+                });
+            }
+        });
+    }
+
     private static class Holder {
-        final TextView icon, name, detail;
-        Holder(TextView i, TextView n, TextView d) { icon = i; name = n; detail = d; }
+        final ImageView icon;
+        final TextView name, detail;
+        Holder(ImageView i, TextView n, TextView d) { icon = i; name = n; detail = d; }
     }
 }
