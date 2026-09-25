@@ -26,9 +26,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK kur
-        uses: android-actions/setup-android@v3
-
       - name: API 37 kur
         run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
 
