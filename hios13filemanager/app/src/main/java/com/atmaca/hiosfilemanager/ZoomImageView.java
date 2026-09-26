@@ -21,27 +21,27 @@ public class ZoomImageView extends ImageView {
     private final ScaleGestureDetector scaleDetector;
     private final GestureDetector gestureDetector;
     private Listener listener;
-    private float scale = 1f;
-    private float minScale = 1f;
-    private float maxScale = 5f;
-    private float lastX, lastY;
-    private boolean dragging = false;
 
-    public ZoomImageView(Context context) {
-        this(context, null);
-    }
+    private float scale = 1f;
+    private float rotation = 0f;
+    private final float minScale = 1f;
+    private final float maxScale = 5f;
+    private float lastX, lastY;
+    private float lastAngle = Float.NaN;
+
+    public ZoomImageView(Context context) { this(context, null); }
 
     public ZoomImageView(Context context, AttributeSet attrs) {
         super(context, attrs);
         setScaleType(ScaleType.MATRIX);
+
         scaleDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            @Override public boolean onScale(ScaleGestureDetector detector) {
-                float factor = detector.getScaleFactor();
-                float next = clamp(scale * factor, minScale, maxScale);
-                factor = next / scale;
+            @Override
+            public boolean onScale(ScaleGestureDetector detector) {
+                float next = clamp(scale * detector.getScaleFactor(), minScale, maxScale);
+                float factor = next / scale;
                 scale = next;
                 matrix.postScale(factor, factor, detector.getFocusX(), detector.getFocusY());
-                fixTranslation();
                 setImageMatrix(matrix);
                 return true;
             }
@@ -50,19 +50,22 @@ public class ZoomImageView extends ImageView {
         gestureDetector = new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
 
-            @Override public boolean onSingleTapConfirmed(MotionEvent e) {
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
                 if (listener != null) listener.onSingleTap();
                 return true;
             }
 
-            @Override public boolean onDoubleTap(MotionEvent e) {
-                if (scale > 1.05f) resetZoom();
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                if (scale > 1.05f) resetTransform();
                 else zoomTo(2.5f, e.getX(), e.getY());
                 return true;
             }
 
-            @Override public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
-                if (scale > 1.05f || e1 == null || e2 == null) return false;
+            @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
+                if (isTransformed() || e1 == null || e2 == null) return false;
                 float dx = e2.getX() - e1.getX();
                 if (Math.abs(dx) < 80 || Math.abs(vx) < 300) return false;
                 if (listener != null) {
@@ -74,17 +77,28 @@ public class ZoomImageView extends ImageView {
         });
     }
 
-    public void setListener(Listener listener) {
-        this.listener = listener;
+    public void setListener(Listener listener) { this.listener = listener; }
+
+    public boolean isZoomed() { return scale > 1.05f; }
+
+    public boolean isTransformed() {
+        return scale > 1.05f || Math.abs(normalizedRotation()) > 0.5f;
     }
 
-    public boolean isZoomed() {
-        return scale > 1.05f;
-    }
+    public float getUserRotation() { return normalizedRotation(); }
 
-    public void resetZoom() {
+    public void resetZoom() { resetTransform(); }
+
+    public void resetTransform() {
         scale = 1f;
+        rotation = 0f;
         configureBaseMatrix();
+    }
+
+    public void rotateBy(float degrees) {
+        rotation += degrees;
+        matrix.postRotate(degrees, getWidth() / 2f, getHeight() / 2f);
+        setImageMatrix(matrix);
     }
 
     public void zoomTo(float targetScale, float focusX, float focusY) {
@@ -92,7 +106,6 @@ public class ZoomImageView extends ImageView {
         float factor = next / scale;
         scale = next;
         matrix.postScale(factor, factor, focusX, focusY);
-        fixTranslation();
         setImageMatrix(matrix);
     }
 
@@ -113,47 +126,47 @@ public class ZoomImageView extends ImageView {
         scaleDetector.onTouchEvent(event);
         gestureDetector.onTouchEvent(event);
 
-        switch (event.getActionMasked()) {
+        int action = event.getActionMasked();
+
+        if (event.getPointerCount() >= 2) {
+            float angle = angle(event);
+            if (!Float.isNaN(lastAngle) && action == MotionEvent.ACTION_MOVE) {
+                float delta = angle - lastAngle;
+                rotation += delta;
+                matrix.postRotate(delta, midpointX(event), midpointY(event));
+                setImageMatrix(matrix);
+            }
+            lastAngle = angle;
+        } else if (action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            lastAngle = Float.NaN;
+        }
+
+        switch (action) {
             case MotionEvent.ACTION_DOWN:
                 lastX = event.getX();
                 lastY = event.getY();
-                dragging = false;
                 break;
+
             case MotionEvent.ACTION_MOVE:
-                if (!scaleDetector.isInProgress() && scale > 1.05f) {
+                if (!scaleDetector.isInProgress() && event.getPointerCount() == 1 && isTransformed()) {
                     float dx = event.getX() - lastX;
                     float dy = event.getY() - lastY;
-                    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) dragging = true;
                     matrix.postTranslate(dx, dy);
-                    fixTranslation();
                     setImageMatrix(matrix);
                     lastX = event.getX();
                     lastY = event.getY();
                 }
                 break;
-            case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL:
-                dragging = false;
-                if (scale > 1.05f) {
-                    postDelayed(this::resetZoom, 80);
-                }
+
+            case MotionEvent.ACTION_POINTER_DOWN:
+                lastAngle = angle(event);
+                break;
+
+            case MotionEvent.ACTION_POINTER_UP:
+                lastAngle = Float.NaN;
                 break;
         }
         return true;
-    }
-
-    private void animateResetZoom() {
-        if (getDrawable() == null) return;
-        final float startScale = scale;
-        if (Math.abs(startScale - 1f) < 0.01f) {
-            resetZoom();
-            return;
-        }
-        animate().cancel();
-        animate()
-                .setDuration(140)
-                .withEndAction(this::resetZoom)
-                .start();
     }
 
     private void configureBaseMatrix() {
@@ -174,30 +187,30 @@ public class ZoomImageView extends ImageView {
         matrix.postScale(fit, fit);
         matrix.postTranslate(tx, ty);
         scale = 1f;
+        rotation = 0f;
         setImageMatrix(matrix);
     }
 
-    private void fixTranslation() {
-        Drawable d = getDrawable();
-        if (d == null) return;
+    private float angle(MotionEvent e) {
+        if (e.getPointerCount() < 2) return Float.NaN;
+        float dx = e.getX(1) - e.getX(0);
+        float dy = e.getY(1) - e.getY(0);
+        return (float)Math.toDegrees(Math.atan2(dy, dx));
+    }
 
-        RectF rect = new RectF(0, 0, d.getIntrinsicWidth(), d.getIntrinsicHeight());
-        matrix.mapRect(rect);
+    private float midpointX(MotionEvent e) {
+        return (e.getX(0) + e.getX(1)) / 2f;
+    }
 
-        float dx = 0f, dy = 0f;
-        if (rect.width() <= getWidth()) dx = getWidth() / 2f - rect.centerX();
-        else {
-            if (rect.left > 0) dx = -rect.left;
-            if (rect.right < getWidth()) dx = getWidth() - rect.right;
-        }
+    private float midpointY(MotionEvent e) {
+        return (e.getY(0) + e.getY(1)) / 2f;
+    }
 
-        if (rect.height() <= getHeight()) dy = getHeight() / 2f - rect.centerY();
-        else {
-            if (rect.top > 0) dy = -rect.top;
-            if (rect.bottom < getHeight()) dy = getHeight() - rect.bottom;
-        }
-
-        matrix.postTranslate(dx, dy);
+    private float normalizedRotation() {
+        float r = rotation % 360f;
+        if (r > 180f) r -= 360f;
+        if (r < -180f) r += 360f;
+        return r;
     }
 
     private float clamp(float v, float min, float max) {
