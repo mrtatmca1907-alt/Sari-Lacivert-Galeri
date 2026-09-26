@@ -94,6 +94,8 @@ fun ViewerScreen(
     var items by remember { mutableStateOf(initialItems) }
     var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (initialItems.size - 1).coerceAtLeast(0))) }
     var barsVisible by remember { mutableStateOf(false) }
+    var zoomed by remember { mutableStateOf(false) }
+    var activeImage by remember { mutableStateOf<StableZoomImageView?>(null) }
     var slideshow by remember { mutableStateOf(startSlideshow) }
     var showInfo by remember { mutableStateOf(false) }
     var infoText by remember { mutableStateOf("") }
@@ -183,7 +185,7 @@ fun ViewerScreen(
         }
     }
 
-    BackHandler(onBack = onBack)
+    BackHandler { if (zoomed && activeImage != null) activeImage?.resetTransform() else onBack() }
 
     LaunchedEffect(slideshow, index, items.size, slideshowSeconds) {
         if (slideshow && !current.isVideo) {
@@ -220,7 +222,9 @@ fun ViewerScreen(
                 rotationDegrees = photoRotation,
                 onTap = { barsVisible = !barsVisible },
                 onPrevious = { if (index > 0) index-- },
-                onNext = { if (index < items.lastIndex) index++ }
+                onNext = { if (index < items.lastIndex) index++ },
+                onViewReady = { activeImage = it },
+                onZoomChanged = { zoomed = it }
             )
         }
 
@@ -489,7 +493,9 @@ private fun ZoomableImage(
     rotationDegrees: Float,
     onTap: () -> Unit,
     onPrevious: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onViewReady: (StableZoomImageView) -> Unit,
+    onZoomChanged: (Boolean) -> Unit
 ) {
     val bitmap by produceState<Bitmap?>(null, uri) {
         value = loader.full(uri)
@@ -509,6 +515,8 @@ private fun ZoomableImage(
                     view.onSingleTapAction = onTap
                     view.onPreviousAction = onPrevious
                     view.onNextAction = onNext
+                    view.onZoomChanged = onZoomChanged
+                    onViewReady(view)
                     view.setBitmap(bitmap)
                     view.setExternalRotation(rotationDegrees)
                 },
