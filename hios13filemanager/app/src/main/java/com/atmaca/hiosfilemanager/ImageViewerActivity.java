@@ -169,9 +169,9 @@ public class ImageViewerActivity extends Activity {
             if (t.startsWith("Slayt")) toggleSlideshow();
             else if (t.equals("Paylaş")) shareCurrent();
             else if (t.equals("Ayrıntılar")) showDetails();
-            else if (t.equals("Sola dön")) imageView.setRotation(imageView.getRotation() - 90f);
-            else if (t.equals("Sağa dön")) imageView.setRotation(imageView.getRotation() + 90f);
-            else if (t.equals("Zoom sıfırla")) imageView.resetZoom();
+            else if (t.equals("Sola dön")) imageView.rotateBy(-90f);
+            else if (t.equals("Sağa dön")) imageView.rotateBy(90f);
+            else if (t.equals("Zoom sıfırla")) imageView.resetTransform();
             return true;
         });
         p.show();
@@ -179,15 +179,13 @@ public class ImageViewerActivity extends Activity {
 
     private void next() {
         if (images.isEmpty()) return;
-        imageView.setRotation(0f);
-        imageView.resetZoom();
+        imageView.resetTransform();
         showIndex((index + 1) % images.size());
     }
 
     private void previous() {
         if (images.isEmpty()) return;
-        imageView.setRotation(0f);
-        imageView.resetZoom();
+        imageView.resetTransform();
         showIndex((index - 1 + images.size()) % images.size());
     }
 
@@ -195,7 +193,7 @@ public class ImageViewerActivity extends Activity {
         slideshow = !slideshow;
         handler.removeCallbacks(slideTask);
         if (slideshow) {
-            imageView.resetZoom();
+            imageView.resetTransform();
             setChromeVisible(false);
             handler.postDelayed(slideTask, 3000);
         }
@@ -244,7 +242,7 @@ public class ImageViewerActivity extends Activity {
                 Bitmap old = currentBitmap;
                 currentBitmap = decoded;
                 imageView.setImageBitmap(decoded);
-                imageView.resetZoom();
+                imageView.resetTransform();
                 if (old != null && old != decoded && !old.isRecycled()) old.recycle();
             });
         });
@@ -285,6 +283,15 @@ public class ImageViewerActivity extends Activity {
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (imageView != null && imageView.isTransformed()) {
+            imageView.resetTransform();
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override protected void onResume() {
