@@ -16,6 +16,9 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.FileObserver;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -89,6 +92,11 @@ public class MainActivity extends Activity {
     private LinearLayout selectionBar;
     private Button pasteButton;
     private EditText searchBox;
+    private FileObserver dirObserver;
+    private final Handler refreshHandler = new Handler(Looper.getMainLooper());
+    private final Runnable delayedRefresh = () -> {
+        if (!isFinishing() && hasStorageAccess()) loadDirectory(currentDir);
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -102,15 +110,27 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (hasStorageAccess()) loadDirectory(currentDir);
+        if (hasStorageAccess()) {
+            loadDirectory(currentDir);
+            startWatching(currentDir);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        stopWatching();
+        refreshHandler.removeCallbacks(delayedRefresh);
+        super.onPause();
     }
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
+        stopWatching();
+        refreshHandler.removeCallbacksAndMessages(null);
         thumbs.shutdownNow();
         io.shutdownNow();
         thumbCache.evictAll();
+        super.onDestroy();
     }
 
     @Override
@@ -233,6 +253,8 @@ public class MainActivity extends Activity {
                 openImageViewer(f);
             } else if (isVideoFile(f)) {
                 openVideoViewer(f);
+            } else if (isApkFile(f)) {
+                installApk(f);
             } else {
                 openFile(f);
             }
@@ -339,6 +361,7 @@ public class MainActivity extends Activity {
 
     private void loadDirectory(File dir) {
         if (dir == null) return;
+        startWatching(dir);
         pathView.setText(dir.getAbsolutePath());
         String visibleName = dir.getAbsolutePath().equals("/storage/emulated/0") ? "Ana bellek" : dir.getName();
         if (visibleName == null || visibleName.isEmpty()) visibleName = "Dosyalar";
@@ -366,6 +389,34 @@ public class MainActivity extends Activity {
                 statusView.setText(next.size() + " öğe");
             });
         });
+    }
+
+    private void startWatching(File dir) {
+        if (dir == null) return;
+        stopWatching();
+        try {
+            dirObserver = new FileObserver(dir.getAbsolutePath(),
+                    FileObserver.CREATE |
+                    FileObserver.DELETE |
+                    FileObserver.MOVED_FROM |
+                    FileObserver.MOVED_TO |
+                    FileObserver.CLOSE_WRITE |
+                    FileObserver.MODIFY) {
+                @Override
+                public void onEvent(int event, String path) {
+                    refreshHandler.removeCallbacks(delayedRefresh);
+                    refreshHandler.postDelayed(delayedRefresh, 250);
+                }
+            };
+            dirObserver.startWatching();
+        } catch (Exception ignored) {}
+    }
+
+    private void stopWatching() {
+        if (dirObserver != null) {
+            try { dirObserver.stopWatching(); } catch (Exception ignored) {}
+            dirObserver = null;
+        }
     }
 
     private void applyFilter(String q) {
@@ -517,6 +568,33 @@ public class MainActivity extends Activity {
     private boolean isImageFile(File file) {
         String n = file.getName().toLowerCase(Locale.ROOT);
         return n.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|heic|heif|avif)$");
+    }
+
+    private boolean isApkFile(File file) {
+        return file != null && file.isFile() &&
+                file.getName().toLowerCase(Locale.ROOT).endsWith(".apk");
+    }
+
+    private void installApk(File file) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    !getPackageManager().canRequestPackageInstalls()) {
+                Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+                settingsIntent.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(settingsIntent);
+                toast("Bu kaynaktan uygulama yüklemeye izin ver, sonra APK'ya tekrar dokun");
+                return;
+            }
+
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".provider", file);
+            Intent install = new Intent(Intent.ACTION_VIEW);
+            install.setDataAndType(uri, "application/vnd.android.package-archive");
+            install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(install);
+        } catch (Exception e) {
+            toast("APK yükleyici açılamadı");
+        }
     }
 
     private boolean isVideoFile(File file) {
