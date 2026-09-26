@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.view.MotionEvent
+import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,6 +62,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
+import com.sarilacivert.galeri.R
 import androidx.media3.ui.PlayerView
 import com.sarilacivert.galeri.data.BitmapLoader
 import com.sarilacivert.galeri.data.GalleryPreferences
@@ -405,6 +409,17 @@ private fun VideoViewer(
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(androidx.media3.common.MediaItem.fromUri(item.uri))
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    Toast.makeText(context, "Video oynatılamadı; başka oynatıcı deneniyor", Toast.LENGTH_LONG).show()
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(item.uri, item.mimeType.ifBlank { "video/*" })
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        })
+                    }
+                }
+            })
             prepare()
         }
     }
@@ -427,7 +442,7 @@ private fun VideoViewer(
 
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).apply {
+            (LayoutInflater.from(ctx).inflate(R.layout.gallery_video_player, null) as PlayerView).apply {
                 this.player = player
                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                 useController = true
