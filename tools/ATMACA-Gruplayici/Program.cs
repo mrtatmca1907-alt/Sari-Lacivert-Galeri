@@ -73,10 +73,10 @@ namespace AtmacaGruplayici
             };
             header.Controls.Add(title);
             header.Controls.Add(sub);
-            Controls.Add(header);
 
             var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24, 18, 24, 18) };
             Controls.Add(body);
+            Controls.Add(header);
 
             int y = 16;
             body.Controls.Add(MakeLabel("Kaynak klasör", 0, y));
