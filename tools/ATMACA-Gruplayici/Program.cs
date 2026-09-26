@@ -266,8 +266,7 @@ namespace AtmacaGruplayici
             }
             else
             {
-                items = Directory.EnumerateFiles(source)
-                    .Where(p => MatchType(p, type))
+                items = EnumerateMediaFilesSafe(source, target, type, token, progressReport)
                     .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
                     .ToList();
             }
@@ -346,6 +345,68 @@ namespace AtmacaGruplayici
             if (type == 1) return imageExts.Contains(ext);
             if (type == 2) return videoExts.Contains(ext);
             return imageExts.Contains(ext) || videoExts.Contains(ext);
+        }
+
+        List<string> EnumerateMediaFilesSafe(string source, string target, int type,
+            CancellationToken token, IProgress<WorkProgress> progressReport)
+        {
+            var result = new List<string>();
+            var stack = new Stack<string>();
+            stack.Push(source);
+            long scannedFolders = 0;
+
+            string sourceFull = Path.GetFullPath(source).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string targetFull = Path.GetFullPath(target).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            while (stack.Count > 0)
+            {
+                token.ThrowIfCancellationRequested();
+                string dir = stack.Pop();
+
+                // Hedef kaynak ağacının içindeyse, önceden var olan çıktı dosyalarını yeniden tarama.
+                if (!string.Equals(dir, sourceFull, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                                  targetFull, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                try
+                {
+                    foreach (var f in Directory.EnumerateFiles(dir))
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (MatchType(f, type))
+                            result.Add(f);
+                    }
+                }
+                catch { }
+
+                IEnumerable<string> children = Array.Empty<string>();
+                try { children = Directory.EnumerateDirectories(dir).ToList(); }
+                catch { }
+
+                foreach (var child in children)
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (!IsUserFolder(child)) continue;
+
+                    string childFull;
+                    try { childFull = Path.GetFullPath(child).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar); }
+                    catch { continue; }
+
+                    if (string.Equals(childFull, targetFull, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    stack.Push(child);
+                }
+
+                scannedFolders++;
+                if (scannedFolders == 1 || scannedFolders % 100 == 0)
+                    progressReport.Report(new WorkProgress(0, 0,
+                        "Alt klasörler taranıyor... " + scannedFolders.ToString("N0") +
+                        " klasör • " + result.Count.ToString("N0") + " medya bulundu"));
+            }
+
+            return result;
         }
 
         bool IsGroupFolderName(string name)
