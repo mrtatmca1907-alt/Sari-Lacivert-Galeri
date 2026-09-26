@@ -237,7 +237,7 @@ fun ViewerScreen(
                     .padding(top = 26.dp, start = 4.dp, end = 4.dp, bottom = 4.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onBack) { Text("‹ Geri") }
+                    TextButton(onClick = { if (zoomed && activeImage != null) activeImage?.resetTransform() else onBack() }) { Text("‹ Geri") }
                     Column(Modifier.weight(1f)) {
                         Text(current.name, color = TextPrimary, maxLines = 1)
                         Text(
