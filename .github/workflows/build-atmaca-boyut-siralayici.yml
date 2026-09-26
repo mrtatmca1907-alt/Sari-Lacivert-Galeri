@@ -1,0 +1,22 @@
+name: Build ATMACA Boyut Siralayici
+on:
+  push:
+    branches: [atmaca-tools-build]
+    paths: ['tools/ATMACA-Boyut-Siralayici/**','.github/workflows/build-atmaca-boyut-siralayici.yml']
+  workflow_dispatch:
+permissions: {contents: write}
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $b=New-Object System.Drawing.Bitmap 256,256;$g=[System.Drawing.Graphics]::FromImage($b);$g.Clear([System.Drawing.Color]::FromArgb(9,37,74));$br=New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255,210,0));$f=New-Object System.Drawing.Font("Segoe UI",90,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel);$sf=New-Object System.Drawing.StringFormat;$sf.Alignment=[System.Drawing.StringAlignment]::Center;$sf.LineAlignment=[System.Drawing.StringAlignment]::Center;$g.DrawString("BS",$f,$br,(New-Object System.Drawing.RectangleF(0,0,256,245)),$sf);$i=[System.Drawing.Icon]::FromHandle($b.GetHicon());$fs=[IO.File]::OpenWrite("tools/ATMACA-Boyut-Siralayici/app.ico");$i.Save($fs);$fs.Close()
+      - shell: powershell
+        run: |
+          $v="${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe";$c=& $v -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\Current\Bin\Roslyn\csc.exe"|Select-Object -First 1;& $c /nologo /target:winexe /optimize+ /win32icon:tools/ATMACA-Boyut-Siralayici/app.ico /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /out:tools/ATMACA-Boyut-Siralayici/ATMACA-Boyut-Siralayici.exe tools/ATMACA-Boyut-Siralayici/Program.cs;if($LASTEXITCODE-ne 0){exit $LASTEXITCODE}
+      - shell: powershell
+        run: |
+          git config user.name "ATMACA Builder";git config user.email "actions@github.com";git add tools/ATMACA-Boyut-Siralayici/ATMACA-Boyut-Siralayici.exe;git commit -m "Build boyut siralayici";git push origin HEAD:atmaca-tools-build
