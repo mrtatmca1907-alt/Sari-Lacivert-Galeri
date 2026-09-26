@@ -21,6 +21,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
     var onSingleTapAction: (() -> Unit)? = null
     var onPreviousAction: (() -> Unit)? = null
     var onNextAction: (() -> Unit)? = null
+    var onZoomChanged: ((Boolean) -> Unit)? = null
 
     private val drawMatrix = Matrix()
     private var shownBitmap: Bitmap? = null
@@ -103,6 +104,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
                     translateY = ratio * translateY + (1f - ratio) * (e.y - cy)
                     userScale = target
                     updateImageMatrix()
+                    onZoomChanged?.invoke(true)
                 }
                 return true
             }
@@ -137,6 +139,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
         translateX = 0f
         translateY = 0f
         updateImageMatrix()
+        onZoomChanged?.invoke(false)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
