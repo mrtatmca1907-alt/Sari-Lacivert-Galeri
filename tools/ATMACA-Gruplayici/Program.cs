@@ -260,6 +260,7 @@ namespace AtmacaGruplayici
             {
                 items = Directory.EnumerateDirectories(source)
                     .Where(p => !IsGroupFolderName(Path.GetFileName(p)))
+                    .Where(p => IsUserFolder(p))
                     .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
                     .ToList();
             }
@@ -350,6 +351,32 @@ namespace AtmacaGruplayici
         bool IsGroupFolderName(string name)
         {
             return Regex.IsMatch(name ?? "", @"^\d+\-\d+$");
+        }
+
+        bool IsUserFolder(string path)
+        {
+            try
+            {
+                string name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                if (string.Equals(name, "$RECYCLE.BIN", StringComparison.OrdinalIgnoreCase)) return false;
+                if (string.Equals(name, "System Volume Information", StringComparison.OrdinalIgnoreCase)) return false;
+                if (string.Equals(name, "Recovery", StringComparison.OrdinalIgnoreCase)) return false;
+
+                var attr = File.GetAttributes(path);
+                if ((attr & FileAttributes.ReparsePoint) != 0) return false;
+                if ((attr & FileAttributes.System) != 0) return false;
+
+                // Access check only; nothing is changed here.
+                using (var e = Directory.EnumerateFileSystemEntries(path).GetEnumerator())
+                {
+                    e.MoveNext();
+                }
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         string UniqueDestination(string folder, string name, bool isDirectory)
