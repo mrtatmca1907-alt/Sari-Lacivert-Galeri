@@ -1,0 +1,62 @@
+name: Build ATMACA Gruplayici
+
+on:
+  push:
+    branches:
+      - atmaca-tools-build
+    paths:
+      - 'tools/ATMACA-Gruplayici/Program.cs'
+      - '.github/workflows/build-atmaca-gruplayici.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create icon
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $bmp = New-Object System.Drawing.Bitmap 256,256
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+          $navy = [System.Drawing.Color]::FromArgb(9,37,74)
+          $yellow = [System.Drawing.Color]::FromArgb(255,210,0)
+          $g.Clear($navy)
+          $brush = New-Object System.Drawing.SolidBrush $yellow
+          $font = New-Object System.Drawing.Font("Segoe UI",110,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel)
+          $sf = New-Object System.Drawing.StringFormat
+          $sf.Alignment = [System.Drawing.StringAlignment]::Center
+          $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+          $g.DrawString("A",$font,$brush,(New-Object System.Drawing.RectangleF(0,0,256,245)),$sf)
+          $hIcon = $bmp.GetHicon()
+          $icon = [System.Drawing.Icon]::FromHandle($hIcon)
+          $fs = [System.IO.File]::OpenWrite("tools/ATMACA-Gruplayici/app.ico")
+          $icon.Save($fs)
+          $fs.Close()
+
+      - name: Compile Windows EXE
+        shell: powershell
+        run: |
+          $src = "tools/ATMACA-Gruplayici/Program.cs"
+          $out = "tools/ATMACA-Gruplayici/ATMACA-Gruplayici.exe"
+          $icon = "tools/ATMACA-Gruplayici/app.ico"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $csc = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\Current\Bin\Roslyn\csc.exe" | Select-Object -First 1
+          if (-not $csc) { throw "Roslyn csc.exe bulunamadi." }
+          & $csc /nologo /target:winexe /optimize+ /platform:anycpu /win32icon:$icon /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /out:$out $src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit built EXE
+        shell: powershell
+        run: |
+          git config user.name "ATMACA Builder"
+          git config user.email "actions@github.com"
+          git add "tools/ATMACA-Gruplayici/ATMACA-Gruplayici.exe"
+          git commit -m "Build ATMACA Gruplayici EXE"
+          git push origin HEAD:atmaca-tools-build
