@@ -5,7 +5,6 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -15,35 +14,44 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.MediaController;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 
 import androidx.core.content.FileProvider;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.ui.PlayerView;
 
 import java.io.File;
 import java.util.Locale;
 
 public class VideoPlayerActivity extends Activity {
-    private AspectVideoView video;
+    private PlayerView playerView;
+    private ExoPlayer player;
     private LinearLayout topBar;
-    private MediaController controls;
     private boolean chromeVisible = false;
     private String path;
-    private int savedPosition = 0;
-    private boolean wasPlaying = true;
+    private long savedPosition = 0L;
+    private boolean playWhenReady = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         enterImmersive();
 
         path = getIntent().getStringExtra("file");
-        if (path == null) { finish(); return; }
+        if (path == null) {
+            finish();
+            return;
+        }
 
         buildUi();
-        openVideo();
+        initializePlayer();
     }
 
     private void enterImmersive() {
@@ -62,14 +70,18 @@ public class VideoPlayerActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
 
-        video = new AspectVideoView(this);
-        video.setBackgroundColor(Color.BLACK);
-        FrameLayout.LayoutParams vp = new FrameLayout.LayoutParams(
+        playerView = new PlayerView(this);
+        playerView.setBackgroundColor(Color.BLACK);
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        playerView.setUseController(true);
+        playerView.setControllerAutoShow(false);
+        playerView.setControllerHideOnTouch(false);
+        playerView.setControllerShowTimeoutMs(3500);
+        root.addView(playerView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 Gravity.CENTER
-        );
-        root.addView(video, vp);
+        ));
 
         topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
@@ -95,11 +107,7 @@ public class VideoPlayerActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT, dp(60), Gravity.TOP
         ));
 
-        controls = new MediaController(this);
-        controls.setAnchorView(root);
-        video.setMediaController(controls);
-
-        video.setOnTouchListener((v, event) -> {
+        playerView.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 setChromeVisible(!chromeVisible);
                 return true;
@@ -119,13 +127,33 @@ public class VideoPlayerActivity extends Activity {
         return v;
     }
 
+    private void initializePlayer() {
+        releasePlayer();
+
+        player = new ExoPlayer.Builder(this).build();
+        playerView.setPlayer(player);
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+
+        MediaItem item = MediaItem.fromUri(Uri.fromFile(new File(path)));
+        player.setMediaItem(item);
+        player.setPlayWhenReady(playWhenReady);
+        if (savedPosition > 0) player.seekTo(savedPosition);
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                showPlaybackError(error);
+            }
+        });
+        player.prepare();
+    }
+
     private void setChromeVisible(boolean visible) {
         chromeVisible = visible;
         topBar.setVisibility(visible ? View.VISIBLE : View.GONE);
         if (visible) {
-            controls.show(4000);
+            playerView.showController();
         } else {
-            controls.hide();
+            playerView.hideController();
             enterImmersive();
         }
     }
@@ -137,6 +165,7 @@ public class VideoPlayerActivity extends Activity {
         p.getMenu().add("Dikey");
         p.getMenu().add("Paylaş");
         p.getMenu().add("Ayrıntılar");
+        p.getMenu().add("Harici oynatıcıda aç");
         p.setOnMenuItemClickListener(item -> {
             String t = item.getTitle().toString();
             if (t.equals("Otomatik döndür")) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
@@ -144,27 +173,31 @@ public class VideoPlayerActivity extends Activity {
             else if (t.equals("Dikey")) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
             else if (t.equals("Paylaş")) shareVideo();
             else if (t.equals("Ayrıntılar")) showDetails();
+            else if (t.equals("Harici oynatıcıda aç")) openExternal();
             return true;
         });
         p.show();
     }
 
-    private void openVideo() {
-        video.setVideoPath(path);
-        video.setOnPreparedListener(mp -> {
-            video.setVideoSize(mp.getVideoWidth(), mp.getVideoHeight());
-            mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT);
-            if (savedPosition > 0) video.seekTo(savedPosition);
-            if (wasPlaying) video.start();
-        });
-        video.setOnErrorListener((mp, what, extra) -> {
-            new AlertDialog.Builder(this)
-                    .setTitle("Video açılamadı")
-                    .setMessage("Bu video codec'i cihaz tarafından desteklenmiyor olabilir.")
-                    .setPositiveButton("Tamam", (d, w) -> finish())
-                    .show();
-            return true;
-        });
+    private void showPlaybackError(PlaybackException error) {
+        if (isFinishing()) return;
+        new AlertDialog.Builder(this)
+                .setTitle("Video açılamadı")
+                .setMessage("Bu dosya cihaz codec'i ile açılamadı. İstersen harici oynatıcıda açabilirsin.")
+                .setNegativeButton("Kapat", null)
+                .setPositiveButton("Harici aç", (d, w) -> openExternal())
+                .show();
+    }
+
+    private void openExternal() {
+        try {
+            File f = new File(path);
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".provider", f);
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(uri, "video/*");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(i);
+        } catch (Exception ignored) {}
     }
 
     private void shareVideo() {
@@ -199,12 +232,21 @@ public class VideoPlayerActivity extends Activity {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    private void releasePlayer() {
+        if (player != null) {
+            savedPosition = player.getCurrentPosition();
+            playWhenReady = player.getPlayWhenReady();
+            player.release();
+            player = null;
+        }
+    }
+
     @Override
     protected void onPause() {
-        if (video != null) {
-            savedPosition = video.getCurrentPosition();
-            wasPlaying = video.isPlaying();
-            video.pause();
+        if (player != null) {
+            savedPosition = player.getCurrentPosition();
+            playWhenReady = player.getPlayWhenReady();
+            player.pause();
         }
         super.onPause();
     }
@@ -213,9 +255,13 @@ public class VideoPlayerActivity extends Activity {
     protected void onResume() {
         super.onResume();
         enterImmersive();
-        if (video != null && wasPlaying && savedPosition > 0) {
-            video.seekTo(savedPosition);
-            video.start();
-        }
+        if (player == null) initializePlayer();
+        else if (playWhenReady) player.play();
+    }
+
+    @Override
+    protected void onDestroy() {
+        releasePlayer();
+        super.onDestroy();
     }
 }
