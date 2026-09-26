@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.ManageSearch
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.ViewColumn
@@ -386,6 +387,35 @@ private fun AlbumScreen(
         }
     }
 
+    val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { destination ->
+        if (destination != null) {
+            val targets = items.filter { it.uri.toString() in selectedUris }
+            scope.launch {
+                var copied = 0
+                targets.forEach { item -> if (repo.copyToTree(item, destination).isSuccess) copied++ }
+                Toast.makeText(context, "$copied / ${targets.size} öğe aktarıldı", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun shareSelection() {
+        val targets = items.filter { it.uri.toString() in selectedUris }
+        if (targets.isEmpty()) return
+        val uris = ArrayList(targets.map { it.uri })
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = if (targets.all { it.isVideo }) "video/*" else if (targets.none { it.isVideo }) "image/*" else "*/*"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = android.content.ClipData.newUri(context.contentResolver, "Medya", uris.first()).apply {
+                uris.drop(1).forEach { addItem(android.content.ClipData.Item(it)) }
+            }
+        }
+        runCatching { context.startActivity(Intent.createChooser(intent, "Paylaş")) }
+            .onFailure { Toast.makeText(context, "Paylaşım açılamadı; klasöre aktar seçeneğini deneyin", Toast.LENGTH_LONG).show() }
+    }
+
     LaunchedEffect(album.path, showImages, showVideos, sort, refreshKey, reloadToken) {
         loading = true
         items = repo.loadAlbum(album.path, showImages, showVideos, sort)
@@ -442,6 +472,10 @@ private fun AlbumScreen(
                         TextButton(onClick = { selectedUris = items.map { it.uri.toString() }.toSet() }) {
                             Text("Tümü")
                         }
+                        IconButton(onClick = ::shareSelection) {
+                            Icon(Icons.Default.Share, "Paylaş")
+                        }
+                        TextButton(onClick = { exportLauncher.launch(null) }) { Text("Aktar") }
                         IconButton(onClick = ::deleteSelection) {
                             Icon(Icons.Default.DeleteOutline, "Sil")
                         }
