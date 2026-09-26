@@ -1,0 +1,45 @@
+name: Build ATMACA Klasor Dengeleyici
+on:
+  push:
+    branches: [atmaca-tools-build]
+    paths:
+      - 'tools/ATMACA-Klasor-Dengeleyici/**'
+      - '.github/workflows/build-atmaca-klasor-dengeleyici.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create icon
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $bmp=New-Object System.Drawing.Bitmap 256,256
+          $g=[System.Drawing.Graphics]::FromImage($bmp)
+          $g.Clear([System.Drawing.Color]::FromArgb(9,37,74))
+          $brush=New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255,210,0))
+          $font=New-Object System.Drawing.Font("Segoe UI",90,[System.Drawing.FontStyle]::Bold,[System.Drawing.GraphicsUnit]::Pixel)
+          $sf=New-Object System.Drawing.StringFormat
+          $sf.Alignment=[System.Drawing.StringAlignment]::Center
+          $sf.LineAlignment=[System.Drawing.StringAlignment]::Center
+          $g.DrawString("50",$font,$brush,(New-Object System.Drawing.RectangleF(0,0,256,245)),$sf)
+          $icon=[System.Drawing.Icon]::FromHandle($bmp.GetHicon())
+          $fs=[System.IO.File]::OpenWrite("tools/ATMACA-Klasor-Dengeleyici/app.ico");$icon.Save($fs);$fs.Close()
+      - name: Compile
+        shell: powershell
+        run: |
+          $vswhere="${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $csc=& $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\Current\Bin\Roslyn\csc.exe" | Select-Object -First 1
+          & $csc /nologo /target:winexe /optimize+ /platform:anycpu /win32icon:tools/ATMACA-Klasor-Dengeleyici/app.ico /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /out:tools/ATMACA-Klasor-Dengeleyici/ATMACA-Klasor-Dengeleyici.exe tools/ATMACA-Klasor-Dengeleyici/Program.cs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Commit EXE
+        shell: powershell
+        run: |
+          git config user.name "ATMACA Builder"
+          git config user.email "actions@github.com"
+          git add tools/ATMACA-Klasor-Dengeleyici/ATMACA-Klasor-Dengeleyici.exe
+          git commit -m "Build ATMACA Klasor Dengeleyici EXE"
+          git push origin HEAD:atmaca-tools-build
