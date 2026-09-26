@@ -19,4 +19,4 @@ jobs:
           $v="${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe";$c=& $v -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\Current\Bin\Roslyn\csc.exe"|Select-Object -First 1;& $c /nologo /target:winexe /optimize+ /win32icon:tools/ATMACA-Boyut-Siralayici/app.ico /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /out:tools/ATMACA-Boyut-Siralayici/ATMACA-Boyut-Siralayici.exe tools/ATMACA-Boyut-Siralayici/Program.cs;if($LASTEXITCODE-ne 0){exit $LASTEXITCODE}
       - shell: powershell
         run: |
-          git config user.name "ATMACA Builder";git config user.email "actions@github.com";git add tools/ATMACA-Boyut-Siralayici/ATMACA-Boyut-Siralayici.exe;git commit -m "Build boyut siralayici";git push origin HEAD:atmaca-tools-build
+          git config user.name "ATMACA Builder";git config user.email "actions@github.com";git add tools/ATMACA-Boyut-Siralayici/ATMACA-Boyut-Siralayici.exe;git commit -m "Build boyut siralayici";git pull --rebase origin atmaca-tools-build;git push origin HEAD:atmaca-tools-build
