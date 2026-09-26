@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -568,19 +569,68 @@ public class MainActivity extends Activity {
 
     private void shareSelected() {
         List<File> files = selectedFiles();
-        if (files.isEmpty()) { toast("Önce dosya seç"); return; }
-        ArrayList<Uri> uris = new ArrayList<>();
-        for (File f : files) {
-            if (!f.isFile()) continue;
-            try { uris.add(FileProvider.getUriForFile(this, getPackageName() + ".provider", f)); }
-            catch (Exception ignored) {}
+        if (files.isEmpty()) { toast("Önce dosya veya klasör seç"); return; }
+
+        ArrayList<File> shareFiles = new ArrayList<>();
+        for (File f : files) collectShareableMedia(f, shareFiles);
+
+        if (shareFiles.isEmpty()) {
+            toast("Paylaşılabilir görüntü veya video yok");
+            return;
         }
-        if (uris.isEmpty()) { toast("Paylaşılabilir dosya yok"); return; }
-        Intent i = new Intent(Intent.ACTION_SEND_MULTIPLE);
-        i.setType("*/*");
-        i.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
-        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        startActivity(Intent.createChooser(i, "Paylaş"));
+
+        ArrayList<Uri> uris = new ArrayList<>(shareFiles.size());
+        boolean hasImage = false;
+        boolean hasVideo = false;
+
+        for (File f : shareFiles) {
+            try {
+                Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".provider", f);
+                uris.add(uri);
+                if (isImageFile(f)) hasImage = true;
+                if (isVideoFile(f)) hasVideo = true;
+            } catch (Exception ignored) {}
+        }
+
+        if (uris.isEmpty()) {
+            toast("Paylaşım URI'si oluşturulamadı");
+            return;
+        }
+
+        String mime = hasImage && !hasVideo ? "image/*" :
+                hasVideo && !hasImage ? "video/*" : "*/*";
+
+        Intent send = new Intent(Intent.ACTION_SEND_MULTIPLE);
+        send.setType(mime);
+        send.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        ClipData clip = ClipData.newUri(getContentResolver(), "ATMACA medya", uris.get(0));
+        for (int n = 1; n < uris.size(); n++) {
+            clip.addItem(new ClipData.Item(uris.get(n)));
+        }
+        send.setClipData(clip);
+
+        Intent chooser = Intent.createChooser(send, uris.size() + " dosyayı paylaş");
+        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            startActivity(chooser);
+        } catch (Exception e) {
+            toast("Hedef uygulama bu kadar dosyayı tek seferde kabul etmedi");
+        }
+    }
+
+    private void collectShareableMedia(File source, List<File> out) {
+        if (source == null || !source.exists()) return;
+
+        if (source.isFile()) {
+            if (isImageFile(source) || isVideoFile(source)) out.add(source);
+            return;
+        }
+
+        File[] children = source.listFiles();
+        if (children == null) return;
+        for (File child : children) collectShareableMedia(child, out);
     }
 
     private void startSlideshow() {
