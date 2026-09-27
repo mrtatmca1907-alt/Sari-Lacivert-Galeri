@@ -54,6 +54,11 @@ public class MainActivity extends Activity {
         });
         root.addView(tera,new LinearLayout.LayoutParams(-1,-2));
 
+        Button choose=new Button(this);
+        choose.setText("3) ATMACA İÇİNDE KLASÖRLERİ SEÇ");
+        choose.setOnClickListener(v->startActivity(new Intent(this,FolderSelectActivity.class)));
+        root.addView(choose,new LinearLayout.LayoutParams(-1,-2));
+
         Button stop=new Button(this);
         stop.setText("EKRAN OKUMAYI DURDUR");
         stop.setOnClickListener(v->stopService(new Intent(this,ScreenIndexService.class)));
@@ -95,7 +100,7 @@ public class MainActivity extends Activity {
 
     private void refresh(){
         IndexDb db=new IndexDb(this);
-        status.setText("Kayıtlı seçili klasör: "+db.selectedCount()+"\nToplam OCR kaydı: "+db.count()+"\n\nEkran okuma açıksa TeraBox listesini kaydırdıkça sayı yükselir.");
+        status.setText("Bulunan klasör: "+db.folderCount()+"\nATMACA içinde seçilen: "+db.chosenCount()+"\nToplam OCR kaydı: "+db.count()+"\n\nTeraBox yalnızca kaynak. Asıl seçim ATMACA içindeki tiklerden yapılır.");
     }
 
     @Override protected void onDestroy(){handler.removeCallbacks(loop);super.onDestroy();}
