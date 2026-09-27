@@ -1,0 +1,33 @@
+name: Build ATMACA Tera Fast APK
+
+on:
+  push:
+    branches: [ terabox-fast-downloader ]
+    paths:
+      - 'teraboxfast/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/build-terabox-fast.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - run: gradle :teraboxfast:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Tera-Hizli-Indir-APK
+          path: teraboxfast/build/outputs/apk/debug/teraboxfast-debug.apk
+          if-no-files-found: error
