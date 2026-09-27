@@ -44,6 +44,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
@@ -66,6 +67,7 @@ public class MainActivity extends Activity {
     private static final int BG = Color.rgb(247, 249, 252);
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final ExecutorService searchIo = Executors.newSingleThreadExecutor();
     private final ThreadPoolExecutor thumbs = new ThreadPoolExecutor(
             2, 2, 15, TimeUnit.SECONDS,
             new LinkedBlockingDeque<>(32),
@@ -94,6 +96,8 @@ public class MainActivity extends Activity {
     private EditText searchBox;
     private FileObserver dirObserver;
     private final Handler refreshHandler = new Handler(Looper.getMainLooper());
+    private final Handler searchHandler = new Handler(Looper.getMainLooper());
+    private volatile int searchGeneration = 0;
     private final Runnable delayedRefresh = () -> {
         if (!isFinishing() && hasStorageAccess()) loadDirectory(currentDir);
     };
@@ -127,6 +131,9 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         stopWatching();
         refreshHandler.removeCallbacksAndMessages(null);
+        searchHandler.removeCallbacksAndMessages(null);
+        searchGeneration++;
+        searchIo.shutdownNow();
         thumbs.shutdownNow();
         io.shutdownNow();
         thumbCache.evictAll();
@@ -216,7 +223,7 @@ public class MainActivity extends Activity {
         searchBox.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
-                applyFilter(s == null ? "" : s.toString());
+                scheduleSearch(s == null ? "" : s.toString());
             }
             @Override public void afterTextChanged(Editable s) {}
         });
@@ -240,6 +247,7 @@ public class MainActivity extends Activity {
         listView = new ListView(this);
         listView.setDividerHeight(1);
         listView.setFastScrollEnabled(true);
+        listView.setLongClickable(true);
         adapter = new FileAdapter();
         listView.setAdapter(adapter);
         listView.setOnItemClickListener((parent, view, position, id) -> {
@@ -258,10 +266,6 @@ public class MainActivity extends Activity {
             } else {
                 openFile(f);
             }
-        });
-        listView.setOnItemLongClickListener((parent, view, position, id) -> {
-            toggleSelection(shownItems.get(position));
-            return true;
         });
         root.addView(listView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -385,8 +389,9 @@ public class MainActivity extends Activity {
                 if (!currentDir.getAbsolutePath().equals(dir.getAbsolutePath())) return;
                 allItems.clear();
                 allItems.addAll(next);
-                applyFilter(searchBox.getText().toString());
-                statusView.setText(next.size() + " öğe");
+                String currentQuery = searchBox.getText().toString();
+                if (currentQuery.trim().isEmpty()) applyFilter("");
+                else scheduleSearch(currentQuery);
             });
         });
     }
@@ -399,9 +404,7 @@ public class MainActivity extends Activity {
                     FileObserver.CREATE |
                     FileObserver.DELETE |
                     FileObserver.MOVED_FROM |
-                    FileObserver.MOVED_TO |
-                    FileObserver.CLOSE_WRITE |
-                    FileObserver.MODIFY) {
+                    FileObserver.MOVED_TO) {
                 @Override
                 public void onEvent(int event, String path) {
                     refreshHandler.removeCallbacks(delayedRefresh);
@@ -422,14 +425,77 @@ public class MainActivity extends Activity {
     private void applyFilter(String q) {
         String query = q == null ? "" : q.trim().toLowerCase(Locale.ROOT);
         shownItems.clear();
-        if (query.isEmpty()) shownItems.addAll(allItems);
-        else {
+        if (query.isEmpty()) {
+            shownItems.addAll(allItems);
+        } else {
             for (File f : allItems) {
                 if (f.getName().toLowerCase(Locale.ROOT).contains(query)) shownItems.add(f);
             }
         }
         adapter.notifyDataSetChanged();
-        statusView.setText(shownItems.size() + " / " + allItems.size() + " öğe");
+        statusView.setText(query.isEmpty()
+                ? shownItems.size() + " öğe"
+                : shownItems.size() + " sonuç");
+    }
+
+    private void scheduleSearch(String q) {
+        final String query = q == null ? "" : q.trim().toLowerCase(Locale.ROOT);
+        final int generation = ++searchGeneration;
+        searchHandler.removeCallbacksAndMessages(null);
+
+        if (query.isEmpty()) {
+            applyFilter("");
+            return;
+        }
+
+        statusView.setText("Aranıyor…");
+        final File rootDir = currentDir;
+        searchHandler.postDelayed(() -> runRecursiveSearch(query, generation, rootDir), 220);
+    }
+
+    private void runRecursiveSearch(String query, int generation, File rootDir) {
+        searchIo.execute(() -> {
+            List<File> found = new ArrayList<>();
+            ArrayDeque<File> stack = new ArrayDeque<>();
+            stack.push(rootDir);
+
+            while (!stack.isEmpty()) {
+                if (generation != searchGeneration || Thread.currentThread().isInterrupted()) return;
+
+                File dir = stack.pop();
+                File[] children;
+                try {
+                    children = dir.listFiles();
+                } catch (SecurityException e) {
+                    continue;
+                }
+                if (children == null) continue;
+
+                for (File child : children) {
+                    if (generation != searchGeneration || Thread.currentThread().isInterrupted()) return;
+
+                    String name = child.getName().toLowerCase(Locale.ROOT);
+                    if (name.contains(query)) found.add(child);
+                    if (child.isDirectory() && child.canRead()) stack.push(child);
+                }
+            }
+
+            found.sort(Comparator
+                    .comparing((File f) -> !f.isDirectory())
+                    .thenComparing(f -> f.getName().toLowerCase(Locale.ROOT)));
+
+            runOnUiThread(() -> {
+                if (generation != searchGeneration) return;
+                if (!currentDir.getAbsolutePath().equals(rootDir.getAbsolutePath())) return;
+                String liveQuery = searchBox.getText().toString().trim().toLowerCase(Locale.ROOT);
+                if (!liveQuery.equals(query)) return;
+
+                shownItems.clear();
+                shownItems.addAll(found);
+                adapter.notifyDataSetChanged();
+                statusView.setText(found.size() + " sonuç");
+            });
+        });
     }
 
     private void goUp() {
@@ -475,27 +541,61 @@ public class MainActivity extends Activity {
         File targetDir = currentDir;
         List<File> jobs = new ArrayList<>(clipboard);
         boolean move = clipboardMove;
+
         runBusy(move ? "Taşınıyor…" : "Kopyalanıyor…", () -> {
             int ok = 0;
+            List<File> failed = new ArrayList<>();
+
             for (File src : jobs) {
+                if (src == null || !src.exists()) {
+                    if (src != null) failed.add(src);
+                    continue;
+                }
+
+                File srcParent = src.getParentFile();
+                if (move && srcParent != null &&
+                        srcParent.getAbsolutePath().equals(targetDir.getAbsolutePath())) {
+                    failed.add(src);
+                    continue;
+                }
+
                 File dst = uniqueTarget(targetDir, src.getName());
                 try {
                     if (move && src.renameTo(dst)) {
                         ok++;
-                    } else {
-                        copyRecursive(src, dst);
-                        if (move && !deleteRecursive(src)) throw new IOException("Kaynak silinemedi");
-                        ok++;
+                        continue;
                     }
-                } catch (Exception ignored) {
+
+                    copyRecursive(src, dst);
+                    if (move && !deleteRecursive(src)) {
+                        throw new IOException("Kaynak silinemedi");
+                    }
+                    ok++;
+                } catch (Exception e) {
+                    deleteRecursive(dst);
+                    failed.add(src);
                 }
             }
+
             int done = ok;
+            int failCount = failed.size();
             runOnUiThread(() -> {
                 clipboard.clear();
-                pasteButton.setVisibility(View.GONE);
+                for (File f : failed) if (f.exists()) clipboard.add(f);
+
+                if (clipboard.isEmpty()) {
+                    pasteButton.setVisibility(View.GONE);
+                } else {
+                    pasteButton.setText((move ? "Taşımayı" : "Kopyalamayı") + " Tekrar Dene");
+                    pasteButton.setVisibility(View.VISIBLE);
+                }
+
                 loadDirectory(currentDir);
-                toast(done + " öğe tamamlandı");
+                if (failCount == 0) {
+                    toast(done + " öğe tamamlandı");
+                } else {
+                    toast(done + " tamamlandı, " + failCount + " başarısız");
+                }
             });
         });
     }
@@ -725,13 +825,13 @@ public class MainActivity extends Activity {
     private void sortByName() {
         allItems.sort(Comparator.comparing((File f) -> !f.isDirectory())
                 .thenComparing(f -> f.getName().toLowerCase(Locale.ROOT)));
-        applyFilter(searchBox.getText().toString());
+        scheduleSearch(searchBox.getText().toString());
     }
 
     private void sortByDate() {
         allItems.sort(Comparator.comparing((File f) -> !f.isDirectory())
                 .thenComparingLong(File::lastModified).reversed());
-        applyFilter(searchBox.getText().toString());
+        scheduleSearch(searchBox.getText().toString());
     }
 
     private void openFile(File file) {
@@ -884,6 +984,15 @@ public class MainActivity extends Activity {
             } else h = (Holder) convertView.getTag();
 
             File f = shownItems.get(position);
+            convertView.setLongClickable(true);
+            convertView.setOnLongClickListener(v -> {
+                toggleSelection(f);
+                return true;
+            });
+            h.icon.setFocusable(false);
+            h.icon.setClickable(false);
+            h.name.setFocusable(false);
+            h.detail.setFocusable(false);
             h.icon.setTag(null);
             h.icon.setImageDrawable(null);
             h.icon.setBackgroundColor(f.isDirectory() ? Color.rgb(255, 244, 181) : Color.rgb(233, 239, 248));
