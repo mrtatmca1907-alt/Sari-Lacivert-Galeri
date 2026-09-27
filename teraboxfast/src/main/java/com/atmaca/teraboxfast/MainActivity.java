@@ -2,102 +2,158 @@ package com.atmaca.teraboxfast;
 
 import android.Manifest;
 import android.app.Activity;
-import android.content.*;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
+import android.graphics.*;
 import android.os.*;
+import android.util.Base64;
 import android.view.*;
 import android.widget.*;
+import java.util.*;
 
 public class MainActivity extends Activity {
-    private EditText link;
     private TextView status;
-    private Button start;
+    private ImageView qr;
+    private Button start, scan;
+    private TeraboxSessionClient client;
+    private volatile boolean polling=false;
 
-    @Override public void onCreate(Bundle b) {
+    @Override public void onCreate(Bundle b){
         super.onCreate(b);
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 7);
-        }
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},7);
 
+        client=new TeraboxSessionClient();
+
+        ScrollView sv=new ScrollView(this);
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(24,24,24,24);
         root.setBackgroundColor(Color.WHITE);
+        sv.addView(root);
 
         status=new TextView(this);
-        status.setText("TeraBox paylaşım bağlantısını yapıştır. Giriş gerekmez.");
+        status.setText("TeraBox gerçek oturum testi\nQR ile giriş yapacağız.");
         status.setTextColor(Color.WHITE);
         status.setTextSize(16);
-        status.setBackgroundColor(Color.rgb(7,26,82));
         status.setPadding(24,20,24,20);
+        status.setBackgroundColor(Color.rgb(7,26,82));
         root.addView(status,new LinearLayout.LayoutParams(-1,-2));
 
-        link=new EditText(this);
-        link.setHint("https://www.terabox.com/s/...");
-        link.setSingleLine(true);
-        root.addView(link,new LinearLayout.LayoutParams(-1,-2));
+        qr=new ImageView(this);
+        qr.setAdjustViewBounds(true);
+        qr.setVisibility(View.GONE);
+        LinearLayout.LayoutParams qp=new LinearLayout.LayoutParams(-1,700);
+        qp.setMargins(0,20,0,20);
+        root.addView(qr,qp);
 
         start=new Button(this);
-        start.setText("BAĞLANTIYI ÇÖZ VE TÜMÜNÜ İNDİR");
-        start.setOnClickListener(v -> resolve());
+        start.setText("QR GİRİŞİNİ BAŞLAT");
+        start.setOnClickListener(v->beginQr());
         root.addView(start,new LinearLayout.LayoutParams(-1,-2));
 
+        scan=new Button(this);
+        scan.setText("HESABIMDAKİ DOSYALARI TARA");
+        scan.setEnabled(false);
+        scan.setOnClickListener(v->scanFiles());
+        root.addView(scan,new LinearLayout.LayoutParams(-1,-2));
+
         TextView info=new TextView(this);
-        info.setText("\n• Gmail/Google girişi yok\n• Dosya boyutu sınırı yok\n• Wi-Fi ve mobil veri kullanılabilir\n• Dosyalar Download/ATMACA-TeraBox içine iner\n• Sunucu Range desteklerse çok parçalı indirme kullanılır");
+        info.setText("\n1) QR kodu TeraBox uygulamasından okut.\n2) Telefonda giriş onayını ver.\n3) Oturum başarıyla alınırsa bu APK hesabın kök dizinini doğrudan okuyacak.\n\nŞifre bu APK'ya yazılmayacak.");
         info.setTextSize(15);
         info.setTextColor(Color.DKGRAY);
         root.addView(info,new LinearLayout.LayoutParams(-1,-2));
 
-        setContentView(root);
-        handleShare(getIntent());
+        setContentView(sv);
     }
 
-    @Override protected void onNewIntent(Intent i){
-        super.onNewIntent(i);
-        setIntent(i);
-        handleShare(i);
-    }
-
-    private void handleShare(Intent i){
-        if(i!=null && Intent.ACTION_SEND.equals(i.getAction())){
-            String t=i.getStringExtra(Intent.EXTRA_TEXT);
-            if(t!=null){ link.setText(t); }
-        }
-    }
-
-    private void resolve(){
-        final String u=link.getText().toString().trim();
-        if(u.isEmpty()){ Toast.makeText(this,"Paylaşım bağlantısı yapıştır.",Toast.LENGTH_LONG).show(); return; }
+    private void beginQr(){
+        if(polling)return;
         start.setEnabled(false);
-        status.setText("TeraBox bağlantısı çözülüyor...");
-        new Thread(() -> {
+        status.setText("QR oturumu hazırlanıyor...");
+        new Thread(()->{
             try{
-                ShareResolver.Result r=ShareResolver.resolveAll(u);
-                if(r.files.isEmpty()) throw new Exception("İndirilebilir dosya bulunamadı.");
-                int queued=0;
-                for(ShareResolver.FileItem f:r.files){
-                    if(f.downloadUrl==null || f.downloadUrl.isEmpty()) continue;
-                    Intent i=new Intent(this,FastDownloadService.class);
-                    i.putExtra("url",f.downloadUrl);
-                    i.putExtra("ua",ShareResolver.UA);
-                    i.putExtra("cookie",r.cookie);
-                    i.putExtra("name",f.name);
-                    i.putExtra("mime","application/octet-stream");
-                    if(Build.VERSION.SDK_INT>=26) startForegroundService(i); else startService(i);
-                    queued++;
-                }
-                final int q=queued;
-                runOnUiThread(() -> {
-                    status.setText(q+" dosya indirme kuyruğuna eklendi.");
-                    start.setEnabled(true);
+                TeraboxSessionClient.QrStart q=client.startQr();
+                runOnUiThread(()->{
+                    try{
+                        String b64=q.qrDataUrl;
+                        int comma=b64.indexOf(',');
+                        if(comma>=0)b64=b64.substring(comma+1);
+                        byte[] raw=Base64.decode(b64,Base64.DEFAULT);
+                        Bitmap bm=BitmapFactory.decodeByteArray(raw,0,raw.length);
+                        qr.setImageBitmap(bm);
+                        qr.setVisibility(View.VISIBLE);
+                        status.setText("QR hazır. TeraBox uygulamasıyla okut ve girişi onayla.");
+                    }catch(Exception e){status.setText("QR gösterilemedi: "+e.getMessage());}
                 });
+                pollQr();
             }catch(Exception e){
-                runOnUiThread(() -> {
-                    status.setText("Hata: "+e.getMessage());
+                runOnUiThread(()->{
+                    status.setText("QR başlatma hatası: "+e.getMessage());
                     start.setEnabled(true);
                 });
             }
         }).start();
+    }
+
+    private void pollQr(){
+        polling=true;
+        new Thread(()->{
+            long end=System.currentTimeMillis()+180000;
+            try{
+                while(System.currentTimeMillis()<end){
+                    TeraboxSessionClient.QrStatus s=client.checkQr();
+                    if(s.success){
+                        polling=false;
+                        runOnUiThread(()->{
+                            status.setText("TeraBox oturumu alındı. Şimdi hesabı tarayabilirsin.");
+                            qr.setVisibility(View.GONE);
+                            scan.setEnabled(true);
+                            start.setEnabled(true);
+                        });
+                        return;
+                    }
+                    final String msg=s.confirmed?"QR okundu. TeraBox uygulamasında girişi ONAYLA.":"QR okutulması bekleniyor...";
+                    runOnUiThread(()->status.setText(msg));
+                    Thread.sleep(2000);
+                }
+                throw new Exception("QR süresi doldu.");
+            }catch(Exception e){
+                polling=false;
+                runOnUiThread(()->{
+                    status.setText("QR giriş hatası: "+e.getMessage());
+                    start.setEnabled(true);
+                });
+            }
+        }).start();
+    }
+
+    private void scanFiles(){
+        scan.setEnabled(false);
+        status.setText("Hesaptaki dosyalar taranıyor...");
+        new Thread(()->{
+            try{
+                ArrayList<TeraboxSessionClient.FileEntry> files=client.listAllFiles();
+                long total=0;
+                for(TeraboxSessionClient.FileEntry f:files) total+=Math.max(0,f.size);
+                final long bytes=total;
+                runOnUiThread(()->{
+                    status.setText("BAŞARILI\nDosya sayısı: "+files.size()+"\nToplam: "+human(bytes)+"\n\nGerçek TeraBox oturumuyla hesap okunabildi.");
+                    scan.setEnabled(true);
+                });
+            }catch(Exception e){
+                runOnUiThread(()->{
+                    status.setText("Hesap tarama hatası: "+e.getMessage());
+                    scan.setEnabled(true);
+                });
+            }
+        }).start();
+    }
+
+    private static String human(long b){
+        double v=b;
+        String[] u={"B","KB","MB","GB","TB"};
+        int i=0;
+        while(v>=1024&&i<u.length-1){v/=1024;i++;}
+        return String.format(Locale.US,"%.2f %s",v,u[i]);
     }
 }
