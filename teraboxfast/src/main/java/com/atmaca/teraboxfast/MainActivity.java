@@ -85,7 +85,7 @@ public class MainActivity extends Activity {
         IndexDb db=new IndexDb(this);
         int count=db.count();
         boolean on=IndexDb.isEnabled(this);
-        status.setText("İndeksleme: "+(on?"AÇIK":"KAPALI")+"\nTelefona kaydedilen kayıt: "+count+"\n\nTeraBox açıkken görülen kayıtlar otomatik olarak telefon hafızasına yazılır.");
+        status.setText("İndeksleme: "+(on?"AÇIK":"KAPALI")+"\nSeçili klasör kuyruğu: "+db.selectedCount()+"\nToplam görülen kayıt: "+count+"\n\nSelect All / Deselect All ekranında görülen klasörler otomatik olarak telefon hafızasına kaydedilir.");
     }
 
     @Override protected void onDestroy(){
