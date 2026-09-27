@@ -85,6 +85,7 @@ public class MainActivity extends Activity {
 
     private File currentDir = new File("/storage/emulated/0");
     private boolean clipboardMove = false;
+    private boolean suppressSearchWatcher = false;
 
     private ListView listView;
     private FileAdapter adapter;
@@ -223,6 +224,7 @@ public class MainActivity extends Activity {
         searchBox.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (suppressSearchWatcher) return;
                 scheduleSearch(s == null ? "" : s.toString());
             }
             @Override public void afterTextChanged(Editable s) {}
@@ -248,6 +250,7 @@ public class MainActivity extends Activity {
         listView.setDividerHeight(1);
         listView.setFastScrollEnabled(true);
         listView.setLongClickable(true);
+        listView.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
         adapter = new FileAdapter();
         listView.setAdapter(adapter);
         listView.setOnItemClickListener((parent, view, position, id) -> {
@@ -255,12 +258,12 @@ public class MainActivity extends Activity {
             if (!selected.isEmpty()) {
                 toggleSelection(f);
             } else if (f.isDirectory()) {
+                searchGeneration++;
+                searchHandler.removeCallbacksAndMessages(null);
+                suppressSearchWatcher = true;
+                searchBox.setText("");
+                suppressSearchWatcher = false;
                 currentDir = f;
-                if (searchBox != null && searchBox.getText().length() > 0) {
-                    searchGeneration++;
-                    searchHandler.removeCallbacksAndMessages(null);
-                    searchBox.setText("");
-                }
                 loadDirectory(f);
             } else if (isImageFile(f)) {
                 openImageViewer(f);
@@ -271,6 +274,11 @@ public class MainActivity extends Activity {
             } else {
                 openFile(f);
             }
+        });
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            if (position < 0 || position >= shownItems.size()) return true;
+            toggleSelection(shownItems.get(position));
+            return true;
         });
         root.addView(listView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -459,11 +467,11 @@ public class MainActivity extends Activity {
             return;
         }
 
-        statusView.setText("Aranıyor…");
         shownItems.clear();
         adapter.notifyDataSetChanged();
+        statusView.setText("Aranıyor…");
         final File rootDir = currentDir;
-        searchHandler.postDelayed(() -> runRecursiveSearch(query, generation, rootDir), 180);
+        searchHandler.postDelayed(() -> runRecursiveSearch(query, generation, rootDir), 250);
     }
 
     private void runRecursiveSearch(String query, int generation, File rootDir) {
@@ -471,8 +479,6 @@ public class MainActivity extends Activity {
             List<File> found = new ArrayList<>();
             ArrayDeque<File> stack = new ArrayDeque<>();
             stack.push(rootDir);
-            long lastPublish = 0L;
-            int scanned = 0;
 
             while (!stack.isEmpty()) {
                 if (generation != searchGeneration || Thread.currentThread().isInterrupted()) return;
@@ -488,29 +494,9 @@ public class MainActivity extends Activity {
 
                 for (File child : children) {
                     if (generation != searchGeneration || Thread.currentThread().isInterrupted()) return;
-                    scanned++;
-
                     String name = child.getName().toLowerCase(Locale.ROOT);
                     if (name.contains(query)) found.add(child);
                     if (child.isDirectory() && child.canRead()) stack.push(child);
-
-                    long now = android.os.SystemClock.uptimeMillis();
-                    if (now - lastPublish >= 350) {
-                        lastPublish = now;
-                        List<File> snapshot = new ArrayList<>(found);
-                        int scannedNow = scanned;
-                        runOnUiThread(() -> {
-                            if (generation != searchGeneration) return;
-                            if (!currentDir.getAbsolutePath().equals(rootDir.getAbsolutePath())) return;
-                            String liveQuery = searchBox.getText().toString().trim().toLowerCase(Locale.ROOT);
-                            if (!liveQuery.equals(query)) return;
-
-                            shownItems.clear();
-                            shownItems.addAll(snapshot);
-                            adapter.notifyDataSetChanged();
-                            statusView.setText(snapshot.size() + " sonuç • aranıyor");
-                        });
-                    }
                 }
             }
 
@@ -535,6 +521,11 @@ public class MainActivity extends Activity {
     private void goUp() {
         File p = currentDir.getParentFile();
         if (p != null && p.canRead()) {
+            searchGeneration++;
+            searchHandler.removeCallbacksAndMessages(null);
+            suppressSearchWatcher = true;
+            searchBox.setText("");
+            suppressSearchWatcher = false;
             currentDir = p;
             loadDirectory(currentDir);
         }
@@ -1018,15 +1009,14 @@ public class MainActivity extends Activity {
             } else h = (Holder) convertView.getTag();
 
             File f = shownItems.get(position);
-            convertView.setLongClickable(true);
-            convertView.setOnLongClickListener(v -> {
-                toggleSelection(f);
-                return true;
-            });
+            convertView.setLongClickable(false);
+            convertView.setFocusable(false);
             h.icon.setFocusable(false);
             h.icon.setClickable(false);
             h.name.setFocusable(false);
+            h.name.setClickable(false);
             h.detail.setFocusable(false);
+            h.detail.setClickable(false);
             h.icon.setTag(null);
             h.icon.setImageDrawable(null);
             h.icon.setBackgroundColor(f.isDirectory() ? Color.rgb(255, 244, 181) : Color.rgb(233, 239, 248));
