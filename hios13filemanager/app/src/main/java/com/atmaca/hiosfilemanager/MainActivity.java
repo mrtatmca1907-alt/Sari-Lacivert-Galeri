@@ -256,6 +256,11 @@ public class MainActivity extends Activity {
                 toggleSelection(f);
             } else if (f.isDirectory()) {
                 currentDir = f;
+                if (searchBox != null && searchBox.getText().length() > 0) {
+                    searchGeneration++;
+                    searchHandler.removeCallbacksAndMessages(null);
+                    searchBox.setText("");
+                }
                 loadDirectory(f);
             } else if (isImageFile(f)) {
                 openImageViewer(f);
@@ -407,8 +412,14 @@ public class MainActivity extends Activity {
                     FileObserver.MOVED_TO) {
                 @Override
                 public void onEvent(int event, String path) {
-                    refreshHandler.removeCallbacks(delayedRefresh);
-                    refreshHandler.postDelayed(delayedRefresh, 250);
+                    runOnUiThread(() -> {
+                        if (searchBox != null && searchBox.getText() != null &&
+                                !searchBox.getText().toString().trim().isEmpty()) {
+                            return;
+                        }
+                        refreshHandler.removeCallbacks(delayedRefresh);
+                        refreshHandler.postDelayed(delayedRefresh, 400);
+                    });
                 }
             };
             dirObserver.startWatching();
@@ -449,8 +460,10 @@ public class MainActivity extends Activity {
         }
 
         statusView.setText("Aranıyor…");
+        shownItems.clear();
+        adapter.notifyDataSetChanged();
         final File rootDir = currentDir;
-        searchHandler.postDelayed(() -> runRecursiveSearch(query, generation, rootDir), 220);
+        searchHandler.postDelayed(() -> runRecursiveSearch(query, generation, rootDir), 180);
     }
 
     private void runRecursiveSearch(String query, int generation, File rootDir) {
@@ -458,6 +471,8 @@ public class MainActivity extends Activity {
             List<File> found = new ArrayList<>();
             ArrayDeque<File> stack = new ArrayDeque<>();
             stack.push(rootDir);
+            long lastPublish = 0L;
+            int scanned = 0;
 
             while (!stack.isEmpty()) {
                 if (generation != searchGeneration || Thread.currentThread().isInterrupted()) return;
@@ -473,10 +488,29 @@ public class MainActivity extends Activity {
 
                 for (File child : children) {
                     if (generation != searchGeneration || Thread.currentThread().isInterrupted()) return;
+                    scanned++;
 
                     String name = child.getName().toLowerCase(Locale.ROOT);
                     if (name.contains(query)) found.add(child);
                     if (child.isDirectory() && child.canRead()) stack.push(child);
+
+                    long now = android.os.SystemClock.uptimeMillis();
+                    if (now - lastPublish >= 350) {
+                        lastPublish = now;
+                        List<File> snapshot = new ArrayList<>(found);
+                        int scannedNow = scanned;
+                        runOnUiThread(() -> {
+                            if (generation != searchGeneration) return;
+                            if (!currentDir.getAbsolutePath().equals(rootDir.getAbsolutePath())) return;
+                            String liveQuery = searchBox.getText().toString().trim().toLowerCase(Locale.ROOT);
+                            if (!liveQuery.equals(query)) return;
+
+                            shownItems.clear();
+                            shownItems.addAll(snapshot);
+                            adapter.notifyDataSetChanged();
+                            statusView.setText(snapshot.size() + " sonuç • aranıyor");
+                        });
+                    }
                 }
             }
 
