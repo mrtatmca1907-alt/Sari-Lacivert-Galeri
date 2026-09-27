@@ -5,16 +5,14 @@ import android.app.Activity;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
-import android.net.Uri;
 import android.os.*;
 import android.view.*;
-import android.webkit.*;
 import android.widget.*;
 
 public class MainActivity extends Activity {
-    private WebView web;
     private EditText link;
     private TextView status;
+    private Button start;
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -24,68 +22,33 @@ public class MainActivity extends Activity {
 
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(24,24,24,24);
         root.setBackgroundColor(Color.WHITE);
 
         status=new TextView(this);
-        status.setText("Google girişi normal tarayıcıda. TeraBox paylaşım linkini buraya gönder/aç; indirme ATMACA motoruna geçer.");
+        status.setText("TeraBox paylaşım bağlantısını yapıştır. Giriş gerekmez.");
         status.setTextColor(Color.WHITE);
         status.setTextSize(16);
         status.setBackgroundColor(Color.rgb(7,26,82));
         status.setPadding(24,20,24,20);
         root.addView(status,new LinearLayout.LayoutParams(-1,-2));
 
-        Button loginBtn=new Button(this);
-        loginBtn.setText("TeraBox'a Tarayıcıda Giriş");
-        loginBtn.setOnClickListener(v -> {
-            Intent i=new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.terabox.com/wap/outlogin"));
-            startActivity(i);
-        });
-        root.addView(loginBtn,new LinearLayout.LayoutParams(-1,-2));
-
-        LinearLayout row=new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
         link=new EditText(this);
-        link.setHint("TeraBox paylaşım bağlantısını yapıştır");
+        link.setHint("https://www.terabox.com/s/...");
         link.setSingleLine(true);
-        row.addView(link,new LinearLayout.LayoutParams(0,-2,1));
+        root.addView(link,new LinearLayout.LayoutParams(-1,-2));
 
-        Button openBtn=new Button(this);
-        openBtn.setText("Aç");
-        openBtn.setOnClickListener(v -> openShared(link.getText().toString()));
-        row.addView(openBtn,new LinearLayout.LayoutParams(-2,-2));
-        root.addView(row,new LinearLayout.LayoutParams(-1,-2));
+        start=new Button(this);
+        start.setText("BAĞLANTIYI ÇÖZ VE TÜMÜNÜ İNDİR");
+        start.setOnClickListener(v -> resolve());
+        root.addView(start,new LinearLayout.LayoutParams(-1,-2));
 
-        web=new WebView(this);
-        WebSettings s=web.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setDatabaseEnabled(true);
-        s.setUseWideViewPort(true);
-        s.setLoadWithOverviewMode(true);
-        s.setSupportMultipleWindows(false);
-        CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web,true);
+        TextView info=new TextView(this);
+        info.setText("\n• Gmail/Google girişi yok\n• Dosya boyutu sınırı yok\n• Wi-Fi ve mobil veri kullanılabilir\n• Dosyalar Download/ATMACA-TeraBox içine iner\n• Sunucu Range desteklerse çok parçalı indirme kullanılır");
+        info.setTextSize(15);
+        info.setTextColor(Color.DKGRAY);
+        root.addView(info,new LinearLayout.LayoutParams(-1,-2));
 
-        web.setWebViewClient(new WebViewClient(){
-            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r){ return false; }
-            @Override public void onPageFinished(WebView v,String u){ status.setText("Açıldı: "+u); }
-        });
-        web.setWebChromeClient(new WebChromeClient());
-
-        web.setDownloadListener((url,ua,cd,mime,len)->{
-            String cookie=CookieManager.getInstance().getCookie(url);
-            String name=URLUtil.guessFileName(url,cd,mime);
-            Intent i=new Intent(this,FastDownloadService.class);
-            i.putExtra("url",url);
-            i.putExtra("ua",ua);
-            i.putExtra("cookie",cookie);
-            i.putExtra("name",name);
-            i.putExtra("mime",mime);
-            if(Build.VERSION.SDK_INT>=26) startForegroundService(i); else startService(i);
-            Toast.makeText(this,"ATMACA indirme motoruna aktarıldı: "+name,Toast.LENGTH_LONG).show();
-        });
-
-        root.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
         handleShare(getIntent());
     }
@@ -97,30 +60,44 @@ public class MainActivity extends Activity {
     }
 
     private void handleShare(Intent i){
-        if(i==null) return;
-        if(Intent.ACTION_SEND.equals(i.getAction())){
+        if(i!=null && Intent.ACTION_SEND.equals(i.getAction())){
             String t=i.getStringExtra(Intent.EXTRA_TEXT);
-            if(t!=null){
-                link.setText(t);
-                openShared(t);
+            if(t!=null){ link.setText(t); }
+        }
+    }
+
+    private void resolve(){
+        final String u=link.getText().toString().trim();
+        if(u.isEmpty()){ Toast.makeText(this,"Paylaşım bağlantısı yapıştır.",Toast.LENGTH_LONG).show(); return; }
+        start.setEnabled(false);
+        status.setText("TeraBox bağlantısı çözülüyor...");
+        new Thread(() -> {
+            try{
+                ShareResolver.Result r=ShareResolver.resolveAll(u);
+                if(r.files.isEmpty()) throw new Exception("İndirilebilir dosya bulunamadı.");
+                int queued=0;
+                for(ShareResolver.FileItem f:r.files){
+                    if(f.downloadUrl==null || f.downloadUrl.isEmpty()) continue;
+                    Intent i=new Intent(this,FastDownloadService.class);
+                    i.putExtra("url",f.downloadUrl);
+                    i.putExtra("ua",ShareResolver.UA);
+                    i.putExtra("cookie",r.cookie);
+                    i.putExtra("name",f.name);
+                    i.putExtra("mime","application/octet-stream");
+                    if(Build.VERSION.SDK_INT>=26) startForegroundService(i); else startService(i);
+                    queued++;
+                }
+                final int q=queued;
+                runOnUiThread(() -> {
+                    status.setText(q+" dosya indirme kuyruğuna eklendi.");
+                    start.setEnabled(true);
+                });
+            }catch(Exception e){
+                runOnUiThread(() -> {
+                    status.setText("Hata: "+e.getMessage());
+                    start.setEnabled(true);
+                });
             }
-        }
-    }
-
-    private void openShared(String t){
-        if(t==null) return;
-        t=t.trim();
-        int p=t.indexOf("http");
-        if(p>0) t=t.substring(p);
-        if(!t.startsWith("http")){
-            Toast.makeText(this,"Geçerli bir TeraBox bağlantısı değil.",Toast.LENGTH_LONG).show();
-            return;
-        }
-        link.setText(t);
-        web.loadUrl(t);
-    }
-
-    @Override public void onBackPressed(){
-        if(web!=null && web.canGoBack()) web.goBack(); else super.onBackPressed();
+        }).start();
     }
 }
