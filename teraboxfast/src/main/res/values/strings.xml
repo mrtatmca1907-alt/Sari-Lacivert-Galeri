@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ATMACA Tera Kopyalayıcı</string>
+    <string name="accessibility_desc">TeraBox ekranındaki dosya ve klasör bilgilerini telefonun yerel indeksine kaydeder.</string>
+</resources>
