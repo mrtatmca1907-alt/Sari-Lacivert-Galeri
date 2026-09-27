@@ -59,7 +59,7 @@ public class MainActivity extends Activity {
         });
         root.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
-        web.loadUrl("https://www.terabox.com/");
+        web.loadUrl("https://www.terabox.com/wap/outlogin");
     }
 
     @Override public void onBackPressed(){
