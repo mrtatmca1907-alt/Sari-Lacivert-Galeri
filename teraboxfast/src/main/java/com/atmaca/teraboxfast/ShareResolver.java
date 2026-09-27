@@ -7,6 +7,7 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.regex.*;
+import java.util.concurrent.*;
 
 public class ShareResolver {
     public static final String UA="Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Mobile Safari/537.36";
@@ -41,6 +42,29 @@ public class ShareResolver {
 
         Tokens tok=tokens(surl);
         collectRecursive(surl, "/", root.optJSONArray("list"), shareId, uk, tok, out.files);
+
+        final String sid=shareId, fuk=uk, fsurl=surl;
+        ExecutorService pool=Executors.newFixedThreadPool(8);
+        ArrayList<Future<?>> jobs=new ArrayList<>();
+        for(FileItem item:out.files){
+            if(item.downloadUrl!=null && !item.downloadUrl.isEmpty()) continue;
+            jobs.add(pool.submit(() -> {
+                try{
+                    item.downloadUrl=download(sid,fuk,item.fsId,tok,fsurl);
+                }catch(Exception e){
+                    throw new RuntimeException(e);
+                }
+            }));
+        }
+        pool.shutdown();
+        Exception first=null;
+        for(Future<?> job:jobs){
+            try{ job.get(); }
+            catch(Exception e){ if(first==null) first=new Exception(e.getCause()!=null?e.getCause().getMessage():e.getMessage()); }
+        }
+        if(!pool.awaitTermination(10,TimeUnit.SECONDS)) pool.shutdownNow();
+        if(first!=null) throw first;
+
         out.cookie=COOKIE;
         return out;
     }
@@ -61,7 +85,6 @@ public class ShareResolver {
                 if("0".equals(fs)) fs=o.optString("fs_id");
                 if(fs==null || fs.isEmpty()) continue;
                 String dl=o.optString("dlink","");
-                if(dl.isEmpty()) dl=download(shareId,uk,fs,tok,surl);
                 FileItem f=new FileItem();
                 f.name=name; f.path=path; f.fsId=fs; f.size=o.optLong("size",0); f.downloadUrl=dl;
                 out.add(f);
@@ -200,7 +223,7 @@ public class ShareResolver {
 
     private static String getText(String u,String ref) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection();
-        c.setConnectTimeout(20000); c.setReadTimeout(30000); c.setInstanceFollowRedirects(true);
+        c.setConnectTimeout(10000); c.setReadTimeout(15000); c.setInstanceFollowRedirects(true);
         c.setRequestProperty("User-Agent",UA);
         c.setRequestProperty("Accept","*/*");
         if(!COOKIE.isEmpty()) c.setRequestProperty("Cookie",COOKIE);
@@ -215,7 +238,7 @@ public class ShareResolver {
 
     private static String post(String u,String body,String ref) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection();
-        c.setConnectTimeout(20000); c.setReadTimeout(30000); c.setDoOutput(true); c.setRequestMethod("POST");
+        c.setConnectTimeout(10000); c.setReadTimeout(15000); c.setDoOutput(true); c.setRequestMethod("POST");
         c.setRequestProperty("User-Agent",UA);
         c.setRequestProperty("Content-Type","application/x-www-form-urlencoded");
         if(!COOKIE.isEmpty()) c.setRequestProperty("Cookie",COOKIE);
