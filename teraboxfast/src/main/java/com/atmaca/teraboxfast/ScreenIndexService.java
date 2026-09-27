@@ -80,7 +80,7 @@ public class ScreenIndexService extends Service {
                 String s=line.getText()==null?"":line.getText().trim();
                 if(s.isEmpty())continue;
                 db.save(s,"OCR","Text.Line","TeraBox Screen");
-                if(isFolderName(s))db.saveSelectedFolder(s);
+                if(isFolderName(s))db.saveDiscoveredFolder(s);
             }
         }
     }
