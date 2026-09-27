@@ -1,19 +1,23 @@
 package com.atmaca.teraboxfast;
 
-import android.app.Activity;
+import android.Manifest;
+import android.app.*;
 import android.content.*;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.projection.MediaProjectionManager;
 import android.os.*;
-import android.provider.Settings;
-import android.view.View;
 import android.widget.*;
 
 public class MainActivity extends Activity {
+    private static final int REQ_CAPTURE=9001;
     private TextView status;
-    private Handler handler=new Handler(Looper.getMainLooper());
+    private final Handler handler=new Handler(Looper.getMainLooper());
 
     @Override public void onCreate(Bundle b){
         super.onCreate(b);
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},7);
 
         ScrollView sv=new ScrollView(this);
         LinearLayout root=new LinearLayout(this);
@@ -36,60 +40,63 @@ public class MainActivity extends Activity {
         status.setPadding(8,28,8,28);
         root.addView(status,new LinearLayout.LayoutParams(-1,-2));
 
-        Button enable=new Button(this);
-        enable.setText("1) OKUMA SERVİSİNİ AÇ");
-        enable.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        root.addView(enable,new LinearLayout.LayoutParams(-1,-2));
+        Button start=new Button(this);
+        start.setText("1) EKRAN OKUMAYI BAŞLAT");
+        start.setOnClickListener(v->requestCapture());
+        root.addView(start,new LinearLayout.LayoutParams(-1,-2));
 
         Button tera=new Button(this);
-        tera.setText("2) TERABOX'I AÇ VE İNDEKSLE");
+        tera.setText("2) TERABOX'I AÇ");
         tera.setOnClickListener(v->{
-            IndexDb.setEnabled(this,true);
             Intent i=getPackageManager().getLaunchIntentForPackage("com.dubox.drive");
-            if(i!=null) startActivity(i);
+            if(i!=null)startActivity(i);
             else Toast.makeText(this,"TeraBox uygulaması bulunamadı.",Toast.LENGTH_LONG).show();
         });
         root.addView(tera,new LinearLayout.LayoutParams(-1,-2));
 
         Button stop=new Button(this);
-        stop.setText("İNDEKSLEMEYİ DURDUR");
-        stop.setOnClickListener(v->IndexDb.setEnabled(this,false));
+        stop.setText("EKRAN OKUMAYI DURDUR");
+        stop.setOnClickListener(v->stopService(new Intent(this,ScreenIndexService.class)));
         root.addView(stop,new LinearLayout.LayoutParams(-1,-2));
 
         Button clear=new Button(this);
         clear.setText("KAYITLI İNDEKSİ TEMİZLE");
-        clear.setOnClickListener(v->{
-            new IndexDb(this).clear();
-            refresh();
-        });
+        clear.setOnClickListener(v->{new IndexDb(this).clear(); refresh();});
         root.addView(clear,new LinearLayout.LayoutParams(-1,-2));
 
         TextView info=new TextView(this);
-        info.setText("\nBu ilk test sürümünde TeraBox ekranında görünen dosya/klasör kayıtları telefonun kendi SQLite veritabanına yazılır. TeraBox listesini otomatik aşağı kaydırır. Klasörlerin içine sen girdikçe onları da aynı indekse ekler.\n\nİndirme aşamasını bu indeks doğrulandıktan sonra bağlayacağız.");
+        info.setText("\nBu sürüm Erişilebilirlik izni istemez. Android'in ekran paylaşımı izniyle TeraBox ekranını görüntü olarak okur.\n\nİlk test: TeraBox'ta seçili klasör listesinde aşağı kaydır. Uygulama gördüğü klasör adlarını telefon hafızasındaki veritabanına ekler.");
         info.setTextSize(15);
         info.setTextColor(Color.DKGRAY);
         root.addView(info,new LinearLayout.LayoutParams(-1,-2));
 
         setContentView(sv);
-        handler.post(refreshLoop);
+        handler.post(loop);
     }
 
-    private final Runnable refreshLoop=new Runnable(){
-        @Override public void run(){
-            refresh();
-            handler.postDelayed(this,1000);
+    private void requestCapture(){
+        MediaProjectionManager m=(MediaProjectionManager)getSystemService(MEDIA_PROJECTION_SERVICE);
+        startActivityForResult(m.createScreenCaptureIntent(),REQ_CAPTURE);
+    }
+
+    @Override protected void onActivityResult(int req,int result,Intent data){
+        super.onActivityResult(req,result,data);
+        if(req==REQ_CAPTURE && result==RESULT_OK && data!=null){
+            Intent s=new Intent(this,ScreenIndexService.class);
+            s.putExtra("resultCode",result);
+            s.putExtra("resultData",data);
+            if(Build.VERSION.SDK_INT>=26)startForegroundService(s); else startService(s);
         }
+    }
+
+    private final Runnable loop=new Runnable(){
+        @Override public void run(){refresh();handler.postDelayed(this,1000);}
     };
 
     private void refresh(){
         IndexDb db=new IndexDb(this);
-        int count=db.count();
-        boolean on=IndexDb.isEnabled(this);
-        status.setText("İndeksleme: "+(on?"AÇIK":"KAPALI")+"\nSeçili klasör kuyruğu: "+db.selectedCount()+"\nToplam görülen kayıt: "+count+"\n\nSelect All / Deselect All ekranında görülen klasörler otomatik olarak telefon hafızasına kaydedilir.");
+        status.setText("Kayıtlı seçili klasör: "+db.selectedCount()+"\nToplam OCR kaydı: "+db.count()+"\n\nEkran okuma açıksa TeraBox listesini kaydırdıkça sayı yükselir.");
     }
 
-    @Override protected void onDestroy(){
-        handler.removeCallbacks(refreshLoop);
-        super.onDestroy();
-    }
+    @Override protected void onDestroy(){handler.removeCallbacks(loop);super.onDestroy();}
 }
