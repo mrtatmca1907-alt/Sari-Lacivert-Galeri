@@ -149,12 +149,6 @@ public class MainActivity extends Activity {
             updateSelectionBar();
             return;
         }
-        if (!clipboard.isEmpty()) {
-            clipboard.clear();
-            pasteButton.setVisibility(View.GONE);
-            toast("Kopyalama/taşıma iptal edildi");
-            return;
-        }
         File root = new File("/storage/emulated/0");
         if (!currentDir.getAbsolutePath().equals(root.getAbsolutePath())) {
             File parent = currentDir.getParentFile();
@@ -167,6 +161,12 @@ public class MainActivity extends Activity {
             currentDir = root;
             searchBox.setText("");
             loadDirectory(currentDir);
+            return;
+        }
+        if (!clipboard.isEmpty()) {
+            clipboard.clear();
+            pasteButton.setVisibility(View.GONE);
+            toast("Kopyalama/taşıma iptal edildi");
             return;
         }
         super.onBackPressed();
@@ -246,6 +246,30 @@ public class MainActivity extends Activity {
         pasteParams.setMargins(dp(8), 0, dp(8), dp(6));
         root.addView(pasteButton, pasteParams);
 
+        selectionBar = new LinearLayout(this);
+        selectionBar.setOrientation(LinearLayout.HORIZONTAL);
+        selectionBar.setGravity(Gravity.CENTER);
+        selectionBar.setPadding(dp(6), dp(6), dp(6), dp(6));
+        selectionBar.setBackgroundColor(BLUE);
+        selectionBar.setVisibility(View.GONE);
+
+        Button copy = bottomButton("Kopyala");
+        copy.setOnClickListener(v -> setClipboard(false));
+        Button move = bottomButton("Taşı");
+        move.setOnClickListener(v -> setClipboard(true));
+        Button rename = bottomButton("Yeniden Adlandır");
+        rename.setOnClickListener(v -> renameSelected());
+        Button delete = bottomButton("Sil");
+        delete.setOnClickListener(v -> confirmDelete());
+        selectionBar.addView(copy, equalParams());
+        selectionBar.addView(move, equalParams());
+        selectionBar.addView(rename, equalParams());
+        selectionBar.addView(delete, equalParams());
+        root.addView(selectionBar);        LinearLayout.LayoutParams selectionParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(56));
+        selectionParams.setMargins(dp(8), 0, dp(8), dp(6));
+        root.addView(selectionBar, selectionParams);
+
         listView = new ListView(this);
         listView.setDividerHeight(1);
         listView.setFastScrollEnabled(true);
@@ -288,26 +312,7 @@ public class MainActivity extends Activity {
         statusView.setTextSize(12);
         root.addView(statusView);
 
-        selectionBar = new LinearLayout(this);
-        selectionBar.setOrientation(LinearLayout.HORIZONTAL);
-        selectionBar.setGravity(Gravity.CENTER);
-        selectionBar.setPadding(dp(6), dp(6), dp(6), dp(6));
-        selectionBar.setBackgroundColor(BLUE);
-        selectionBar.setVisibility(View.GONE);
 
-        Button copy = bottomButton("Kopyala");
-        copy.setOnClickListener(v -> setClipboard(false));
-        Button move = bottomButton("Taşı");
-        move.setOnClickListener(v -> setClipboard(true));
-        Button rename = bottomButton("Yeniden Adlandır");
-        rename.setOnClickListener(v -> renameSelected());
-        Button delete = bottomButton("Sil");
-        delete.setOnClickListener(v -> confirmDelete());
-        selectionBar.addView(copy, equalParams());
-        selectionBar.addView(move, equalParams());
-        selectionBar.addView(rename, equalParams());
-        selectionBar.addView(delete, equalParams());
-        root.addView(selectionBar);
 
         setContentView(root);
     }
@@ -340,7 +345,7 @@ public class MainActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams equalParams() {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(48), 1f);
         p.setMargins(dp(3), 0, dp(3), 0);
         return p;
     }
@@ -387,6 +392,12 @@ public class MainActivity extends Activity {
         long free = storageRoot.getUsableSpace();
         long used = Math.max(0, total - free);
         storageView.setText("Depolama  •  " + formatBytes(used) + " kullanılıyor  •  " + formatBytes(free) + " boş");
+        if (!clipboard.isEmpty()) {
+            pasteButton.setText(clipboardMove
+                    ? clipboard.size() + " öğeyi BURAYA TAŞI"
+                    : clipboard.size() + " öğeyi BURAYA KOPYALA");
+            pasteButton.setVisibility(View.VISIBLE);
+        }
         statusView.setText("Yükleniyor…");
         selected.clear();
         updateSelectionBar();
@@ -550,15 +561,28 @@ public class MainActivity extends Activity {
     }
 
     private void setClipboard(boolean move) {
+        List<File> picked = selectedFiles();
+        if (picked.isEmpty()) {
+            toast("Önce dosya seç");
+            return;
+        }
+
         clipboard.clear();
-        clipboard.addAll(selectedFiles());
+        clipboard.addAll(picked);
         clipboardMove = move;
+
         selected.clear();
-        updateSelectionBar();
         adapter.notifyDataSetChanged();
-        pasteButton.setText(move ? "Buraya Taşı" : "Buraya Kopyala");
+        updateSelectionBar();
+
+        pasteButton.setText(move
+                ? clipboard.size() + " öğeyi BURAYA TAŞI"
+                : clipboard.size() + " öğeyi BURAYA KOPYALA");
         pasteButton.setVisibility(View.VISIBLE);
-        toast(clipboard.size() + " öğe hazır");
+        pasteButton.bringToFront();
+        toast(move
+                ? clipboard.size() + " öğe taşıma için hazır"
+                : clipboard.size() + " öğe kopyalama için hazır");
     }
 
     private void pasteClipboard() {
