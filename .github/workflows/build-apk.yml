@@ -3,7 +3,7 @@ name: Build Sari Lacivert Galeri V2 APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, codex/hios13-viewer-fit-reset ]
 
 jobs:
   build:
@@ -27,7 +27,7 @@ jobs:
           java-version: '17'
 
       - name: Android SDK kur
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: API 37 kur
         run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"

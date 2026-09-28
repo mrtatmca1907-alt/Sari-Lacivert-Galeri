@@ -21,6 +21,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
     var onSingleTapAction: (() -> Unit)? = null
     var onPreviousAction: (() -> Unit)? = null
     var onNextAction: (() -> Unit)? = null
+    var onZoomChanged: ((Boolean) -> Unit)? = null
 
     private val drawMatrix = Matrix()
     private var shownBitmap: Bitmap? = null
@@ -71,7 +72,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
             }
 
             override fun onScaleEnd(detector: ScaleGestureDetector) {
-                if (userScale < 1.015f) resetTransform()
+                resetTransform()
             }
         }
     )
@@ -103,6 +104,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
                     translateY = ratio * translateY + (1f - ratio) * (e.y - cy)
                     userScale = target
                     updateImageMatrix()
+                    onZoomChanged?.invoke(true)
                 }
                 return true
             }
@@ -137,6 +139,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
         translateX = 0f
         translateY = 0f
         updateImageMatrix()
+        onZoomChanged?.invoke(false)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -198,12 +201,7 @@ class StableZoomImageView(context: Context) : ImageView(context) {
                         if (dx > 0f) onPreviousAction?.invoke() else onNextAction?.invoke()
                     }
                 }
-                if (userScale <= 1.015f) {
-                    userScale = 1f
-                    translateX = 0f
-                    translateY = 0f
-                    updateImageMatrix()
-                }
+                if (hadMultiTouch || userScale <= 1.015f) resetTransform()
             }
 
             MotionEvent.ACTION_CANCEL -> {
