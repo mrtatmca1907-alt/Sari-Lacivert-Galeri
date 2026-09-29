@@ -17,6 +17,6 @@ class MainActivity : AppCompatActivity() {
  private fun excluded(f:DocumentFile):Boolean{val n=(f.name?:"").lowercase(Locale.ROOT).trim();return n.startsWith("paket_1000_")}
  private fun collect(d:DocumentFile,o:MutableList<DocumentFile>){d.listFiles().forEach{f->if(f.isDirectory){if(!excluded(f))collect(f,o)}else if(f.isFile)o+=f}}
  private fun nextNo(r:DocumentFile):Int{val a=r.listFiles().mapNotNull{Regex("""(?i)^paket_1000_(\d+)$""").find(it.name?:"")?.groupValues?.getOrNull(1)?.toIntOrNull()};return(a.maxOrNull()?:0)+1}
- private fun move(s:DocumentFile,d:DocumentFile):Boolean{val n=s.name?:"dosya_"+System.nanoTime();val t=d.createFile(s.type?:"application/octet-stream",unique(d,n))?:return false;return try{contentResolver.openInputStream(s.uri).use{i->contentResolver.openOutputStream(t.uri,"w").use{o->if(i==null||o==null)return false;i.copyTo(o)}};DocumentsContract.deleteDocument(contentResolver,s.uri);true}catch(e:Exception){t.delete();false}}
+ private fun move(s:DocumentFile,d:DocumentFile):Boolean{return try{DocumentsContract.moveDocument(contentResolver,s.uri,DocumentsContract.buildDocumentUriUsingTree(s.uri,DocumentsContract.getTreeDocumentId(s.uri)),d.uri)!=null}catch(e:Exception){false}}
  private fun unique(d:DocumentFile,n:String):String{if(d.findFile(n)==null)return n;val x=n.lastIndexOf('.');val b=if(x>0)n.substring(0,x)else n;val e=if(x>0)n.substring(x)else"";var i=1;while(d.findFile(b+"_"+i+e)!=null)i++;return b+"_"+i+e}
 }
