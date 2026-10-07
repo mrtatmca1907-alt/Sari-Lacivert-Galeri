@@ -176,21 +176,21 @@ namespace AtmacaFotografToplayici
                         {
                             if (!ImageExtensions.Contains(Path.GetExtension(file))) continue;
                             var dest = GetUniqueDestination(finalTarget, Path.GetFileName(file));
-                            File.Copy(file, dest, false);
+                            MoveFileRobust(file, dest);
                             copied++;
-                            if ((copied % 50) == 0) BeginInvoke((Action)(() => statusLabel.Text = copied + " fotoğraf kopyalandı..."));
+                            if ((copied % 50) == 0) BeginInvoke((Action)(() => statusLabel.Text = copied + " fotoğraf taşındı/g..."));
                         }
                         catch { errors++; }
                     }
                 }
             });
 
-            statusLabel.Text = "Tamamlandı. Kopyalanan: " + copied + " | Hata: " + errors + " | Atlanan: " + skipped;
+            statusLabel.Text = "Tamamlandı. Taşınan: " + copied + " | Hata: " + errors + " | Atlanan: " + skipped;
             SetBusy(false);
             MessageBox.Show(this,
-                "İşlem tamamlandı.\n\nKopyalanan fotoğraf: " + copied +
+                "İşlem tamamlandı.\n\nTaşınan fotoğraf: " + copied +
                 "\nHata: " + errors +
-                "\n\nKaynak dosyalara dokunulmadı.",
+                "\n\nKaynak fotoğraflar hedefe taşındı.",
                 "ATMACA - Fotoğraf Toplayıcı", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
@@ -219,6 +219,19 @@ namespace AtmacaFotografToplayici
                 try { dirs = Directory.GetDirectories(full); } catch { }
                 if (dirs != null)
                     foreach (var d in dirs) stack.Push(d);
+            }
+        }
+
+        static void MoveFileRobust(string source, string destination)
+        {
+            try
+            {
+                File.Move(source, destination);
+            }
+            catch (IOException)
+            {
+                File.Copy(source, destination, false);
+                File.Delete(source);
             }
         }
 
