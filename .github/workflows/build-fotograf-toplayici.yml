@@ -1,0 +1,35 @@
+name: Build ATMACA Fotograf Toplayici
+
+on:
+  push:
+    paths:
+      - 'windows-fotograf-toplayici/**'
+      - '.github/workflows/build-fotograf-toplayici.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile EXE
+        shell: cmd
+        run: |
+          if not exist builds mkdir builds
+          C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:anycpu /optimize+ /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /out:builds\ATMACA-Fotograf-Toplayici.exe windows-fotograf-toplayici\Program.cs
+
+      - name: Commit EXE
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add builds/ATMACA-Fotograf-Toplayici.exe
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Build ATMACA Fotograf Toplayici [skip ci]"
+            git push
+          }
