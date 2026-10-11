@@ -39,7 +39,11 @@ class MainForm:Form {
      }
     }catch{failed++;}
    };
-   scan(@"C:\");
+   string profile=Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+   foreach(string folder in new[]{"Desktop","Pictures","Downloads","Documents"}){
+    string root=Path.Combine(profile,folder);
+    if(Directory.Exists(root))scan(root);
+   }
   });
   bar.Visible=false;status.Text="Bitti! Taşınan: "+moved+" | Hata: "+failed;start.Enabled=true;
  }
