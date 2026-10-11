@@ -44,7 +44,7 @@ public class FileMoveEngineContractTest {
     }
 
     @Test
-    public void replacesExistingSameNameDestination() throws Exception {
+    public void preservesExistingSameNameDestination() throws Exception {
         Path root = temporaryFolder.newFolder("replace").toPath();
         Path source = root.resolve("aynı.jpg");
         Path target = Files.createDirectory(root.resolve("1907"));
@@ -53,7 +53,8 @@ public class FileMoveEngineContractTest {
 
         assertTrue(move(engine(), source, target));
         assertFalse(Files.exists(source));
-        assertEquals("kaynak", read(target.resolve("aynı.jpg")));
+        assertEquals("eski-hedef", read(target.resolve("aynı.jpg")));
+        assertEquals("kaynak", read(target.resolve("aynı+1.jpg")));
     }
 
     @Test
