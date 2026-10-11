@@ -8,74 +8,52 @@ import java.util.UUID;
 
 public final class FileMoveEngine {
     public boolean move(Path source, Path targetDirectory) {
-        if (source == null || targetDirectory == null) {
-            return false;
-        }
-
+        if (source == null || targetDirectory == null) return false;
         Path temporary = null;
         try {
-            if (!Files.isRegularFile(source)) {
-                return false;
-            }
-            if (Files.exists(targetDirectory) && !Files.isDirectory(targetDirectory)) {
-                return false;
-            }
-
+            if (!Files.isRegularFile(source)) return false;
             Files.createDirectories(targetDirectory);
-            Path destination = targetDirectory.resolve(source.getFileName().toString());
+            if (!Files.isDirectory(targetDirectory)) return false;
+            if (source.getParent().equals(targetDirectory)) return true;
 
-            // En hızlı yol: aynı dosya sistemi içindeyse veri kopyalamadan atomik rename.
+            String filename = source.getFileName().toString();
+            int dot = filename.lastIndexOf('.');
+            String stem = dot > 0 ? filename.substring(0, dot) : filename;
+            String ext = dot > 0 ? filename.substring(dot) : "";
+            Path destination = targetDirectory.resolve(filename);
+            int suffix = 1;
+            while (Files.exists(destination)) {
+                destination = targetDirectory.resolve(stem + "+" + suffix++ + ext);
+            }
+
+            // Fast path: metadata-only move on the same filesystem.
             try {
-                Files.move(
-                        source,
-                        destination,
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING
-                );
+                Files.move(source, destination);
                 return true;
-            } catch (IOException | UnsupportedOperationException atomicMoveUnavailable) {
-                // Farklı mount / sağlayıcı / ATOMIC_MOVE desteği yoksa güvenli kopyalama yoluna düş.
+            } catch (IOException unsupportedMove) {
+                // Cross-device or provider restrictions: verified copy fallback.
             }
 
-            long sourceSize = Files.size(source);
-            temporary = targetDirectory.resolve(
-                    "." + source.getFileName() + ".atmaca_tmp_" + UUID.randomUUID()
-            );
+            long size = Files.size(source);
+            temporary = targetDirectory.resolve("." + UUID.randomUUID() + ".atmaca_tmp");
+            Files.copy(source, temporary);
+            if (Files.size(temporary) != size) return false;
 
-            Files.copy(source, temporary, StandardCopyOption.REPLACE_EXISTING);
-            if (Files.size(temporary) != sourceSize) {
-                Files.deleteIfExists(temporary);
-                return false;
+            // Never replace an existing image, even if a name collision occurs.
+            while (Files.exists(destination)) {
+                destination = targetDirectory.resolve(stem + "+" + suffix++ + ext);
             }
-
-            try {
-                Files.move(
-                        temporary,
-                        destination,
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING
-                );
-            } catch (IOException | UnsupportedOperationException atomicReplaceUnavailable) {
-                Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
-            }
+            Files.move(temporary, destination);
             temporary = null;
-
-            if (!Files.isRegularFile(destination) || Files.size(destination) != sourceSize) {
-                return false;
-            }
-
-            // Kaynak ancak hedefin tamam olduğu doğrulandıktan sonra silinir.
+            if (Files.size(destination) != size) return false;
             Files.delete(source);
             return true;
-        } catch (Exception failure) {
-            if (temporary != null) {
-                try {
-                    Files.deleteIfExists(temporary);
-                } catch (Exception ignored) {
-                    // Kaynağı korumak birincil güvenlik şartıdır.
-                }
-            }
+        } catch (Exception ignored) {
             return false;
+        } finally {
+            if (temporary != null) {
+                try { Files.deleteIfExists(temporary); } catch (IOException ignored) { }
+            }
         }
     }
 }
