@@ -1,0 +1,20 @@
+name: Windows Photo Mover
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/windows-photo-mover.yml'
+      - 'windows-photo-mover/**'
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build GUI EXE
+        shell: pwsh
+        run: |
+          csc.exe /nologo /target:winexe /optimize+ /out:ATMACA-Fotograf-Tasiyici.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll windows-photo-mover/Program.cs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-Fotograf-Tasiyici
+          path: ATMACA-Fotograf-Tasiyici.exe
