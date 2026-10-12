@@ -2,7 +2,7 @@ package com.atmaca.kasa100;
 import android.app.*;import android.os.*;import android.content.*;import android.provider.Settings;import android.net.Uri;import android.widget.*;import android.graphics.Color;
 public class MainActivity extends Activity {
 TextView status; EditText path; Handler h=new Handler(); Runnable tick=new Runnable(){public void run(){status.setText(getSharedPreferences("state",0).getString("status","Hazır")+"\n\nKasada: "+VaultService.count(MainActivity.this)+" fotoğraf");h.postDelayed(this,1000);}};
-public void onCreate(Bundle b){super.onCreate(b);LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(28,38,28,20);l.setBackgroundColor(Color.rgb(9,35,77));setContentView(l);
+public void onCreate(Bundle b){super.onCreate(b);LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(28,38,28,20);l.setBackgroundColor(Color.rgb(9,35,77));setContentView(l);if(Build.VERSION.SDK_INT>=33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS")!=android.content.pm.PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},2);
 TextView title=new TextView(this);title.setText("ATMACA KASA 100");title.setTextSize(26);title.setTextColor(0xffffd43b);l.addView(title);
 status=new TextView(this);status.setTextColor(Color.WHITE);status.setTextSize(18);l.addView(status);
 button(l,"Dosya erişimini aç",()->permission());
