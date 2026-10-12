@@ -1,0 +1,26 @@
+name: ATMACA KASA 100 APK
+on:
+  push:
+    branches: [main]
+    paths: ['kasa100/**', '.github/workflows/build-kasa100.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build APK
+        working-directory: kasa100
+        run: gradle :app:assembleDebug :app:lintDebug --stacktrace
+      - run: cp kasa100/app/build/outputs/apk/debug/app-debug.apk ATMACA-KASA-100.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ATMACA-KASA-100
+          path: ATMACA-KASA-100.apk
