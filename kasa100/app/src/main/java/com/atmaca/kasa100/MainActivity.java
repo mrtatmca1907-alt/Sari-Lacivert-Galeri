@@ -15,7 +15,7 @@ button(l,"İşlemi durdur",()->VaultService.cancel=true);
 TextView note=new TextView(this);note.setText("Her paket ayrı klasöre çıkar. Başarıyla verilenler kasadan silinir; yeniden toplanmaz. Fotoğraflar sıkıştırılmaz. Başka uygulamaların korumalı özel alanlarına Android erişim vermez.");note.setTextColor(Color.LTGRAY);l.addView(note);
 }
 void button(LinearLayout l,String t,Runnable r){Button b=new Button(this);b.setText(t);l.addView(b);b.setOnClickListener(v->r.run());}
-boolean allowed(){return Build.VERSION.SDK_INT>=30?Environment.isExternalStorageManager():checkSelfPermission("android.permission.WRITE_EXTERNAL_STORAGE")==0;}
+boolean allowed(){return Build.VERSION.SDK_INT>=30?Environment.isExternalStorageManager():checkSelfPermission("android.permission.WRITE_EXTERNAL_STORAGE")==android.content.pm.PackageManager.PERMISSION_GRANTED;}
 void permission(){if(Build.VERSION.SDK_INT>=30)startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,Uri.parse("package:"+getPackageName())));else requestPermissions(new String[]{"android.permission.READ_EXTERNAL_STORAGE","android.permission.WRITE_EXTERNAL_STORAGE"},1);}
 void run(String op){String out=path.getText().toString().trim();if(!out.startsWith("/")){status.setText("Çıkış yolu / ile başlamalı.");return;}getSharedPreferences("state",0).edit().putString("output",out).apply();startForegroundService(new Intent(this,VaultService.class).putExtra("op",op).putExtra("out",out));}
 public void onResume(){super.onResume();h.post(tick);}public void onPause(){super.onPause();h.removeCallbacks(tick);}

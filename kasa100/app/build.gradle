@@ -1,5 +1,5 @@
 plugins { id 'com.android.application' }
 android { namespace 'com.atmaca.kasa100'; compileSdk 35
- defaultConfig { applicationId 'com.atmaca.kasa100'; minSdk 26; targetSdk 32; versionCode 1; versionName '1.0' }
+ defaultConfig { applicationId 'com.atmaca.kasa100'; minSdk 26; targetSdk 33; versionCode 1; versionName '1.0' }
 }
 android { compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 } }
