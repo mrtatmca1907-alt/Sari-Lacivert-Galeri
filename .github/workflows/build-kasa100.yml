@@ -18,7 +18,8 @@ jobs:
           gradle-version: '8.10.2'
       - name: Build APK
         working-directory: kasa100
-        run: gradle :app:assembleDebug :app:lintDebug --stacktrace
+        run: |
+          gradle :app:assembleDebug :app:lintDebug --stacktrace || { cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt; exit 1; }
       - run: cp kasa100/app/build/outputs/apk/debug/app-debug.apk ATMACA-KASA-100.apk
       - uses: actions/upload-artifact@v4
         with:
