@@ -28,7 +28,15 @@ class MainActivity: Activity() {
  }
  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
   super.onActivityResult(requestCode,resultCode,data)
-  if(requestCode==100) android.widget.Toast.makeText(this,if(resultCode==RESULT_OK) "İzin verildi; Facebook ses erişimi ayrıca test edilmeli" else "İzin verilmedi",android.widget.Toast.LENGTH_LONG).show()
+  if(requestCode==100) {
+   if(resultCode==RESULT_OK && data!=null) {
+    val service=Intent(this,CaptureService::class.java)
+    service.putExtra("projection_code",resultCode)
+    service.putExtra("projection_data",data)
+    startForegroundService(service)
+    android.widget.Toast.makeText(this,"Ses yakalama testi başladı",android.widget.Toast.LENGTH_LONG).show()
+   } else android.widget.Toast.makeText(this,"İzin verilmedi",android.widget.Toast.LENGTH_LONG).show()
+  }
  }
  override fun onDestroy(){speech.release();super.onDestroy()}
 }
