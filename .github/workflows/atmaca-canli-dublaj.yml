@@ -2,6 +2,7 @@ name: ATMACA Canli Dublaj APK
 on:
   push:
     branches: [atmaca-canli-dublaj]
+  pull_request:
   workflow_dispatch:
 jobs:
   build:
