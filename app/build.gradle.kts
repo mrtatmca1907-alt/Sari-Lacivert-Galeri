@@ -72,3 +72,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+
+// Uygulama Merkezi: yerel hata ve donma raporu, API anahtarı içermez.
+android {
+    sourceSets.getByName("main").java.srcDir(rootProject.file("center-sdk/src/main/java"))
+}
