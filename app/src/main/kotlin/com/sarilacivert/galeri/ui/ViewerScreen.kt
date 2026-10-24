@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.view.MotionEvent
+import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,6 +62,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
+import com.sarilacivert.galeri.R
 import androidx.media3.ui.PlayerView
 import com.sarilacivert.galeri.data.BitmapLoader
 import com.sarilacivert.galeri.data.GalleryPreferences
@@ -89,7 +93,9 @@ fun ViewerScreen(
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf(initialItems) }
     var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (initialItems.size - 1).coerceAtLeast(0))) }
-    var barsVisible by remember { mutableStateOf(true) }
+    var barsVisible by remember { mutableStateOf(false) }
+    var zoomed by remember { mutableStateOf(false) }
+    var activeImage by remember { mutableStateOf<StableZoomImageView?>(null) }
     var slideshow by remember { mutableStateOf(startSlideshow) }
     var showInfo by remember { mutableStateOf(false) }
     var infoText by remember { mutableStateOf("") }
@@ -179,7 +185,7 @@ fun ViewerScreen(
         }
     }
 
-    BackHandler(onBack = onBack)
+    BackHandler { if (zoomed && activeImage != null) activeImage?.resetTransform() else onBack() }
 
     LaunchedEffect(slideshow, index, items.size, slideshowSeconds) {
         if (slideshow && !current.isVideo) {
@@ -216,7 +222,9 @@ fun ViewerScreen(
                 rotationDegrees = photoRotation,
                 onTap = { barsVisible = !barsVisible },
                 onPrevious = { if (index > 0) index-- },
-                onNext = { if (index < items.lastIndex) index++ }
+                onNext = { if (index < items.lastIndex) index++ },
+                onViewReady = { activeImage = it },
+                onZoomChanged = { zoomed = it }
             )
         }
 
@@ -229,7 +237,7 @@ fun ViewerScreen(
                     .padding(top = 26.dp, start = 4.dp, end = 4.dp, bottom = 4.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onBack) { Text("‹ Geri") }
+                    TextButton(onClick = { if (zoomed && activeImage != null) activeImage?.resetTransform() else onBack() }) { Text("‹ Geri") }
                     Column(Modifier.weight(1f)) {
                         Text(current.name, color = TextPrimary, maxLines = 1)
                         Text(
@@ -405,6 +413,17 @@ private fun VideoViewer(
     val player = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(androidx.media3.common.MediaItem.fromUri(item.uri))
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    Toast.makeText(context, "Video oynatılamadı; başka oynatıcı deneniyor", Toast.LENGTH_LONG).show()
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(item.uri, item.mimeType.ifBlank { "video/*" })
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        })
+                    }
+                }
+            })
             prepare()
         }
     }
@@ -427,11 +446,11 @@ private fun VideoViewer(
 
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).apply {
+            (LayoutInflater.from(ctx).inflate(R.layout.gallery_video_player, null) as PlayerView).apply {
                 this.player = player
+                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                 useController = true
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                setOnClickListener { onTap() }
 
                 var downX = 0f
                 var downY = 0f
@@ -453,6 +472,7 @@ private fun VideoViewer(
                                 if (dx > 0f) onPrevious() else onNext()
                                 true
                             } else {
+                                if (abs(dx) < 20f && abs(dy) < 20f) onTap()
                                 false
                             }
                         }
@@ -473,7 +493,9 @@ private fun ZoomableImage(
     rotationDegrees: Float,
     onTap: () -> Unit,
     onPrevious: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onViewReady: (StableZoomImageView) -> Unit,
+    onZoomChanged: (Boolean) -> Unit
 ) {
     val bitmap by produceState<Bitmap?>(null, uri) {
         value = loader.full(uri)
@@ -493,6 +515,8 @@ private fun ZoomableImage(
                     view.onSingleTapAction = onTap
                     view.onPreviousAction = onPrevious
                     view.onNextAction = onNext
+                    view.onZoomChanged = onZoomChanged
+                    onViewReady(view)
                     view.setBitmap(bitmap)
                     view.setExternalRotation(rotationDegrees)
                 },
