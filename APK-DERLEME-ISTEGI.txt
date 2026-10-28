@@ -1,0 +1,1 @@
+Atmaca Galeri APK derleme istegi. GitHub Actions build-apk.yml workflow'u tetiklemek icin eklendi.
