@@ -1,6 +1,7 @@
 import os
 import shutil
 import threading
+import queue
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
@@ -26,8 +27,10 @@ class PhotoManager:
         self.status = tk.StringVar(value="Kaynak ve hedef klasorlerini secin.")
         self.results = []
         self.busy = False
+        self.events = queue.Queue()
         self._style()
         self._build()
+        self.root.after(100, self._process_events)
 
     def _style(self):
         style = ttk.Style()
@@ -124,29 +127,57 @@ class PhotoManager:
         if not root.is_dir():
             raise ValueError("Gecerli bir kaynak klasor secin.")
         iterator = root.rglob("*") if self.recursive.get() else root.iterdir()
-        return [p for p in iterator if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+        found = []
+        for p in iterator:
+            try:
+                if p.is_file() and p.suffix.lower() in IMAGE_EXTS:
+                    found.append(p)
+            except OSError:
+                continue
+        return found
 
-    def search(self):
+    def _start_scan(self, mode):
         if self.busy:
             return
-        try:
-            files = self._files()
-        except Exception as exc:
-            messagebox.showerror("Kaynak klasor", str(exc))
+        if not Path(self.source.get().strip()).is_dir():
+            messagebox.showerror("Kaynak klasor", "Gecerli bir kaynak klasor secin.")
             return
-        term = self.query.get().strip().casefold()
-        self.results = [p for p in files if term in p.name.casefold()]
-        self._show(self.results)
-        self.status.set(f"Arama tamamlandi: {len(self.results):,} gorsel bulundu. Cift tikla ac.")
-        
+        self.busy = True
+        self.status.set("Klasor taraniyor... Uygulama yanit vermeye devam edecek.")
+        threading.Thread(target=self._scan_worker, args=(mode,), daemon=True).start()
+
+    def _scan_worker(self, mode):
+        try:
+            self.events.put(("scan_done", mode, self._files(), None))
+        except Exception as exc:
+            self.events.put(("scan_done", mode, [], str(exc)))
+
+    def search(self):
+        self._start_scan("search")
+
     def _show(self, files):
         self.tree.delete(*self.tree.get_children())
-        for p in files:
+        self.results = list(files)
+        self._render_files = self.results
+        self._render_index = 0
+        self.status.set(f"Liste hazirlaniyor... {len(self.results):,} gorsel")
+        self.root.after(1, self._render_chunk)
+
+    def _render_chunk(self):
+        end = min(self._render_index + 300, len(self._render_files))
+        for p in self._render_files[self._render_index:end]:
             try:
                 size = f"{p.stat().st_size / 1024:,.0f} KB"
             except OSError:
                 size = "?"
             self.tree.insert("", "end", values=(p.name, str(p.parent), size))
+        self._render_index = end
+        if end < len(self._render_files):
+            self.status.set(f"Liste ekleniyor... {end:,} / {len(self._render_files):,}")
+            self.root.after(1, self._render_chunk)
+        else:
+            self.busy = False
+            self.status.set(f"Arama tamamlandi: {len(self.results):,} gorsel bulundu. Cift tikla ac.")
 
     def clear(self):
         self.query.set("")
@@ -176,67 +207,97 @@ class PhotoManager:
             return
         files = [Path(p) for p in files if Path(p).is_file()]
         if not files:
-            messagebox.showinfo("Bilgi", "Tasınacak gorsel bulunamadi.")
+            messagebox.showinfo("Bilgi", "Tasinacak gorsel bulunamadi.")
             return
         if source_root == dest or source_root in dest.parents or dest in source_root.parents:
             messagebox.showerror("Klasor cakismasi", "Kaynak ve hedef klasorler birbirinin icinde olamaz.")
             return
-        overwrite_count = sum(1 for p in files if (dest / p.name).exists())
-        msg = (f"{len(files):,} gorsel hedef klasore TASINACAK.\n"
-               f"Ayni isimli mevcut dosya sayisi: {overwrite_count:,}\n\n"
-               "Ayni isimli dosyalarin uzerine yazilacak. Eski hedef dosyalari degisecek.\n"
-               "Devam edilsin mi?")
+        collisions = sum(1 for p in files if (dest / p.name).exists())
+        msg = (f"{len(files):,} gorsel hedef klasore TASINACAK.\\n"
+               f"Ayni isimli dosyalarin uzerine yazilmayacak; +1, +2... eklenecek.\\n"
+               f"Mevcut isim cakismasi: {collisions:,}\\n\\nDevam edilsin mi?")
         if not messagebox.askyesno("Tasima onayi", msg, icon="warning"):
             return
         self.busy = True
         self.progress["maximum"] = len(files)
         self.progress["value"] = 0
-        threading.Thread(target=self._worker, args=(files, dest), daemon=True).start()
         self.status.set("Tasima basladi...")
+        threading.Thread(target=self._worker, args=(files, dest), daemon=True).start()
+
+    @staticmethod
+    def _unique_target(dest, filename):
+        original = Path(filename)
+        candidate = dest / filename
+        if not candidate.exists():
+            return candidate
+        number = 1
+        while True:
+            candidate = dest / f"{original.stem}+{number}{original.suffix}"
+            if not candidate.exists():
+                return candidate
+            number += 1
 
     def _worker(self, files, dest):
-        moved = overwritten = failed = 0
+        moved = renamed = failed = 0
         errors = []
         for i, src in enumerate(files, 1):
             try:
-                target = dest / src.name
+                target = self._unique_target(dest, src.name)
                 if src.resolve() == target.resolve():
                     continue
-                existed = target.exists()
-                # Stage the new file first; only replace the old target after a successful copy.
                 if src.stat().st_dev == dest.stat().st_dev:
-                    os.replace(src, target)
+                    src.rename(target)
                 else:
-                    temp = dest / (".atmacatmp_" + src.name)
-                    n = 1
+                    temp = dest / (".atmacatmp_" + target.name)
+                    number = 1
                     while temp.exists():
-                        temp = dest / (f".atmacatmp_{n}_" + src.name)
-                        n += 1
+                        temp = dest / f".atmacatmp_{number}_" + target.name
+                        number += 1
                     shutil.copy2(src, temp)
-                    os.replace(temp, target)
+                    temp.rename(target)
                     src.unlink()
                 moved += 1
-                if existed:
-                    overwritten += 1
+                if target.name != src.name:
+                    renamed += 1
             except Exception as exc:
                 failed += 1
                 if len(errors) < 8:
                     errors.append(f"{src}: {exc}")
-            self.root.after(0, self._progress, i)
-        self.root.after(0, self._finished, moved, overwritten, failed, errors)
+            self.events.put(("progress", i, len(files)))
+        self.events.put(("finished", moved, renamed, failed, errors))
 
-    def _progress(self, value):
-        self.progress["value"] = value
-        self.status.set(f"Isleniyor... {value:,} / {int(self.progress['maximum']):,}")
-
-    def _finished(self, moved, overwritten, failed, errors):
-        self.busy = False
-        self.status.set(f"Tamamlandi. Tasindi: {moved:,} | Uzerine yazildi: {overwritten:,} | Hata: {failed:,}")
-        message = f"Tasindi: {moved:,}\nUzerine yazildi: {overwritten:,}\nHata: {failed:,}"
-        if errors:
-            message += "\n\nIlk hatalar:\n" + "\n".join(errors)
-        messagebox.showinfo("Islem tamamlandi", message)
-        self.search()
+    def _process_events(self):
+        try:
+            while True:
+                event = self.events.get_nowait()
+                if event[0] == "scan_done":
+                    _, mode, files, error = event
+                    if error:
+                        self.busy = False
+                        messagebox.showerror("Tarama hatasi", error)
+                        self.status.set("Tarama tamamlanamadi.")
+                    elif mode == "search":
+                        term = self.query.get().strip().casefold()
+                        self._show([p for p in files if term in p.name.casefold()])
+                    else:
+                        self.busy = False
+                        self._move(files, "all")
+                elif event[0] == "progress":
+                    _, value, total = event
+                    self.progress["value"] = value
+                    self.status.set(f"Tasiniyor... {value:,} / {total:,}")
+                elif event[0] == "finished":
+                    _, moved, renamed, failed, errors = event
+                    self.busy = False
+                    self.status.set(f"Tamamlandi. Tasindi: {moved:,} | Yeni ad verilen: {renamed:,} | Hata: {failed:,}")
+                    msg = f"Tasindi: {moved:,}\\nYeni ad verildi (+1, +2...): {renamed:,}\\nHata: {failed:,}"
+                    if errors:
+                        msg += "\\n\\nIlk hatalar:\\n" + "\\n".join(errors)
+                    messagebox.showinfo("Islem tamamlandi", msg)
+                    self.search()
+        except queue.Empty:
+            pass
+        self.root.after(100, self._process_events)
 
     def move_selected(self):
         selected = self.tree.selection()
@@ -250,12 +311,7 @@ class PhotoManager:
         self._move(self.results, "results")
 
     def move_all(self):
-        try:
-            files = self._files()
-        except Exception as exc:
-            messagebox.showerror("Kaynak klasor", str(exc))
-            return
-        self._move(files, "all")
+        self._start_scan("move_all")
 
 if __name__ == "__main__":
     root = tk.Tk()
