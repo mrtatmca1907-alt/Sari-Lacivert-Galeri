@@ -122,11 +122,11 @@ class PhotoManager:
         if path:
             variable.set(path)
 
-    def _files(self):
-        root = Path(self.source.get().strip())
+    def _files(self, root_path, recursive):
+        root = Path(root_path)
         if not root.is_dir():
             raise ValueError("Gecerli bir kaynak klasor secin.")
-        iterator = root.rglob("*") if self.recursive.get() else root.iterdir()
+        iterator = root.rglob("*") if recursive else root.iterdir()
         found = []
         for p in iterator:
             try:
@@ -144,11 +144,13 @@ class PhotoManager:
             return
         self.busy = True
         self.status.set("Klasor taraniyor... Uygulama yanit vermeye devam edecek.")
-        threading.Thread(target=self._scan_worker, args=(mode,), daemon=True).start()
+        root_path = self.source.get().strip()
+        recursive = self.recursive.get()
+        threading.Thread(target=self._scan_worker, args=(mode, root_path, recursive), daemon=True).start()
 
-    def _scan_worker(self, mode):
+    def _scan_worker(self, mode, root_path, recursive):
         try:
-            self.events.put(("scan_done", mode, self._files(), None))
+            self.events.put(("scan_done", mode, self._files(root_path, recursive), None))
         except Exception as exc:
             self.events.put(("scan_done", mode, [], str(exc)))
 
