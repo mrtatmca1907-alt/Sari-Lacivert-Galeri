@@ -1,0 +1,44 @@
+name: Build TeraBox Windows EXE
+
+on:
+  push:
+    branches: [terabox-exe-build]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare TeraBox engine
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/seiya-dev/terabox-node.git terabox-node
+          cd terabox-node
+          npm install
+      - name: Download aria2
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip -OutFile aria2.zip
+          Expand-Archive aria2.zip -DestinationPath aria2-unpack
+          $a = Get-ChildItem aria2-unpack -Filter aria2c.exe -Recurse | Select-Object -First 1
+          Copy-Item $a.FullName ./aria2c.exe
+          Copy-Item (Get-Command node).Source ./node.exe
+      - name: Package EXE
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pyinstaller
+          pyinstaller --noconfirm --clean --onefile --windowed --name TeraBox_Yedekleyici --add-data "terabox-node;terabox-node" --add-binary "node.exe;." --add-binary "aria2c.exe;." terabox_gui.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeraBox-Yedekleyici-Windows
+          path: dist/TeraBox_Yedekleyici.exe
+          if-no-files-found: error
+          retention-days: 14
