@@ -65,11 +65,11 @@ class App:
         try:
             engine = resource("terabox-node")
             config = {
-                "accounts": {"main": {"ndus": cookie}},
+                "accounts": {"main": cookie},
                 "aria2": {"url": "http://127.0.0.1:6800/jsonrpc", "secret": self.rpc_secret}
             }
             (engine / "app" / ".config.yaml").write_text(
-                "accounts:\n  main:\n    ndus: " + json.dumps(cookie, ensure_ascii=False) +
+                "accounts:\n  main: " + json.dumps(cookie, ensure_ascii=False) +
                 "\naria2:\n  url: http://127.0.0.1:6800/jsonrpc\n  secret: " + self.rpc_secret + "\n",
                 encoding="utf-8")
             session = dest / ".terabox-aria2.session"
@@ -93,8 +93,8 @@ class App:
                 self.write(line)
             code = self.proc.wait()
             if code == 0:
-                self.write("\nDosya listesi kuyruğa eklendi. Aria2 indirmeleri arka planda sürdürüyor.\n")
-                self.root.after(0, self.status.set, "Tarama tamamlandı; indirmeler sürüyor.")
+                self.write("\nTarama komutu tamamlandı. Aria2 kuyruğunu kontrol et.\n")
+                self.root.after(0, self.status.set, "Tarama komutu tamamlandı.")
             else:
                 self.write("\nTarama işlemi hata koduyla kapandı: " + str(code) + "\n")
                 self.root.after(0, self.status.set, "Tarama başarısız; günlükteki hatayı kontrol et.")
